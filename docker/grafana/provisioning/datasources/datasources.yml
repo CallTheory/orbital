@@ -1,0 +1,28 @@
+#
+# Auto-provisioned datasources. Grafana reads this on startup so the
+# Loki + Prometheus connections are ready without any manual setup.
+#
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    orgId: 1
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      httpMethod: POST
+      prometheusType: Prometheus
+      timeInterval: 15s
+
+  - name: Loki
+    type: loki
+    access: proxy
+    orgId: 1
+    url: http://loki:3100
+    editable: true
+    jsonData:
+      maxLines: 5000

@@ -1,0 +1,363 @@
+services:
+    orbital.test:
+        build:
+            context: ./docker/8.4
+            dockerfile: Dockerfile
+            args:
+                WWWGROUP: '${WWWGROUP}'
+        extra_hosts:
+            - 'host.docker.internal:host-gateway'
+        ports:
+            - '${APP_PORT:-80}:80'
+            - '${VITE_PORT:-5173}:${VITE_PORT:-5173}'
+        environment:
+            WWWUSER: '${WWWUSER}'
+            LARAVEL_SAIL: 1
+            XDEBUG_MODE: '${SAIL_XDEBUG_MODE:-off}'
+            XDEBUG_CONFIG: '${SAIL_XDEBUG_CONFIG:-client_host=host.docker.internal}'
+            IGNITION_LOCAL_SITES_PATH: '${PWD}'
+        volumes:
+            - '.:/var/www/html'
+            # Shared Asterisk recordings volume — mounted read-only into
+            # the app container so UploadCallRecordingJob can stream
+            # completed MixMonitor files to MinIO. Asterisk writes, we
+            # upload-and-delete.
+            - 'asterisk-recordings:/var/spool/asterisk/monitor'
+            # Shared disclosure-prompts volume — orbital.test renders
+            # TTS audio files here, asterisk plays them back at call
+            # time. Keyed by content hash, so identical messages across
+            # tenants share a single file.
+            - 'asterisk-prompts:/var/spool/asterisk/prompts'
+        networks:
+            - sail
+            - telephony
+        depends_on:
+            - pgsql
+            - valkey
+            - mailpit
+
+    pgsql:
+        # pgvector/pgvector:pg17 is vanilla Postgres 17 with the pgvector
+        # extension pre-installed. Same on-disk format as postgres:17 so
+        # the existing sail-pgsql volume swaps in cleanly. Migrations run
+        # `CREATE EXTENSION IF NOT EXISTS vector` to activate it.
+        image: 'pgvector/pgvector:pg17'
+        ports:
+            - '${FORWARD_DB_PORT:-5432}:5432'
+        environment:
+            PGPASSWORD: '${DB_PASSWORD:-password}'
+            POSTGRES_DB: '${DB_DATABASE:-orbital}'
+            POSTGRES_USER: '${DB_USERNAME:-orbital}'
+            POSTGRES_PASSWORD: '${DB_PASSWORD:-password}'
+        volumes:
+            - 'sail-pgsql:/var/lib/postgresql/data'
+            - './vendor/laravel/sail/database/pgsql/create-testing-database.sql:/docker-entrypoint-initdb.d/10-create-testing-database.sql'
+        networks:
+            - sail
+        healthcheck:
+            test:
+                - CMD
+                - pg_isready
+                - '-q'
+                - '-d'
+                - '${DB_DATABASE:-orbital}'
+                - '-U'
+                - '${DB_USERNAME:-orbital}'
+            retries: 3
+            timeout: 5s
+
+    valkey:
+        image: 'valkey/valkey:8-alpine'
+        ports:
+            - '${FORWARD_REDIS_PORT:-6379}:6379'
+        volumes:
+            - 'sail-valkey:/data'
+        networks:
+            - sail
+            - telephony
+        healthcheck:
+            test:
+                - CMD
+                - valkey-cli
+                - ping
+            retries: 3
+            timeout: 5s
+
+    mailpit:
+        image: 'axllent/mailpit:latest'
+        ports:
+            - '${FORWARD_MAILPIT_PORT:-1025}:1025'
+            - '${FORWARD_MAILPIT_DASHBOARD_PORT:-8025}:8025'
+        networks:
+            - sail
+
+    asterisk:
+        build:
+            context: ./docker/asterisk
+            dockerfile: Dockerfile
+        ports:
+            - '5060:5060/udp'
+            - '5060:5060/tcp'
+            - '5061:5061/tcp'
+            - '5038:5038/tcp'
+            - '8089:8089/tcp'
+            - '10000-10099:10000-10099/udp'
+        volumes:
+            - './docker/asterisk/config:/etc/asterisk/generated:ro'
+            - 'asterisk-spool:/var/spool/asterisk'
+            - 'asterisk-recordings:/var/spool/asterisk/monitor'
+            # Disclosure-message TTS prompt files, written by the
+            # Laravel app container (DisclosureRenderer) and played
+            # back via dialplan Playback(...) at call time.
+            - 'asterisk-prompts:/var/spool/asterisk/prompts'
+        networks:
+            - telephony
+        cap_add:
+            - NET_ADMIN
+        restart: unless-stopped
+
+    livekit:
+        image: 'livekit/livekit-server:latest'
+        ports:
+            - '7880:7880'
+            - '7881:7881'
+            - '7882:7882/udp'
+        command: --config /etc/livekit.yaml --bind 0.0.0.0
+        volumes:
+            - './docker/livekit/livekit.yaml:/etc/livekit.yaml:ro'
+        networks:
+            - telephony
+        depends_on:
+            - valkey
+        restart: unless-stopped
+
+    livekit-sip:
+        image: 'livekit/sip:latest'
+        ports:
+            - '5069:5069/udp'
+            - '5069:5069/tcp'
+        volumes:
+            # The livekit-sip binary expects its config at /sip/config.yaml.
+            - './docker/livekit/sip-config.yaml:/sip/config.yaml:ro'
+        networks:
+            - telephony
+        depends_on:
+            - livekit
+        restart: unless-stopped
+
+    agent-worker:
+        build:
+            context: ./docker/agent-worker
+            dockerfile: Dockerfile
+        volumes:
+            - './agent-worker:/app'
+        environment:
+            LIVEKIT_URL: '${LIVEKIT_URL:-ws://livekit:7880}'
+            LIVEKIT_API_KEY: '${LIVEKIT_API_KEY}'
+            LIVEKIT_API_SECRET: '${LIVEKIT_API_SECRET}'
+            ANTHROPIC_API_KEY: '${ANTHROPIC_API_KEY}'
+            OPENAI_API_KEY: '${OPENAI_API_KEY}'
+            ELEVENLABS_API_KEY: '${ELEVENLABS_API_KEY}'
+            ORBITAL_API_URL: 'http://orbital.test/api'
+            ORBITAL_API_TOKEN: '${AGENT_WORKER_TOKEN}'
+        networks:
+            - sail
+            - telephony
+        depends_on:
+            - livekit
+        restart: unless-stopped
+
+    # Optional: self-hosted Icecast2 for hold-music streams. Asterisk talks
+    # to it over the `telephony` network at http://icecast:8000/<mountpoint>.
+    # You can also point Hold Music sources at any external Icecast/HTTP
+    # audio stream and skip running this container — it's purely optional.
+    #
+    # Default admin password is in docker/icecast/icecast.xml — change it
+    # before exposing this beyond your local docker network.
+    icecast:
+        image: 'moul/icecast:latest'
+        ports:
+            - '8000:8000'
+        environment:
+            ICECAST_SOURCE_PASSWORD: '${ICECAST_SOURCE_PASSWORD:-changeme}'
+            ICECAST_ADMIN_PASSWORD: '${ICECAST_ADMIN_PASSWORD:-changeme}'
+            ICECAST_PASSWORD: '${ICECAST_PASSWORD:-changeme}'
+            ICECAST_RELAY_PASSWORD: '${ICECAST_RELAY_PASSWORD:-changeme}'
+            ICECAST_HOSTNAME: 'icecast'
+        volumes:
+            - 'icecast-config:/etc/icecast'
+        networks:
+            - telephony
+        restart: unless-stopped
+
+    # ──────────────────────────────────────────────────────────────────
+    # Observability stack: Prometheus (metrics), Loki (logs), Promtail
+    # (log shipper), Grafana (UI). All four live on the `sail` network so
+    # they can scrape/reach one another, and Grafana + Prometheus are
+    # additionally exposed to the host for direct access.
+    # ──────────────────────────────────────────────────────────────────
+
+    prometheus:
+        image: 'prom/prometheus:latest'
+        command:
+            - '--config.file=/etc/prometheus/prometheus.yml'
+            - '--storage.tsdb.path=/prometheus'
+            - '--web.enable-lifecycle'
+        ports:
+            - '9090:9090'
+        volumes:
+            - './docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro'
+            - 'sail-prometheus:/prometheus'
+        networks:
+            - sail
+        restart: unless-stopped
+
+    loki:
+        image: 'grafana/loki:latest'
+        # Run as root so Loki can mkdir subdirs inside the named volume on
+        # first boot. Without this, the non-root loki user can't write to
+        # /loki-data and the container crash-loops.
+        user: '0'
+        command: '-config.file=/etc/loki/local-config.yaml'
+        ports:
+            - '3100:3100'
+        volumes:
+            - './docker/loki/loki-config.yaml:/etc/loki/local-config.yaml:ro'
+            - 'sail-loki:/loki-data'
+        networks:
+            - sail
+        restart: unless-stopped
+
+    promtail:
+        image: 'grafana/promtail:latest'
+        command: '-config.file=/etc/promtail/config.yaml'
+        volumes:
+            - './docker/promtail/promtail-config.yaml:/etc/promtail/config.yaml:ro'
+            - '/var/lib/docker/containers:/var/lib/docker/containers:ro'
+            - '/var/run/docker.sock:/var/run/docker.sock'
+        networks:
+            - sail
+        depends_on:
+            - loki
+        restart: unless-stopped
+
+    # ──────────────────────────────────────────────────────────────────
+    # MinIO — S3-compatible object storage. Used as Laravel's `s3` disk
+    # so file uploads / call recordings / tenant assets go to an S3 API
+    # that we fully control. In production you swap AWS_ENDPOINT for the
+    # real provider (Cloudflare R2 / Backblaze B2 / AWS S3 / etc.) and
+    # keep the same Laravel disk config.
+    # ──────────────────────────────────────────────────────────────────
+    minio:
+        image: 'minio/minio:latest'
+        ports:
+            - '${FORWARD_MINIO_PORT:-9000}:9000'  # S3 API
+            - '${FORWARD_MINIO_CONSOLE_PORT:-9001}:9001'  # Web console
+        environment:
+            MINIO_ROOT_USER: '${MINIO_ROOT_USER:-orbital}'
+            MINIO_ROOT_PASSWORD: '${MINIO_ROOT_PASSWORD:-password}'
+        volumes:
+            - 'sail-minio:/data'
+        command: 'server /data --console-address ":9001"'
+        networks:
+            - sail
+        healthcheck:
+            test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+            interval: 10s
+            timeout: 5s
+            retries: 3
+        restart: unless-stopped
+
+    # One-shot sidecar that creates the orbital bucket on first boot.
+    # Exits cleanly once the bucket exists; restarts no-op.
+    minio-init:
+        image: 'minio/mc:latest'
+        depends_on:
+            minio:
+                condition: service_healthy
+        networks:
+            - sail
+        environment:
+            MINIO_ROOT_USER: '${MINIO_ROOT_USER:-orbital}'
+            MINIO_ROOT_PASSWORD: '${MINIO_ROOT_PASSWORD:-password}'
+            MINIO_BUCKET: '${AWS_BUCKET:-orbital}'
+        entrypoint:
+            - /bin/sh
+            - -c
+            - |
+              mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" &&
+              mc mb --ignore-existing "local/$$MINIO_BUCKET" &&
+              mc anonymous set download "local/$$MINIO_BUCKET"  || true
+
+    # ──────────────────────────────────────────────────────────────────
+    # Ollama — optional local embedding / inference server. Lives under
+    # the `local-ai` profile so it's opt-in: `docker compose up -d`
+    # ignores it; `docker compose --profile local-ai up -d` brings it
+    # online. Used by EmbeddingService when services.embeddings.provider
+    # = ollama. Models are downloaded lazily on first use and persisted
+    # to the sail-ollama volume so they don't re-download across restarts.
+    #
+    # First-time setup:
+    #   docker compose --profile local-ai up -d ollama
+    #   docker compose exec ollama ollama pull nomic-embed-text
+    # ──────────────────────────────────────────────────────────────────
+    ollama:
+        image: 'ollama/ollama:latest'
+        profiles: ['local-ai']
+        ports:
+            - '${FORWARD_OLLAMA_PORT:-11434}:11434'
+        volumes:
+            - 'sail-ollama:/root/.ollama'
+        networks:
+            - sail
+        restart: unless-stopped
+
+    grafana:
+        image: 'grafana/grafana:latest'
+        ports:
+            - '3000:3000'
+        environment:
+            GF_SECURITY_ADMIN_USER: '${GRAFANA_ADMIN_USER:-admin}'
+            GF_SECURITY_ADMIN_PASSWORD: '${GRAFANA_ADMIN_PASSWORD:-admin}'
+            GF_USERS_ALLOW_SIGN_UP: 'false'
+            GF_ANALYTICS_REPORTING_ENABLED: 'false'
+            GF_AUTH_ANONYMOUS_ENABLED: 'false'
+        volumes:
+            - './docker/grafana/provisioning:/etc/grafana/provisioning:ro'
+            - 'sail-grafana:/var/lib/grafana'
+        networks:
+            - sail
+        depends_on:
+            - prometheus
+            - loki
+        restart: unless-stopped
+
+networks:
+    sail:
+        driver: bridge
+    telephony:
+        driver: bridge
+
+volumes:
+    sail-pgsql:
+        driver: local
+    sail-valkey:
+        driver: local
+    asterisk-spool:
+        driver: local
+    asterisk-recordings:
+        driver: local
+    asterisk-prompts:
+        driver: local
+    icecast-config:
+        driver: local
+    sail-prometheus:
+        driver: local
+    sail-loki:
+        driver: local
+    sail-grafana:
+        driver: local
+    sail-minio:
+        driver: local
+    sail-ollama:
+        driver: local

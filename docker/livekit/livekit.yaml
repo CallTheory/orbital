@@ -1,0 +1,23 @@
+port: 7880
+
+rtc:
+  port_range_start: 50000
+  port_range_end: 60000
+  tcp_port: 7881
+  use_ice_lite: true
+
+# Mirrored in .env (LIVEKIT_API_KEY / LIVEKIT_API_SECRET) so the Laravel
+# app and agent worker authenticate with the same credentials.
+keys:
+  APIorbitaldev4a85eae7: f4eca5232734d8d514da60b9a0f9c7c27b4b8473c550a442
+
+logging:
+  level: info
+
+room:
+  max_participants: 50
+  empty_timeout: 300
+  departure_timeout: 20
+
+redis:
+  address: valkey:6379

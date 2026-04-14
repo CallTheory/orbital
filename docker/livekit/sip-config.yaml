@@ -1,0 +1,8 @@
+log_level: info
+api_key: APIorbitaldev4a85eae7
+api_secret: f4eca5232734d8d514da60b9a0f9c7c27b4b8473c550a442
+ws_url: ws://livekit:7880
+redis:
+  address: valkey:6379
+sip_port: 5069
+rtp_port: 50000-60000

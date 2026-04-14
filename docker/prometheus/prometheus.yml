@@ -1,0 +1,29 @@
+#
+# Orbital Prometheus config.
+#
+# Single-node setup: Prometheus scrapes itself and anything we add here.
+# When we add exporters (postgres_exporter, node_exporter, etc.) they get
+# added to scrape_configs below.
+#
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: local
+    stack: orbital
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Loki exposes Prometheus-format metrics on its own /metrics endpoint.
+  - job_name: loki
+    static_configs:
+      - targets: ['loki:3100']
+
+  # Grafana also exposes /metrics once the feature is enabled.
+  - job_name: grafana
+    static_configs:
+      - targets: ['grafana:3000']

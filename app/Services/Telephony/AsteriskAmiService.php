@@ -102,6 +102,34 @@ class AsteriskAmiService
         return str_contains($response, 'Success') || str_contains($response, 'Follows');
     }
 
+    /**
+     * Reload only the dialplan (pbx_config). Cheaper than `core
+     * reload` because Asterisk doesn't re-parse pjsip endpoints,
+     * queues, codecs, or any of the other module configs — it just
+     * re-reads `extensions.conf` (and #include'd files) and rebuilds
+     * the dialplan tree.
+     *
+     * Used by the per-tenant dialplan write path so a single
+     * tenant's RoutingRule edit doesn't churn the whole platform.
+     * Endpoint and queue changes in the ARA path don't trigger any
+     * reload at all — Asterisk pulls those per-call from the DB.
+     */
+    public function reloadDialplan(): bool
+    {
+        if (! $this->connect()) {
+            return false;
+        }
+
+        $response = $this->sendAction([
+            'Action' => 'Command',
+            'Command' => 'dialplan reload',
+        ]);
+
+        $this->disconnect();
+
+        return str_contains($response, 'Success') || str_contains($response, 'Follows');
+    }
+
     public function getActiveChannels(): array
     {
         if (! $this->connect()) {

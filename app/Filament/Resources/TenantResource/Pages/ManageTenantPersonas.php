@@ -22,13 +22,13 @@ class ManageTenantPersonas extends ManageRelatedRecords
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-cpu-chip';
 
-    protected static ?string $navigationLabel = 'AI Personas';
+    protected static ?string $navigationLabel = 'AI Agents';
 
-    protected static ?string $title = 'AI Personas';
+    protected static ?string $title = 'AI Agents';
 
     public static function getNavigationLabel(): string
     {
-        return 'AI Personas';
+        return 'AI Agents';
     }
 
     public function form(Schema $schema): Schema

@@ -67,4 +67,24 @@ class Extension extends Model
     {
         return $this->morphMany(AgentGroupMember::class, 'member');
     }
+
+    /**
+     * Canonical Asterisk endpoint id used in the ARA tables. Two
+     * tenants can have the same extension number internally, but
+     * Asterisk's pjsip endpoint id is global — so we prefix tenant
+     * extensions with `t{team_id}_` and leave platform-staff
+     * extensions (team_id = null) unprefixed.
+     *
+     * Used by EndpointSyncer when writing to ps_endpoints, ps_auths,
+     * and ps_aors, and by QueueMemberSyncer when constructing the
+     * member interface string (`PJSIP/{realtimeEndpointId}`).
+     */
+    public function realtimeEndpointId(): string
+    {
+        if ($this->team_id === null) {
+            return (string) $this->number;
+        }
+
+        return 't'.$this->team_id.'_'.$this->number;
+    }
 }

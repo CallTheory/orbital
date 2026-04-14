@@ -38,6 +38,15 @@ return new class extends Migration
             // extension → tenant → global and takes the first defined
             // value per key.
             $table->json('recording_overrides')->nullable()->after('suspended_at');
+
+            // Service tier — drives operator queue priority.
+            // QueueMemberSyncer maps tier → base penalty (lower
+            // penalty = ring first), so enterprise tenants get
+            // first dibs on shared operator pools without locking
+            // operators away from cheaper tenants. Defaults to
+            // `free` so existing rows stay unchanged on a fresh
+            // migrate.
+            $table->string('tier', 16)->default('free')->after('recording_overrides');
         });
     }
 
@@ -50,6 +59,7 @@ return new class extends Migration
                 'max_concurrent_calls',
                 'suspended_at',
                 'recording_overrides',
+                'tier',
             ]);
         });
     }

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Tenancy;
 
+use App\Models\ContactFieldDefinition;
+use App\Models\DirectoryFieldDefinition;
 use App\Models\Team;
 use App\Models\User;
 use Database\Seeders\PermissionCatalogSeeder;
@@ -56,6 +58,8 @@ class TenantProvisioner
         DB::transaction(function () use ($team, $initialTenantUser) {
             $this->seedDefaultAllowList($team);
             $this->createTenantUserRole($team);
+            $this->seedDefaultContactFields($team);
+            $this->seedDefaultDirectoryFields($team);
 
             if ($initialTenantUser) {
                 $this->assignTenantUser($team, $initialTenantUser);
@@ -106,6 +110,63 @@ class TenantProvisioner
         } finally {
             $registrar->setPermissionsTeamId($originalTeamId);
             $registrar->forgetCachedPermissions();
+        }
+    }
+
+    /**
+     * Starter Contact field schema seeded into every fresh tenant.
+     * The operator can rename, reorder, add, or remove these from the
+     * tenant's Contact Fields page; the goal here is just to give a
+     * useful out-of-the-box form so the Contacts page isn't empty
+     * before anyone has authored a schema.
+     *
+     * Note the role assignments — they're what make features like
+     * "Grant portal access" and the list-view record title work
+     * without the operator having to wire anything up.
+     */
+    protected function seedDefaultContactFields(Team $team): void
+    {
+        $fields = [
+            ['key' => 'name',                     'label' => 'Name',                     'type' => 'text',     'role' => 'name',         'required' => true,  'sort_order' => 10],
+            ['key' => 'email',                    'label' => 'Email',                    'type' => 'email',    'role' => 'email',        'required' => false, 'sort_order' => 20],
+            ['key' => 'phone',                    'label' => 'Phone',                    'type' => 'phone',    'role' => 'phone',        'required' => false, 'sort_order' => 30],
+            ['key' => 'organization',             'label' => 'Organization',             'type' => 'text',     'role' => 'organization', 'required' => false, 'sort_order' => 40],
+            ['key' => 'title',                    'label' => 'Title',                    'type' => 'text',     'role' => 'none',         'required' => false, 'sort_order' => 50],
+            ['key' => 'preferred_contact_method', 'label' => 'Preferred contact method', 'type' => 'select',   'role' => 'none',         'required' => false, 'sort_order' => 60, 'options' => ['email', 'phone', 'sms', 'mail', 'any']],
+            ['key' => 'notes',                    'label' => 'Notes',                    'type' => 'textarea', 'role' => 'none',         'required' => false, 'sort_order' => 70],
+        ];
+
+        foreach ($fields as $row) {
+            ContactFieldDefinition::query()->updateOrCreate(
+                ['team_id' => $team->id, 'key' => $row['key']],
+                $row + ['team_id' => $team->id, 'is_active' => true],
+            );
+        }
+    }
+
+    /**
+     * Starter Directory field schema. Mirrors the Contact set with a
+     * different vocabulary that fits the "phone book the AI uses
+     * during a call" use case better — display name, organization,
+     * department, primary phone, etc.
+     */
+    protected function seedDefaultDirectoryFields(Team $team): void
+    {
+        $fields = [
+            ['key' => 'name',          'label' => 'Name',          'type' => 'text',     'role' => 'name',         'required' => true,  'sort_order' => 10],
+            ['key' => 'organization',  'label' => 'Organization',  'type' => 'text',     'role' => 'organization', 'required' => false, 'sort_order' => 20],
+            ['key' => 'department',    'label' => 'Department',    'type' => 'text',     'role' => 'none',         'required' => false, 'sort_order' => 30],
+            ['key' => 'title',         'label' => 'Title',         'type' => 'text',     'role' => 'none',         'required' => false, 'sort_order' => 40],
+            ['key' => 'primary_phone', 'label' => 'Primary phone', 'type' => 'phone',    'role' => 'phone',        'required' => true,  'sort_order' => 50],
+            ['key' => 'email',         'label' => 'Email',         'type' => 'email',    'role' => 'email',        'required' => false, 'sort_order' => 60],
+            ['key' => 'notes',         'label' => 'Notes',         'type' => 'textarea', 'role' => 'none',         'required' => false, 'sort_order' => 70],
+        ];
+
+        foreach ($fields as $row) {
+            DirectoryFieldDefinition::query()->updateOrCreate(
+                ['team_id' => $team->id, 'key' => $row['key']],
+                $row + ['team_id' => $team->id, 'is_active' => true],
+            );
         }
     }
 

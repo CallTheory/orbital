@@ -8,7 +8,7 @@
 ;===============================================================================
 
 @foreach($queues as $queue)
-[{{ $queue->name }}]
+[{{ $queue->asteriskName() }}]
 strategy = {{ $queue->strategy }}
 timeout = {{ $queue->timeout }}
 retry = {{ $queue->retry }}

@@ -17,3 +17,13 @@ Schedule::job(new PruneExpiredCallRecordingsJob())
     ->name('prune-expired-call-recordings')
     ->withoutOverlapping()
     ->onOneServer();
+
+// Aggregate yesterday's queue_log events into queue_metrics_daily and
+// prune queue_log rows older than 90 days. Runs at 02:00 so it finishes
+// well before the recording prune kicks off and well after the day has
+// ended in any reasonable timezone.
+Schedule::command('orbital:roll-up-queue-metrics')
+    ->dailyAt('02:00')
+    ->name('roll-up-queue-metrics')
+    ->withoutOverlapping()
+    ->onOneServer();

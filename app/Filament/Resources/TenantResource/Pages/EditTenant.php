@@ -14,6 +14,13 @@ class EditTenant extends EditRecord
 {
     protected static string $resource = TenantResource::class;
 
+    protected static ?string $navigationLabel = 'General';
+
+    public function getTitle(): string
+    {
+        return 'General';
+    }
+
     protected function getHeaderActions(): array
     {
         return [

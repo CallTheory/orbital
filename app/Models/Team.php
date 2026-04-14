@@ -27,7 +27,11 @@ class Team extends JetstreamTeam
         'max_concurrent_calls',
         'suspended_at',
         'recording_overrides',
+        'tier',
     ];
+
+    /** Service tier vocabulary used by QueueMemberSyncer's penalty math. */
+    public const TIERS = ['free', 'pro', 'enterprise'];
 
     /**
      * The event map for the model.
@@ -124,11 +128,55 @@ class Team extends JetstreamTeam
     }
 
     /**
-     * Tenant contacts (users with the tenant_user role inside this team).
-     * Uses Jetstream's users() relationship under the hood.
+     * Account-level tenant contacts — people we communicate with about
+     * the tenant's account (billing, holiday, newsletter, escalation).
+     * Most contacts never log in; the ones that do have `user_id` set.
      */
-    public function contacts(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    public function contacts(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
-        return $this->users();
+        return $this->hasMany(Contact::class);
+    }
+
+    /**
+     * Tenant's own phone book, used by AI agents and live operators
+     * while handling a call. Separate from `contacts` — different use
+     * case, different vocabulary, different table.
+     */
+    public function directoryEntries(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(DirectoryEntry::class);
+    }
+
+    /**
+     * Tenant-authored Contact field schema. Each row defines one
+     * input on the Contacts form for this tenant only — label,
+     * type, sort order, and an optional semantic role (name / email
+     * / phone / organization). The values captured by these
+     * definitions live in the `contacts.values` JSONB column.
+     */
+    public function contactFieldDefinitions(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(ContactFieldDefinition::class)->orderBy('sort_order');
+    }
+
+    /**
+     * Tenant-authored Directory field schema. Parallel to contact
+     * fields — separate table, separate vocabulary.
+     */
+    public function directoryFieldDefinitions(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(DirectoryFieldDefinition::class)->orderBy('sort_order');
+    }
+
+    /**
+     * The canonical Asterisk dialplan context for this tenant. Each
+     * tenant's routing logic lives inside `[tenant_{id}]` so DIDs
+     * dispatched from `[from-trunk]` Goto into the right namespace
+     * and queue / extension references can't collide with another
+     * tenant's dialplan.
+     */
+    public function dialplanContext(): string
+    {
+        return 'tenant_'.$this->id;
     }
 }

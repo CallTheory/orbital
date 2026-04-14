@@ -42,7 +42,11 @@ RUN ./configure \
     --with-ssl \
     --with-srtp
 
-# Enable modules via menuselect
+# Enable modules via menuselect. Realtime + sorcery + ODBC modules
+# are required for Orbital's ARA strategy: pjsip endpoints / queues /
+# queue_log all live in PostgreSQL and Asterisk pulls them per-call
+# via res_sorcery_realtime + res_config_odbc against the `orbital`
+# ODBC connection (configured in res_odbc.conf).
 RUN make menuselect.makeopts \
     && menuselect/menuselect \
         --enable res_pjsip \
@@ -62,6 +66,13 @@ RUN make menuselect.makeopts \
         --enable res_stasis \
         --enable res_musiconhold \
         --enable res_parking \
+        --enable res_odbc \
+        --enable res_odbc_transaction \
+        --enable res_config_odbc \
+        --enable res_sorcery_realtime \
+        --enable res_sorcery_config \
+        --enable res_sorcery_memory \
+        --enable res_sorcery_astdb \
         --enable app_confbridge \
         --enable app_voicemail \
         --enable app_queue \
@@ -117,6 +128,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     openssl \
     sox \
     mpg123 \
+    unixodbc \
+    odbc-postgresql \
+    libpq5 \
+    libiksemel3 \
+    gettext-base \
+    netcat-openbsd \
     && rm -rf /var/lib/apt/lists/* \
     && adduser --system --group --no-create-home asterisk
 
@@ -143,15 +160,34 @@ COPY http.conf       /etc/asterisk/http.conf
 COPY rtp.conf        /etc/asterisk/rtp.conf
 COPY extensions.conf /etc/asterisk/extensions.conf
 COPY queues.conf     /etc/asterisk/queues.conf
+COPY logger.conf     /etc/asterisk/logger.conf
 
-# Entrypoint generates a self-signed TLS cert on first boot if none is
-# present, so SIP TLS (5061) and WSS (8089) work out of the box. Mount
-# a real cert pair over /etc/asterisk/keys in production to override.
+# Asterisk Realtime (ARA) wireup. res_odbc is the connection pool,
+# extconfig maps Asterisk config families to ODBC tables, sorcery
+# tells pjsip/queues to source their objects from the realtime
+# backend, and the queue_log family writes events directly to the
+# `queue_log` table for stats roll-up.
+COPY res_odbc.conf   /etc/asterisk/res_odbc.conf
+COPY extconfig.conf  /etc/asterisk/extconfig.conf
+COPY sorcery.conf    /etc/asterisk/sorcery.conf
+
+# Host-level ODBC driver registry + DSN definitions. odbc.ini
+# contains placeholders that the entrypoint envsubst's at boot
+# from the DB_* env vars set in docker-compose.yml.
+COPY odbcinst.ini    /etc/odbcinst.ini
+COPY odbc.ini        /etc/odbc.ini.tmpl
+
+# Entrypoint generates a self-signed TLS cert on first boot if none
+# is present (so SIP TLS / WSS work out of the box), envsubst's the
+# ODBC DSN, and waits for Postgres to be reachable before launching
+# Asterisk.
 COPY entrypoint.sh /usr/local/bin/orbital-asterisk-entrypoint
 
 RUN chmod +x /usr/local/bin/orbital-asterisk-entrypoint \
     && ldconfig \
     && mkdir -p /var/run/asterisk /var/log/asterisk /etc/asterisk/keys /etc/asterisk/generated \
+    && touch /etc/odbc.ini \
+    && chown asterisk:asterisk /etc/odbc.ini /etc/odbc.ini.tmpl \
     && chown -R asterisk:asterisk /var/lib/asterisk /var/spool/asterisk /var/run/asterisk /var/log/asterisk /etc/asterisk
 
 EXPOSE 5038/tcp 5060/udp 5060/tcp 5061/tcp 8089/tcp 10000-10099/udp

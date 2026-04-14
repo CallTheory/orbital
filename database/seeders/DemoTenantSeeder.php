@@ -245,6 +245,14 @@ class DemoTenantSeeder extends Seeder
             'is_active' => true,
         ]);
 
+        // Make sure every Extension/SipTrunk/CallQueue we just
+        // created has matching ARA rows. The observer fires
+        // synchronously inside this process so the rows should
+        // already be there, but the resync is idempotent + cheap
+        // and makes the seeded baseline self-healing if any model
+        // gets touched outside the observer (raw DB inserts, etc).
+        $this->command?->call('orbital:resync-realtime');
+
         $this->command?->info('Demo data seeded:');
         $this->command?->info('  Platform operator:   demo-operator@orbital.test / password');
         $this->command?->info('  Platform supervisor: demo-supervisor@orbital.test / password');

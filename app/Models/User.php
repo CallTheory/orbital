@@ -148,4 +148,17 @@ class User extends Authenticatable implements FilamentUser
     {
         return $this->morphMany(AgentGroupMember::class, 'member');
     }
+
+    /**
+     * Operator skills — used by the QueueMemberSyncer to compute
+     * which queues this operator can answer for in the shared
+     * pool. Pivot carries `level` (1–5) and an optional `notes`
+     * field for operator-side context like certification dates.
+     */
+    public function skills(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(Skill::class, 'skill_user')
+            ->withPivot(['level', 'notes'])
+            ->withTimestamps();
+    }
 }

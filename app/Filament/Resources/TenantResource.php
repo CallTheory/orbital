@@ -258,6 +258,9 @@ class TenantResource extends Resource
             Pages\ManageTenantIntakeGoals::class,
             Pages\ManageTenantFlows::class,
             Pages\ManageTenantContacts::class,
+            Pages\ManageTenantContactFields::class,
+            Pages\ManageTenantDirectory::class,
+            Pages\ManageTenantDirectoryFields::class,
         ]);
     }
 
@@ -275,6 +278,10 @@ class TenantResource extends Resource
             'intake-goals' => Pages\ManageTenantIntakeGoals::route('/{record}/intake-goals'),
             'intake-flows' => Pages\ManageTenantFlows::route('/{record}/intake-flows'),
             'contacts' => Pages\ManageTenantContacts::route('/{record}/contacts'),
+            'contact-fields' => Pages\ManageTenantContactFields::route('/{record}/contact-fields'),
+            'directory' => Pages\ManageTenantDirectory::route('/{record}/directory'),
+            'directory-fields' => Pages\ManageTenantDirectoryFields::route('/{record}/directory-fields'),
+            'smart-ingest' => Pages\SmartIngestContacts::route('/{record}/smart-ingest'),
         ];
     }
 

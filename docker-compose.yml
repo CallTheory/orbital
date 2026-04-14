@@ -102,6 +102,15 @@ services:
             - '5038:5038/tcp'
             - '8089:8089/tcp'
             - '10000-10099:10000-10099/udp'
+        environment:
+            # ARA / ODBC connection — the entrypoint envsubst's these
+            # into /etc/odbc.ini at boot. Same names as Laravel's .env
+            # so the two containers see the same Postgres.
+            DB_HOST: pgsql
+            DB_PORT: '5432'
+            DB_DATABASE: '${DB_DATABASE:-orbital}'
+            DB_USERNAME: '${DB_USERNAME:-orbital}'
+            DB_PASSWORD: '${DB_PASSWORD:-password}'
         volumes:
             - './docker/asterisk/config:/etc/asterisk/generated:ro'
             - 'asterisk-spool:/var/spool/asterisk'
@@ -111,7 +120,13 @@ services:
             # back via dialplan Playback(...) at call time.
             - 'asterisk-prompts:/var/spool/asterisk/prompts'
         networks:
+            # Asterisk needs the `sail` network to reach pgsql for its
+            # ARA realtime queries, plus `telephony` for the LiveKit /
+            # Icecast / SIP-bridge peers.
+            - sail
             - telephony
+        depends_on:
+            - pgsql
         cap_add:
             - NET_ADMIN
         restart: unless-stopped

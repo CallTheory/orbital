@@ -61,4 +61,49 @@ class CallQueue extends Model
     {
         return $this->hasMany(CallLog::class);
     }
+
+    /**
+     * Skills this queue requires from operators that should answer
+     * its calls. Pivot carries `weight` (1–10) — higher = the queue
+     * weights this skill more heavily when QueueMemberSyncer
+     * computes member assignments and penalty.
+     */
+    public function requiredSkills(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(Skill::class, 'call_queue_required_skills')
+            ->withPivot(['weight'])
+            ->withTimestamps();
+    }
+
+    /**
+     * The canonical Asterisk-side queue name. Tenant queues collide
+     * if two tenants both name a queue "support" — Asterisk's queue
+     * namespace is global. We prefix every tenant queue with
+     * `t{team_id}_` so Filament can show "Support" while Asterisk
+     * stores `t42_support`. Null-team platform queues stay
+     * unprefixed because there's only one of them per slug.
+     *
+     * Used by:
+     *  - resources/views/asterisk/queues.blade.php (legacy generator)
+     *  - resources/views/asterisk/extensions.blade.php (queue dispatch)
+     *  - app/Services/Telephony/Realtime/QueueSyncer (ARA writer)
+     *  - app/Services/Telephony/Realtime/QueueMemberSyncer (member rows)
+     *
+     * Slug normalization keeps the result valid as an Asterisk
+     * context name (lowercase letters, digits, underscores).
+     */
+    public function asteriskName(): string
+    {
+        $slug = preg_replace('/[^a-z0-9_]+/', '_', strtolower((string) $this->name)) ?? '';
+        $slug = trim($slug, '_');
+        if ($slug === '') {
+            $slug = 'queue';
+        }
+
+        if ($this->team_id === null) {
+            return $slug;
+        }
+
+        return 't'.$this->team_id.'_'.$slug;
+    }
 }

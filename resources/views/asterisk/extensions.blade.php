@@ -48,17 +48,17 @@ exten => {{ $ext->number }},1,NoOp(Dialing {{ $ext->label ?? 'extension' }} {{ $
 @include('asterisk.partials.mix-monitor', ['ext' => $ext])
  same => n,Dial(PJSIP/{{ $ext->number }},18,tTkK)
  same => n,GotoIf($["${{DIALSTATUS}}" = "BUSY"]?busy:unavail)
- same => n(busy),VoiceMail({{ $ext->number }}@default,b)
+ same => n(busy),VoiceMail({{ $ext->number }}{{ '@default' }},b)
  same => n,Hangup()
- same => n(unavail),VoiceMail({{ $ext->number }}@default,u)
+ same => n(unavail),VoiceMail({{ $ext->number }}{{ '@default' }},u)
  same => n,Hangup()
 @endforeach
 
 ; ── Call Queues ──
 @foreach($queues as $queue)
-exten => queue-{{ $queue->id }},1,NoOp(Queue: {{ $queue->name }})
+exten => queue-{{ $queue->id }},1,NoOp(Queue: {{ $queue->name }} -> {{ $queue->asteriskName() }})
  same => n,Answer()
- same => n,Queue({{ $queue->name }},tTkK,,,{{ $queue->timeout }})
+ same => n,Queue({{ $queue->asteriskName() }},tTkK,,,{{ $queue->timeout }})
 @if($queue->overflowAgent)
  same => n,NoOp(Overflow to AI agent: {{ $queue->overflowAgent->name }})
  same => n,Dial(PJSIP/{{ $queue->overflowAgent->extensions->first()?->number ?? '0' }}@livekit,120,tTkK)
@@ -87,7 +87,7 @@ exten => _X.,1,NoOp(Routing: {{ $rule->name }})
 @break
 @case('voicemail')
  same => n,Answer()
- same => n,VoiceMail({{ $rule->destination_id }}@default)
+ same => n,VoiceMail({{ $rule->destination_id }}{{ '@default' }})
 @break
 @default
  same => n,Goto(internal,{{ $rule->destination_id }},1)

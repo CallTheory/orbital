@@ -457,92 +457,102 @@ services:
         restart: unless-stopped
 
     # ──────────────────────────────────────────────────────────────────
-    # MinIO — S3-compatible object storage. Used as Laravel's `s3` disk
-    # so file uploads / call recordings / tenant assets go to an S3 API
-    # that we fully control. In production you swap AWS_ENDPOINT for the
-    # real provider (Cloudflare R2 / Backblaze B2 / AWS S3 / etc.) and
-    # keep the same Laravel disk config.
+    # SeaweedFS — S3-compatible object storage replacing MinIO.
+    # We moved off MinIO because minio/minio was archived in Feb 2026
+    # ("THIS REPOSITORY IS NO LONGER MAINTAINED"), Console features
+    # were progressively stripped in mid-2025 as MinIO Inc. pushed
+    # toward their commercial AIStor product, and the upgrade path
+    # dried up. SeaweedFS is Apache 2.0, actively maintained, and has
+    # a drop-in S3 gateway.
+    #
+    # Single-node setup uses `weed server` which runs master, volume,
+    # filer, and the S3 gateway in one process. For prod/HA we'd split
+    # master/volume into separate containers across nodes, but dev
+    # doesn't need that complexity.
+    #
+    # Laravel talks to SeaweedFS exclusively through its S3 API on
+    # port 8333, so the existing `s3` filesystem disk config works
+    # unchanged — only AWS_ENDPOINT needs to move from
+    # http://minio:9000 to http://seaweedfs:8333.
+    #
+    # `s3.json` defines a single identity with Admin/Read/Write/List/
+    # Tagging actions, matching the MinIO root credentials the app
+    # was already using so `.env` AWS_* vars don't need to rotate.
     # ──────────────────────────────────────────────────────────────────
-    minio:
-        image: 'minio/minio:latest'
-        ports:
-            - '${FORWARD_MINIO_PORT:-9000}:9000'  # S3 API
-            - '${FORWARD_MINIO_CONSOLE_PORT:-9001}:9001'  # Web console
-        environment:
-            MINIO_ROOT_USER: '${MINIO_ROOT_USER:-orbital}'
-            MINIO_ROOT_PASSWORD: '${MINIO_ROOT_PASSWORD:-password}'
-            # OIDC SSO against Laravel. The config URL points at
-            # our OIDC discovery endpoint so MinIO auto-discovers
-            # the authorize/token/userinfo endpoints. The root
-            # credentials above stay valid as a break-glass
-            # fallback — MinIO supports both auth paths in
-            # parallel. `CLAIM_NAME=email` makes the OIDC `email`
-            # claim the MinIO user identity; `REDIRECT_URI` must
-            # match the Passport client's registered redirect
-            # (seeded by SsoSecretsBootstrapper).
-            # Named OIDC provider (`orbital`) — the `_orbital` suffix
-            # on each var creates a named provider in MinIO's IAM
-            # config rather than the anonymous default provider,
-            # which MinIO Console surfaces on the login page as a
-            # clickable "Sign in with Orbital" button. The anonymous
-            # default provider works for programmatic clients but
-            # doesn't show up in the Console UI.
-            MINIO_IDENTITY_OPENID_CONFIG_URL_orbital: 'http://orbital.test/.well-known/openid-configuration'
-            MINIO_IDENTITY_OPENID_CLIENT_ID_orbital: '${MINIO_OIDC_CLIENT_ID}'
-            MINIO_IDENTITY_OPENID_CLIENT_SECRET_orbital: '${MINIO_OIDC_CLIENT_SECRET}'
-            MINIO_IDENTITY_OPENID_REDIRECT_URI_orbital: 'http://orbital.test:9001/oauth_callback'
-            MINIO_IDENTITY_OPENID_SCOPES_orbital: 'openid,email,profile'
-            MINIO_IDENTITY_OPENID_DISPLAY_NAME_orbital: 'Sign in with Orbital'
-            # Role policy — assigns the built-in `consoleAdmin`
-            # policy to every user signing in via this OIDC
-            # provider. Without a role policy (or a policy claim
-            # in the JWT) MinIO Console marks the provider as
-            # unusable for login and won't surface it on the UI.
-            # For v1 everyone SSO'd in through Orbital gets full
-            # console access; per-user policy mapping comes later
-            # via claim-driven policies.
-            #
-            # `claim_name` is intentionally NOT set — MinIO treats
-            # role_policy and claim_name as mutually exclusive.
-            # Role policy wins because it's what makes Console
-            # render the OIDC button.
-            MINIO_IDENTITY_OPENID_ROLE_POLICY_orbital: 'consoleAdmin'
-            # Console browser redirect URL. Must match the
-            # Console's host-port binding since the browser has
-            # to reach it.
-            MINIO_BROWSER_REDIRECT_URL: 'http://orbital.test:9001'
-        volumes:
-            - 'sail-minio:/data'
-        command: 'server /data --console-address ":9001"'
-        networks:
-            - sail
-        healthcheck:
-            test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
-            interval: 10s
-            timeout: 5s
-            retries: 3
-        restart: unless-stopped
-
-    # One-shot sidecar that creates the orbital bucket on first boot.
-    # Exits cleanly once the bucket exists; restarts no-op.
-    minio-init:
-        image: 'minio/mc:latest'
-        depends_on:
-            minio:
-                condition: service_healthy
-        networks:
-            - sail
-        environment:
-            MINIO_ROOT_USER: '${MINIO_ROOT_USER:-orbital}'
-            MINIO_ROOT_PASSWORD: '${MINIO_ROOT_PASSWORD:-password}'
-            MINIO_BUCKET: '${AWS_BUCKET:-orbital}'
+    seaweedfs:
+        image: 'chrislusf/seaweedfs:latest'
+        # Entrypoint override: before starting `weed server`, write
+        # the S3 identities config to /tmp/s3.json using the
+        # AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY env vars. This
+        # makes rotation a one-line `.env` edit instead of requiring
+        # a file bind-mount that has to be kept in lockstep with
+        # Laravel's credentials. Secrets never touch the git tree.
+        #
+        # $$ is the docker-compose escape for a single $ so shell
+        # variable expansion runs inside the container, not at
+        # compose parse time.
         entrypoint:
             - /bin/sh
             - -c
             - |
-              mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" &&
-              mc mb --ignore-existing "local/$$MINIO_BUCKET" &&
-              mc anonymous set download "local/$$MINIO_BUCKET"  || true
+              cat > /tmp/s3.json <<EOF
+              {
+                  "identities": [
+                      {
+                          "name": "orbital",
+                          "credentials": [
+                              {
+                                  "accessKey": "$${AWS_ACCESS_KEY_ID}",
+                                  "secretKey": "$${AWS_SECRET_ACCESS_KEY}"
+                              }
+                          ],
+                          "actions": ["Admin","Read","Write","List","Tagging"]
+                      }
+                  ]
+              }
+              EOF
+              exec weed server \
+                  -dir=/data \
+                  -master.volumeSizeLimitMB=256 \
+                  -volume.max=0 \
+                  -filer=true \
+                  -s3=true \
+                  -s3.config=/tmp/s3.json \
+                  -metricsPort=9324
+        environment:
+            AWS_ACCESS_KEY_ID: '${AWS_ACCESS_KEY_ID}'
+            AWS_SECRET_ACCESS_KEY: '${AWS_SECRET_ACCESS_KEY}'
+        # IMPORTANT SECURITY NOTE on port bindings:
+        # SeaweedFS's filer web UI (8888) and master admin (9333)
+        # ship with NO AUTHENTICATION in the community build, and
+        # both accept write operations. Leaving them on 0.0.0.0
+        # means any LAN peer (including the browser in a private
+        # window on the same machine) can freely browse and modify
+        # bucket contents, bypassing the S3 API's key-based auth
+        # entirely. Both are bound to loopback only so only the
+        # host machine can reach them, and Laravel/mc access them
+        # inside the sail network via the `seaweedfs` service name
+        # which still works through docker's internal DNS.
+        #
+        # The S3 gateway on 8333 is also loopback-bound as a
+        # belt-and-suspenders measure — it's auth-gated by the
+        # s3.json identity file, but there's no reason any LAN
+        # peer should be probing it.
+        ports:
+            - '127.0.0.1:${FORWARD_S3_PORT:-9000}:8333'   # S3 API (auth'd via s3.json identities)
+            - '127.0.0.1:${FORWARD_S3_FILER_PORT:-9001}:8888'  # Filer web UI (NO auth — loopback only)
+            - '127.0.0.1:${FORWARD_S3_MASTER_PORT:-9333}:9333'  # Master admin (NO auth — loopback only)
+        volumes:
+            - 'sail-seaweedfs:/data'
+        networks:
+            - sail
+        healthcheck:
+            test: ['CMD-SHELL', 'wget -q -O - http://localhost:8333/status || exit 1']
+            interval: 10s
+            timeout: 5s
+            retries: 5
+            start_period: 15s
+        restart: unless-stopped
 
     # ──────────────────────────────────────────────────────────────────
     # Ollama — local embedding / inference server. Used by
@@ -643,7 +653,7 @@ volumes:
         driver: local
     sail-grafana:
         driver: local
-    sail-minio:
+    sail-seaweedfs:
         driver: local
     sail-ollama:
         driver: local

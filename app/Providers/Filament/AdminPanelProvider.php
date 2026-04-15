@@ -178,12 +178,30 @@ class AdminPanelProvider extends PanelProvider
                     ->group('Control Panels')
                     ->sort(11)
                     ->visible(fn () => auth()->user()?->isSuperAdmin() ?? false),
-                NavigationItem::make('MinIO Console')
-                    ->url(fn () => 'http://'.self::canonicalHost().':9001', shouldOpenInNewTab: true)
+                NavigationItem::make('SeaweedFS Filer')
+                    // Points at Laravel's reverse-proxy route,
+                    // NOT the raw filer host port. SeaweedFS's
+                    // filer web UI has NO auth in the community
+                    // build and accepts write operations, so the
+                    // entire trust boundary is the Laravel route
+                    // at /admin/seaweedfs/filer/ gated by
+                    // `tool:tooling.seaweedfs`. The 9001 host
+                    // port is also loopback-bound as a defense-
+                    // in-depth measure.
+                    ->url(fn () => route('admin.seaweedfs.filer'), shouldOpenInNewTab: true)
                     ->icon('heroicon-o-archive-box')
                     ->group('Control Panels')
                     ->sort(12)
-                    ->visible(fn () => auth()->user()?->isSuperAdmin() ?? false),
+                    ->visible(fn () => self::userCanAccessTool('tooling.seaweedfs')),
+                NavigationItem::make('SeaweedFS Master')
+                    // Master admin / cluster status. Same trust
+                    // model as the filer above — proxied through
+                    // Laravel with tool permission gating.
+                    ->url(fn () => route('admin.seaweedfs.master'), shouldOpenInNewTab: true)
+                    ->icon('heroicon-o-server-stack')
+                    ->group('Control Panels')
+                    ->sort(17)
+                    ->visible(fn () => self::userCanAccessTool('tooling.seaweedfs')),
                 NavigationItem::make('pgAdmin')
                     ->url(fn () => 'http://'.self::canonicalHost().':5050', shouldOpenInNewTab: true)
                     ->icon('heroicon-o-circle-stack')

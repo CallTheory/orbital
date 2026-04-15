@@ -32,17 +32,15 @@ use Throwable;
  *     client for pgAdmin's OIDC signin. Created via the
  *     `orbital:create-oidc-client` artisan command which
  *     delegates to Passport's ClientRepository.
- *   - MINIO_OIDC_CLIENT_ID / _SECRET — same shape for MinIO
- *     Console.
  *
  * Rotation semantics: every `install()` call generates fresh
  * values for ALL managed keys. This is the one-button "reset
  * SSO secrets" flow the admin explicitly asked for on the
  * System Setup page — no "leave alone if present" branch.
  * Every click invalidates every current SSO session across
- * Redis Commander, Grafana, pgAdmin, and MinIO Console; the
- * operator is warned in the returned report and instructed to
- * restart the affected containers to pick up the new values.
+ * Redis Commander, Grafana, and pgAdmin; the operator is warned
+ * in the returned report and instructed to restart the affected
+ * containers to pick up the new values.
  *
  * Reads/writes `.env` directly via a minimal rewriteEnv helper
  * (same pattern Laravel's own KeyGenerateCommand uses). After
@@ -84,12 +82,13 @@ class SsoSecretsBootstrapper implements Bootstrapper
             'redirectPath' => '/oauth2/authorize',
             'port' => 5050,
         ],
-        [
-            'name' => 'minio-console',
-            'envPrefix' => 'MINIO_OIDC',
-            'redirectPath' => '/oauth_callback',
-            'port' => 9001,
-        ],
+        // MinIO was removed when we migrated off MinIO Inc's
+        // archived build to SeaweedFS. SeaweedFS doesn't ship an
+        // OIDC login UI out of the box, and its filer web UI is
+        // super-admin-gated via the nav item rather than SSO'd.
+        // If we ever layer a reverse-proxy in front of SeaweedFS
+        // that needs its own OAuth2 client, re-add a definition
+        // here following the pgadmin shape above.
     ];
 
     public function key(): string
@@ -104,7 +103,7 @@ class SsoSecretsBootstrapper implements Bootstrapper
 
     public function description(): string
     {
-        return 'Generates and rotates the shared secrets + OAuth2 clients used by the Grafana, Redis Commander, pgAdmin, and MinIO Console SSO flows.';
+        return 'Generates and rotates the shared secrets + OAuth2 clients used by the Grafana, Redis Commander, and pgAdmin SSO flows.';
     }
 
     public function icon(): string
@@ -239,12 +238,12 @@ class SsoSecretsBootstrapper implements Bootstrapper
         $steps[] = [
             'label' => 'Restart required',
             'ok' => true,
-            'detail' => 'Run `sail restart redis-commander grafana pgadmin minio` to apply new secrets to running containers.',
+            'detail' => 'Run `sail restart redis-commander grafana pgadmin` to apply new secrets to running containers.',
         ];
         $steps[] = [
             'label' => 'Sessions invalidated',
             'ok' => true,
-            'detail' => 'Every current SSO session in Redis Commander, Grafana, pgAdmin, and MinIO Console has been kicked.',
+            'detail' => 'Every current SSO session in Redis Commander, Grafana, and pgAdmin has been kicked.',
         ];
 
         return new BootstrapReport(

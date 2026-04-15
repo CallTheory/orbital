@@ -11,32 +11,36 @@ use Aws\S3\S3Client;
 use Throwable;
 
 /**
- * Verifies — and if necessary creates — the MinIO (or S3) buckets the
- * platform depends on.
+ * Verifies — and if necessary creates — the S3 buckets the platform
+ * depends on. Works against any S3-compatible endpoint: SeaweedFS
+ * (the default for local dev), AWS S3, Cloudflare R2, Backblaze B2,
+ * Wasabi, etc. The client reads from Laravel's `s3` filesystem disk
+ * config so no extra credentials plumbing is required.
  *
- *   orbital            — primary bucket for uploads/assets
+ *   orbital            — primary bucket for uploads / assets
  *   orbital-recordings — call recordings written by Asterisk
  *
  * The orbital bucket gets a public-read policy so avatars and other
- * assets can be served directly. Recordings stay private.
+ * static assets can be served directly without a signed URL.
+ * Recordings stay private.
  *
- * Works against real AWS S3 too — any S3-compatible endpoint using
- * the `s3` filesystem disk. Uses the disk config directly so no extra
- * credentials plumbing is required.
+ * Named `S3BucketBootstrapper` because the platform migrated off
+ * MinIO (archived upstream Feb 2026) to SeaweedFS in dev, and this
+ * class is agnostic about the backend — it only knows the S3 API.
  */
-class MinioBootstrapper implements Bootstrapper
+class S3BucketBootstrapper implements Bootstrapper
 {
     protected const ASSET_BUCKET = 'orbital';
     protected const RECORDING_BUCKET = 'orbital-recordings';
 
     public function key(): string
     {
-        return 'minio';
+        return 's3_buckets';
     }
 
     public function name(): string
     {
-        return 'Object storage (MinIO / S3)';
+        return 'Object storage (S3 buckets)';
     }
 
     public function description(): string

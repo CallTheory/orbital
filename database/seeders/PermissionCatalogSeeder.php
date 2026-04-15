@@ -49,7 +49,7 @@ class PermissionCatalogSeeder extends Seeder
         // ────────────────────────────────────────────────────────────
         // System tooling (Horizon, Telescope, Pulse, Grafana under Monitor)
         // ────────────────────────────────────────────────────────────
-        'tooling.horizon', 'tooling.telescope', 'tooling.pulse', 'tooling.grafana', 'tooling.redis_commander', 'tooling.icecast',
+        'tooling.horizon', 'tooling.telescope', 'tooling.pulse', 'tooling.grafana', 'tooling.redis_commander', 'tooling.icecast', 'tooling.seaweedfs',
 
         // ────────────────────────────────────────────────────────────
         // Platform-only (NEVER grantable to a tenant — enforced by the gatekeeper)

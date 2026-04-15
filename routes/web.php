@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\Sso\GrafanaProxyController;
 use App\Http\Controllers\Admin\Sso\IcecastProxyController;
 use App\Http\Controllers\Admin\Sso\RedisCommanderSsoController;
+use App\Http\Controllers\Admin\Sso\SeaweedFsProxyController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ImpersonationController;
 use App\Http\Controllers\Mail\AttachmentDownloadController;
@@ -105,6 +106,16 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
         ->where('path', '.*')
         ->middleware('tool:tooling.icecast')
         ->name('admin.icecast.forward');
+
+    Route::any('seaweedfs/filer/{path?}', [SeaweedFsProxyController::class, 'filer'])
+        ->where('path', '.*')
+        ->middleware('tool:tooling.seaweedfs')
+        ->name('admin.seaweedfs.filer');
+
+    Route::any('seaweedfs/master/{path?}', [SeaweedFsProxyController::class, 'master'])
+        ->where('path', '.*')
+        ->middleware('tool:tooling.seaweedfs')
+        ->name('admin.seaweedfs.master');
 });
 
 // ──────────────────────────────────────────────────────────────────

@@ -125,9 +125,16 @@ return [
         'oauth_client_id' => env('PGADMIN_OAUTH2_CLIENT_ID'),
         'oauth_client_secret' => env('PGADMIN_OAUTH2_CLIENT_SECRET'),
     ],
-    'minio_console' => [
-        'oidc_client_id' => env('MINIO_OIDC_CLIENT_ID'),
-        'oidc_client_secret' => env('MINIO_OIDC_CLIENT_SECRET'),
+    'seaweedfs' => [
+        // In-network URLs for the reverse proxy. Both endpoints
+        // ship with NO authentication in the community build and
+        // both accept write operations, so they're reached only
+        // via Laravel's /admin/seaweedfs/{filer,master}/* proxy
+        // routes which add session + permission gating. The
+        // host-port bindings for 8888/9333 are loopback-only as
+        // a defense-in-depth measure.
+        'filer_url' => env('SEAWEEDFS_FILER_URL', 'http://seaweedfs:8888'),
+        'master_url' => env('SEAWEEDFS_MASTER_URL', 'http://seaweedfs:9333'),
     ],
 
 ];

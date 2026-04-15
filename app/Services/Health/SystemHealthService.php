@@ -55,7 +55,7 @@ class SystemHealthService
             'prometheus' => ['host' => 'prometheus', 'port' => 9090],
             'loki' => ['host' => 'loki', 'port' => 3100],
             'grafana' => ['host' => 'grafana', 'port' => 3000],
-            'minio' => ['host' => 'minio', 'port' => 9000],
+            'seaweedfs' => ['host' => 'seaweedfs', 'port' => 8333],
             // Ollama is opt-in (docker-compose `local-ai` profile) —
             // reported as a degraded/warn state when unreachable rather
             // than down, same pattern as Icecast.
@@ -107,7 +107,7 @@ class SystemHealthService
             $this->probeResultToCheck($probes['prometheus'], 'prometheus', 'Prometheus', 'Observability', 'Metrics collector for Grafana', 'heroicon-o-chart-bar'),
             $this->probeResultToCheck($probes['loki'], 'loki', 'Loki', 'Observability', 'Log aggregator for Grafana', 'heroicon-o-document-text'),
             $this->probeResultToCheck($probes['grafana'], 'grafana', 'Grafana', 'Observability', 'Grafana dashboard', 'heroicon-o-presentation-chart-line'),
-            $this->probeResultToCheck($probes['minio'], 'minio', 'MinIO', 'Storage', 'S3-compatible object storage', 'heroicon-o-archive-box'),
+            $this->probeResultToCheck($probes['seaweedfs'], 'seaweedfs', 'SeaweedFS', 'Storage', 'S3-compatible object storage', 'heroicon-o-archive-box'),
             $this->probeResultToCheck($probes['ollama'], 'ollama', 'Ollama', 'AI', 'Local embeddings and inference server', 'heroicon-o-cpu-chip', optional: true),
             $this->probeResultToCheck($probes['mail'], 'mail', 'Mail', 'System', 'Outbound SMTP relay', 'heroicon-o-envelope'),
             $this->probeResultToCheck($probes['haraka'], 'haraka', 'Inbound Mail', 'Mail', 'Haraka Inbound SMTP gateway', 'heroicon-o-envelope-open'),

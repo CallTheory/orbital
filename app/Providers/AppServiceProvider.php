@@ -129,7 +129,7 @@ class AppServiceProvider extends ServiceProvider
 
         $registry
             ->register($this->app->make(\App\Services\Bootstrap\Bootstrappers\PgvectorBootstrapper::class))
-            ->register($this->app->make(\App\Services\Bootstrap\Bootstrappers\MinioBootstrapper::class))
+            ->register($this->app->make(\App\Services\Bootstrap\Bootstrappers\S3BucketBootstrapper::class))
             ->register($this->app->make(\App\Services\Bootstrap\Bootstrappers\AsteriskBootstrapper::class))
             ->register($this->app->make(\App\Services\Bootstrap\Bootstrappers\LiveKitBootstrapper::class))
             ->register($this->app->make(\App\Services\Bootstrap\Bootstrappers\IcecastBootstrapper::class))

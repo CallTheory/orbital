@@ -12,6 +12,8 @@ class ListAgentGroups extends ListRecords
 {
     protected static string $resource = AgentGroupResource::class;
 
+    protected ?string $subheading = 'Groups used for ACD and Interactions distributions.';
+
     protected function getHeaderActions(): array
     {
         return [

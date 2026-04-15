@@ -12,6 +12,8 @@ class ListUsers extends ListRecords
 {
     protected static string $resource = UsersResource::class;
 
+    protected ?string $subheading = 'The people on your call center team.';
+
     protected function getHeaderActions(): array
     {
         return [

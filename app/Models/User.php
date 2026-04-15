@@ -59,6 +59,25 @@ class User extends Authenticatable implements FilamentUser
         'profile_photo_url',
     ];
 
+    /**
+     * Override Jetstream's `defaultProfilePhotoUrl()` fallback so we
+     * never hit ui-avatars.com. When the user has no uploaded photo,
+     * generate a self-contained SVG data URL from the user's name
+     * via LocalAvatarGenerator instead. Fully offline, no external
+     * HTTP, deterministic color per name.
+     *
+     * HasProfilePhoto's own `profile_photo_url` accessor calls this
+     * method when `profile_photo_path` is null, so overriding here
+     * automatically fixes every place Jetstream renders an avatar
+     * (tenant switcher, portal, Filament user menu's Jetstream
+     * fallback path).
+     */
+    protected function defaultProfilePhotoUrl(): string
+    {
+        return app(\App\Services\Avatars\LocalAvatarGenerator::class)
+            ->dataUrlFor($this->name ?? '?');
+    }
+
     protected function casts(): array
     {
         return [

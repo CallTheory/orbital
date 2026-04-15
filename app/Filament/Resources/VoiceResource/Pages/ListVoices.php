@@ -12,6 +12,8 @@ class ListVoices extends ListRecords
 {
     protected static string $resource = VoiceResource::class;
 
+    protected ?string $subheading = 'Catalog of text-to-speech voices that AI agent personas can speak with. One row per provider-specific voice.';
+
     protected function getHeaderActions(): array
     {
         return [

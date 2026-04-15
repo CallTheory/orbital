@@ -64,6 +64,8 @@ class OperatorPanelProvider extends PanelProvider
                 'warning' => Color::Amber,
                 'success' => Color::Emerald,
             ])
+            // Offline-first avatar provider — see AdminPanelProvider.
+            ->defaultAvatarProvider(\App\Filament\AvatarProviders\LocalAvatarProvider::class)
             ->navigationGroups([
                 'Workspace',
                 'Inbox',

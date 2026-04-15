@@ -21,22 +21,23 @@ class ListLogoutReasons extends ListRecords
     }
 
     /**
-     * Warn admins if the table is empty or every row is inactive.
-     * The operator panel's logout modal degrades gracefully when
-     * there are no reasons (operators can still sign out, the
-     * audit row lands with a '(no reasons configured)' sentinel),
-     * but an empty vocabulary means the whole feature is off and
-     * supervisors lose visibility into why people clock out. This
-     * subheading is the nudge to go add some.
+     * Standing page description plus a warning appended if the
+     * vocabulary is empty or every row is inactive. The operator
+     * panel's logout modal degrades gracefully when there are no
+     * reasons (operators can still sign out), but an empty set
+     * means supervisors lose visibility into why people clock out,
+     * so this is the nudge to go add some.
      */
     public function getSubheading(): ?string
     {
+        $description = 'Reasons operators pick when signing out so supervisors can see why someone is off the floor.';
+
         $hasActive = LogoutReason::query()->where('is_active', true)->exists();
 
         if ($hasActive) {
-            return null;
+            return $description;
         }
 
-        return '⚠ No active logout reasons exist. Operators can still sign out, but their sessions will be logged without a reason until you add at least one active entry.';
+        return $description.' ⚠ No active logout reasons exist — operators can still sign out, but sessions will be logged without a reason until you add at least one active entry.';
     }
 }

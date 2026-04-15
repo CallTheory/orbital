@@ -35,6 +35,8 @@ class Security extends Page
 
     protected static ?string $title = 'Security';
 
+    protected ?string $subheading = 'Manage your own account — password, two-factor authentication, and active sign-in sessions.';
+
     protected static ?string $slug = 'security';
 
     protected string $view = 'filament.pages.security';

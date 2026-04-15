@@ -41,6 +41,8 @@ class PlatformSettings extends Page implements HasForms
 
     protected static ?string $title = 'Platform Settings';
 
+    protected ?string $subheading = 'Platform-wide knobs: branding, defaults, feature toggles, AI provider credentials, and anything that applies across every tenant at once.';
+
     protected static ?string $slug = 'platform';
 
     protected string $view = 'filament.pages.platform-settings';

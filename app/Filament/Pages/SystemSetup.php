@@ -31,6 +31,8 @@ class SystemSetup extends Page
 
     protected static ?string $title = 'Setup';
 
+    protected ?string $subheading = 'One-time install and recovery actions for the underlying services — pgvector, MinIO buckets, Asterisk configs, LiveKit dispatch, Ollama models, and more.';
+
     protected static ?string $slug = 'setup';
 
     protected string $view = 'filament.pages.system-setup';

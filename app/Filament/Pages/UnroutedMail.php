@@ -44,6 +44,8 @@ class UnroutedMail extends Page implements HasTable
 
     protected static ?string $title = 'Unrouted Mail';
 
+    protected ?string $subheading = 'Inbound email that didn\'t match any tenant or routing rule. Investigate these to fix a rule, onboard a missing tenant, or discard the noise.';
+
     protected static ?string $slug = 'mail/unrouted';
 
     protected string $view = 'filament.pages.unrouted-mail';

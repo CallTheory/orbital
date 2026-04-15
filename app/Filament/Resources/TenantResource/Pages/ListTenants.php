@@ -12,6 +12,8 @@ class ListTenants extends ListRecords
 {
     protected static string $resource = TenantResource::class;
 
+    protected ?string $subheading = 'Your customers. Each tenant is a company you handle interactions for.';
+
     protected function getHeaderActions(): array
     {
         return [

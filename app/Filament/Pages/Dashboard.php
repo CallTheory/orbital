@@ -35,6 +35,8 @@ class Dashboard extends BaseDashboard
 
     protected static ?string $title = 'System status';
 
+    protected ?string $subheading = 'Live health of platform components.';
+
     protected static ?int $navigationSort = -10;
 
     protected string $view = 'filament.pages.dashboard';

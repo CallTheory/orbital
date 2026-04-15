@@ -51,6 +51,18 @@ class ColumnMappingGuesser
     }
 
     /**
+     * Mapping options for the Shared Contact List import dropdown.
+     * Same shape as optionsForContacts, but the field definitions
+     * come from the shared list's own schema rather than a tenant's.
+     *
+     * @return array<string, string>
+     */
+    public function optionsForSharedContactList(int $sharedContactListId): array
+    {
+        return $this->buildOptions($this->sharedContactDefinitions($sharedContactListId));
+    }
+
+    /**
      * Mapping options for the Directory import dropdown.
      *
      * @return array<string, string>
@@ -69,6 +81,15 @@ class ColumnMappingGuesser
     public function guessContact(int $teamId, string $header): ?string
     {
         return $this->guess($this->contactDefinitions($teamId), $header);
+    }
+
+    /**
+     * Best-guess target field key for a Shared Contact List CSV header.
+     * Uses the shared list's own definitions instead of any tenant's.
+     */
+    public function guessSharedContact(int $sharedContactListId, string $header): ?string
+    {
+        return $this->guess($this->sharedContactDefinitions($sharedContactListId), $header);
     }
 
     public function guessDirectory(int $teamId, string $header): ?string
@@ -129,6 +150,16 @@ class ColumnMappingGuesser
     {
         return ContactFieldDefinition::query()
             ->where('team_id', $teamId)
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->get();
+    }
+
+    protected function sharedContactDefinitions(int $sharedContactListId): Collection
+    {
+        return ContactFieldDefinition::query()
+            ->withoutGlobalScope('team')
+            ->where('shared_contact_list_id', $sharedContactListId)
             ->where('is_active', true)
             ->orderBy('sort_order')
             ->get();

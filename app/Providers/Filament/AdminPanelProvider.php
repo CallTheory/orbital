@@ -57,6 +57,11 @@ class AdminPanelProvider extends PanelProvider
                 'warning' => Color::Amber,
                 'success' => Color::Emerald,
             ])
+            // Offline-first avatar provider — returns a self-contained
+            // SVG data URL from LocalAvatarGenerator instead of hitting
+            // ui-avatars.com. Same shape across all three panels so
+            // the fallback avatar is consistent everywhere.
+            ->defaultAvatarProvider(\App\Filament\AvatarProviders\LocalAvatarProvider::class)
             ->navigationGroups([
                 'Dashboards',
                 'Platform',

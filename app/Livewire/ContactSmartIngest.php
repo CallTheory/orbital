@@ -8,11 +8,11 @@ use App\Models\Contact;
 use App\Models\ContactFieldDefinition;
 use App\Models\DirectoryEntry;
 use App\Models\DirectoryFieldDefinition;
+use App\Models\SharedContactList;
 use App\Models\Team;
 use App\Services\Contacts\SmartIngestClient;
 use App\Services\Contacts\SmartIngestExtractor;
 use Filament\Notifications\Notification;
-use Illuminate\Support\Collection;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
@@ -21,13 +21,19 @@ use Livewire\WithFileUploads;
  *
  * The operator drops an arbitrary input — file of any format or
  * pasted text — and Claude parses it into structured rows shaped to
- * the *tenant's own* field schema. The operator can chat back with
- * corrections ("merge rows 2 and 3", "the 'role' column should map
- * to 'title'") and the component feeds each correction back to
+ * the target parent's own field schema. The operator can chat back
+ * with corrections ("merge rows 2 and 3", "the 'role' column should
+ * map to 'title'") and the component feeds each correction back to
  * Claude to get an updated set.
  *
  * When happy, the operator hits "Import" and the rows are committed
- * to Contact or DirectoryEntry depending on `$kind`.
+ * to the matching model (Contact / DirectoryEntry) with the correct
+ * parent column set.
+ *
+ * Parent is pluggable: a tenant (Team) or a shared contact list.
+ * `parentType` selects which; `parentId` points at the row.
+ *   - parentType = 'team'                 → Contact + team_id (or DirectoryEntry)
+ *   - parentType = 'shared_contact_list'  → Contact + shared_contact_list_id (kind must be 'contacts')
  *
  * State lives on the component; refreshing the page loses it. That's
  * fine for v1 — this is a short-session flow.
@@ -39,7 +45,12 @@ class ContactSmartIngest extends Component
     /** @var 'contacts'|'directory' */
     public string $kind = 'contacts';
 
-    public int $teamId;
+    /** @var 'team'|'shared_contact_list' */
+    public string $parentType = 'team';
+
+    public int $parentId;
+
+    public string $parentName = '';
 
     /** Text input pasted by the operator. */
     public string $pastedText = '';
@@ -78,24 +89,63 @@ class ContactSmartIngest extends Component
     /** @var array<string, string> */
     public array $labelByKey = [];
 
-    public function mount(int $teamId, string $kind = 'contacts'): void
+    /**
+     * @param  int  $parentId  ID of the team or shared list we're ingesting into
+     * @param  string  $kind  'contacts' or 'directory' (directory requires parentType=team)
+     * @param  string  $parentType  'team' or 'shared_contact_list'
+     */
+    public function mount(int $parentId, string $kind = 'contacts', string $parentType = 'team'): void
     {
-        $this->teamId = $teamId;
+        $this->parentType = in_array($parentType, ['team', 'shared_contact_list'], true) ? $parentType : 'team';
+        $this->parentId = $parentId;
         $this->kind = in_array($kind, ['contacts', 'directory'], true) ? $kind : 'contacts';
+
+        // Shared lists only support Contact — there's no shared
+        // Directory model yet. If the caller asks for directory on
+        // a shared list, fall back to contacts so the UI doesn't
+        // render an empty schema.
+        if ($this->parentType === 'shared_contact_list' && $this->kind === 'directory') {
+            $this->kind = 'contacts';
+        }
+
+        $this->parentName = $this->resolveParentName();
         $this->loadDefinitions();
     }
 
+    protected function resolveParentName(): string
+    {
+        if ($this->parentType === 'shared_contact_list') {
+            $list = SharedContactList::find($this->parentId);
+            return $list?->name ?? 'Shared contact list';
+        }
+
+        $team = Team::withoutGlobalScope('team')->find($this->parentId);
+        return $team?->name ?? 'Tenant';
+    }
+
     /**
-     * Pulls active definitions for this tenant + kind, then
+     * Pulls active definitions for this parent + kind, then
      * pre-computes the schema block (for the LLM prompt) and the
      * allowed-key list (for sanitizeRow). Stored as plain arrays so
      * Livewire can serialize them across requests.
      */
     protected function loadDefinitions(): void
     {
-        $collection = $this->kind === 'directory'
-            ? DirectoryFieldDefinition::query()->where('team_id', $this->teamId)->where('is_active', true)->orderBy('sort_order')->get()
-            : ContactFieldDefinition::query()->where('team_id', $this->teamId)->where('is_active', true)->orderBy('sort_order')->get();
+        if ($this->parentType === 'shared_contact_list') {
+            // Shared lists: scope on shared_contact_list_id, bypass
+            // the team scope since super-admins are the only ones
+            // who ever see this page.
+            $collection = ContactFieldDefinition::query()
+                ->withoutGlobalScope('team')
+                ->where('shared_contact_list_id', $this->parentId)
+                ->where('is_active', true)
+                ->orderBy('sort_order')
+                ->get();
+        } else {
+            $collection = $this->kind === 'directory'
+                ? DirectoryFieldDefinition::query()->where('team_id', $this->parentId)->where('is_active', true)->orderBy('sort_order')->get()
+                : ContactFieldDefinition::query()->where('team_id', $this->parentId)->where('is_active', true)->orderBy('sort_order')->get();
+        }
 
         $this->schemaBlock = app(SmartIngestClient::class)->formatSchemaForPrompt($collection);
 
@@ -249,7 +299,6 @@ class ContactSmartIngest extends Component
             return;
         }
 
-        $team = Team::withoutGlobalScope('team')->findOrFail($this->teamId);
         $inserted = 0;
 
         foreach ($this->rows as $row) {
@@ -258,22 +307,37 @@ class ContactSmartIngest extends Component
                 continue;
             }
 
-            if ($this->kind === 'directory') {
+            if ($this->parentType === 'shared_contact_list') {
+                // Shared list rows are platform-owned: no team_id,
+                // all tenants attached to the list will see them
+                // via the shared-pool scope on Contact.
+                Contact::create([
+                    'shared_contact_list_id' => $this->parentId,
+                    'team_id' => null,
+                    'values' => $clean,
+                ]);
+            } elseif ($this->kind === 'directory') {
                 DirectoryEntry::create([
-                    'team_id' => $team->id,
+                    'team_id' => $this->parentId,
                     'values' => $clean,
                 ]);
             } else {
                 Contact::create([
-                    'team_id' => $team->id,
+                    'team_id' => $this->parentId,
                     'values' => $clean,
                 ]);
             }
             $inserted++;
         }
 
+        $label = match (true) {
+            $this->parentType === 'shared_contact_list' => 'shared entries',
+            $this->kind === 'directory' => 'directory entries',
+            default => 'contacts',
+        };
+
         Notification::make()
-            ->title("Imported {$inserted} ".($this->kind === 'directory' ? 'directory entries' : 'contacts'))
+            ->title("Imported {$inserted} {$label}")
             ->success()
             ->send();
 

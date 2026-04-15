@@ -21,26 +21,28 @@ class ListAvailabilityReasons extends ListRecords
     }
 
     /**
-     * Warn admins the moment the vocabulary reaches a state where
-     * no operator can receive new work. With the Available row
-     * protected from deletion and its toggles locked, this should
-     * normally be unreachable — but if a future migration, a
-     * tinker session, or a policy change ever wiped it, every
-     * operator would be silently stranded. The subheading is a
-     * last-line visibility net so the admin notices before anyone
-     * misses a call.
+     * Standing page description plus an appended warning if the
+     * vocabulary reaches a state where no operator can receive new
+     * work. The Available row is protected from deletion and its
+     * toggles are locked, so the warning path should normally be
+     * unreachable — but if a future migration, a tinker session, or
+     * a policy change ever wiped it, every operator would be silently
+     * stranded. This is the last-line visibility net so the admin
+     * notices before anyone misses a call.
      */
     public function getSubheading(): ?string
     {
+        $description = 'The states operators can be in while signed in — Available, In meeting, Unavailable, and anything else you add.';
+
         $hasAcceptingRow = AvailabilityReason::query()
             ->where('is_active', true)
             ->where('blocks_new_work', false)
             ->exists();
 
         if ($hasAcceptingRow) {
-            return null;
+            return $description;
         }
 
-        return '⚠ No active "accepting work" reasons exist. Operators can\'t receive new calls or email until at least one active reason has "Block new work" turned off.';
+        return $description.' ⚠ No active "accepting work" reasons exist — operators can\'t receive new calls or email until at least one active reason has "Block new work" turned off.';
     }
 }

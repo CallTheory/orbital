@@ -12,6 +12,8 @@ class ListPlatformRoles extends ListRecords
 {
     protected static string $resource = PlatformRoleResource::class;
 
+    protected ?string $subheading = 'Platform permissions for staff.';
+
     protected function getHeaderActions(): array
     {
         return [

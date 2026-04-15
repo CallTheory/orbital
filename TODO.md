@@ -131,6 +131,21 @@ the work.
       lands, wire Horizon queue depth + failure rate into the
       Orbital App dashboard so a stalled `inbound-mail` queue or a
       flood of failed jobs is visible at a glance.
+- [ ] **Multi-tenant portal access for contacts + shared directories.**
+      Today a contact's "Grant portal access" action links
+      `contacts.user_id` to a single User that lives under one
+      tenant's `tenant_user` role. In reality a contact might legitimately
+      belong to multiple tenants (e.g. a law firm that's also
+      on a partner escalation list), and shared-list entries
+      don't belong to any single tenant at all. The fix is a
+      many-to-many `contact_portal_access` pivot (contact_id +
+      team_id + role) plus a panel switcher in the portal so a
+      signed-in contact can toggle between tenants they have
+      access to. Touches: `Contact` model, portal nav, portal
+      RequestContext, the shared-list entries editor (currently
+      skips the grant-access action entirely because it can't
+      answer "which tenant?"). ~half-day refactor, plan before
+      touching.
 
 ## Big items — deliberately scheduled late
 

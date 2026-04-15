@@ -1,6 +1,7 @@
 <x-filament-panels::page>
     @livewire('contact-smart-ingest', [
-        'teamId' => $teamId,
+        'parentId' => $parentId,
         'kind' => $kind,
+        'parentType' => $parentType,
     ])
 </x-filament-panels::page>

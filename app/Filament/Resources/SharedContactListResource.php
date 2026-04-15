@@ -11,6 +11,7 @@ use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Forms;
 use Filament\Notifications\Notification;
+use Filament\Resources\Pages\Page;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables;
@@ -25,12 +26,16 @@ use UnitEnum;
  * to the BelongsToTeamOrSharedPool scope on Contact — no
  * duplication of records across tenants.
  *
- * Phase-1 UI: manage the container (name / description) plus
- * the "Attach to tenants" action. Managing entries + field
- * definitions on shared lists lives in a follow-up pass — for
- * now super-admins seed them via tinker / the smart ingest
- * flow; the data model is complete but the dedicated editor UI
- * isn't yet.
+ * Each list gets two sub-nav pages for content management:
+ *   - Fields: the ContactFieldDefinition schema (keyed by
+ *     shared_contact_list_id instead of team_id)
+ *   - Entries: the Contact rows themselves, with a form built
+ *     dynamically from the list's field definitions
+ *
+ * Both mirror the per-tenant ManageTenantContactFields /
+ * ManageTenantContacts pages and reuse FieldFormBuilder, so
+ * operators who know the tenant surface already know the
+ * shared surface.
  */
 class SharedContactListResource extends Resource
 {
@@ -152,6 +157,24 @@ class SharedContactListResource extends Resource
             'index' => Pages\ListSharedContactLists::route('/'),
             'create' => Pages\CreateSharedContactList::route('/create'),
             'edit' => Pages\EditSharedContactList::route('/{record}/edit'),
+            'fields' => Pages\ManageSharedContactListFields::route('/{record}/fields'),
+            'entries' => Pages\ManageSharedContactListContacts::route('/{record}/entries'),
+            'smart-ingest' => Pages\SmartIngestSharedContactList::route('/{record}/smart-ingest'),
         ];
+    }
+
+    /**
+     * Sub-navigation inside a single shared list — Edit (name +
+     * description), Fields (schema), Entries (contact rows). Same
+     * layout shape as TenantResource::getRecordSubNavigation so
+     * super-admins move between the two without re-learning.
+     */
+    public static function getRecordSubNavigation(Page $page): array
+    {
+        return $page->generateNavigationItems([
+            Pages\EditSharedContactList::class,
+            Pages\ManageSharedContactListFields::class,
+            Pages\ManageSharedContactListContacts::class,
+        ]);
     }
 }

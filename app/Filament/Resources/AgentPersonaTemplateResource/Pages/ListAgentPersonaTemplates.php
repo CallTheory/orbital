@@ -12,6 +12,8 @@ class ListAgentPersonaTemplates extends ListRecords
 {
     protected static string $resource = AgentPersonaTemplateResource::class;
 
+    protected ?string $subheading = 'Reusable AI voice-agent templates. Tenants create their own agent instances from these and inherit your updates until they override a field.';
+
     protected function getHeaderActions(): array
     {
         return [

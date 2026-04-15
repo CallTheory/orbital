@@ -41,7 +41,7 @@ class PlatformSettings extends Page implements HasForms
 
     protected static ?string $title = 'Platform Settings';
 
-    protected ?string $subheading = 'Platform-wide knobs: branding, defaults, feature toggles, AI provider credentials, and anything that applies across every tenant at once.';
+    protected ?string $subheading = 'Platform-wide configuration settings.';
 
     protected static ?string $slug = 'platform';
 
@@ -53,11 +53,6 @@ class PlatformSettings extends Page implements HasForms
     public static function canAccess(): bool
     {
         return auth()->user()?->isSuperAdmin() ?? false;
-    }
-
-    public function getSubheading(): ?string
-    {
-        return 'Settings here override the matching .env values at runtime. Long-running workers (Horizon, agent worker) need a restart to pick up changes.';
     }
 
     public function mount(): void

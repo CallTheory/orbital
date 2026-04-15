@@ -88,4 +88,46 @@ return [
         'default_provider' => env('EMBEDDINGS_DEFAULT_PROVIDER', 'openai:text-embedding-3-small'),
     ],
 
+    // Unified SSO — all four control-panel auth paths read their
+    // config here. Values come from .env, populated by the
+    // `SsoSecretsBootstrapper` on first install and rotated on
+    // re-run. See app/Services/Bootstrap/Bootstrappers/SsoSecretsBootstrapper.php.
+    'redis_commander' => [
+        'sso_secret' => env('REDIS_COMMANDER_SSO_SECRET'),
+        'sso_issuer' => env('REDIS_COMMANDER_SSO_ISSUER', 'orbital-admin'),
+        'public_port' => env('FORWARD_REDIS_COMMANDER_PORT', 8082),
+    ],
+    'grafana' => [
+        // In-network URL the Laravel reverse proxy forwards to.
+        // Uses the compose service name so traffic stays on the
+        // sail network.
+        'internal_url' => env('GRAFANA_INTERNAL_URL', 'http://grafana:3000'),
+        // Shared-secret header value sent by the Laravel proxy on
+        // every forwarded request. Validated by a prod sidecar in
+        // front of Grafana (see plan for how).
+        'proxy_trust_token' => env('GRAFANA_PROXY_TRUST_TOKEN'),
+    ],
+    'icecast' => [
+        // In-network URL for the Icecast admin reverse-proxy.
+        // Uses the compose service name so traffic stays on the
+        // telephony network (Icecast is dual-homed for its source
+        // connections too).
+        'internal_url' => env('ICECAST_INTERNAL_URL', 'http://icecast:8000'),
+        // Admin credentials injected as HTTP Basic Auth on every
+        // proxied request. The username is hardcoded as `admin`
+        // by the moul/icecast image and every other Icecast build
+        // we've seen, but it's still env-overridable in case a
+        // future image changes the convention.
+        'admin_user' => env('ICECAST_ADMIN_USER', 'admin'),
+        'admin_password' => env('ICECAST_ADMIN_PASSWORD', 'changeme'),
+    ],
+    'pgadmin' => [
+        'oauth_client_id' => env('PGADMIN_OAUTH2_CLIENT_ID'),
+        'oauth_client_secret' => env('PGADMIN_OAUTH2_CLIENT_SECRET'),
+    ],
+    'minio_console' => [
+        'oidc_client_id' => env('MINIO_OIDC_CLIENT_ID'),
+        'oidc_client_secret' => env('MINIO_OIDC_CLIENT_SECRET'),
+    ],
+
 ];

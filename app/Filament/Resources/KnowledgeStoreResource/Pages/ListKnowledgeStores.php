@@ -12,7 +12,7 @@ class ListKnowledgeStores extends ListRecords
 {
     protected static string $resource = KnowledgeStoreResource::class;
 
-    protected ?string $subheading = 'Per-tenant document collections the AI agents can search during calls. Upload files, paste text, or add URLs.';
+    protected ?string $subheading = 'Searchable document collections for AI agents and live operators.';
 
     protected function getHeaderActions(): array
     {

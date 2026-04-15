@@ -12,7 +12,7 @@ class ListIntakeGoals extends ListRecords
 {
     protected static string $resource = IntakeGoalResource::class;
 
-    protected ?string $subheading = 'Reusable building blocks — talking points, data fields, completion rules, tools — that tenants compose into their intake flows.';
+    protected ?string $subheading = 'Reusable goal library for building intake flows.';
 
     protected function getHeaderActions(): array
     {

@@ -4,5 +4,9 @@ api_secret: f4eca5232734d8d514da60b9a0f9c7c27b4b8473c550a442
 ws_url: ws://livekit:7880
 redis:
   address: valkey:6379
+  # Must match REDIS_PASSWORD in .env and the `--requirepass` value
+  # on the valkey container. See docker/livekit/livekit.yaml for
+  # the rotation pattern.
+  password: 8b630691e6e6c2292489d353cbfbccdbdd6073cbcf680f72
 sip_port: 5069
 rtp_port: 50000-60000

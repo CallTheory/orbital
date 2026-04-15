@@ -69,8 +69,9 @@ class AdminPanelProvider extends PanelProvider
                 'Telephony',
                 'Conversational AI',
                 'Monitor',
-                'Utilities',
                 'Administration',
+                'Platform Utilities',
+                'Control Panels',
             ])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
@@ -123,34 +124,108 @@ class AdminPanelProvider extends PanelProvider
                     ->visible(fn () => auth()->user()?->belongsToAnyTenant() ?? false),
             ])
             ->navigationItems([
-                // Utilities group — external dashboards that open in
-                // their own tab. Separated from Monitor so the in-app
-                // monitor pages (Call Logs, Unrouted Mail) don't get
-                // mixed in with things that aren't Filament surfaces.
-                NavigationItem::make('Logs & Metrics')
-                    ->url(fn () => 'http://'.request()->getHost().':3000', shouldOpenInNewTab: true)
-                    ->icon('heroicon-o-presentation-chart-line')
-                    ->group('Utilities')
-                    ->sort(10)
-                    ->visible(fn () => self::userCanAccessTool('tooling.grafana')),
-                NavigationItem::make('User Activity')
+                // Platform Utilities group — in-house Laravel tooling
+                // that ships with the app (Pulse, Horizon, Telescope).
+                // These live under our own URL paths and are gated by
+                // `tooling.*` permissions so operators can see them
+                // without being full super-admins.
+                NavigationItem::make('Laravel Pulse')
                     ->url(fn () => url('/pulse'), shouldOpenInNewTab: true)
-                    ->icon('heroicon-o-chart-bar-square')
-                    ->group('Utilities')
-                    ->sort(11)
+                    ->icon('heroicon-o-cursor-arrow-ripple')
+                    ->group('Platform Utilities')
+                    ->sort(10)
                     ->visible(fn () => self::userCanAccessTool('tooling.pulse')),
-                NavigationItem::make('Queue Workers')
+                NavigationItem::make('Laravel Horizon')
                     ->url(fn () => url('/horizon'), shouldOpenInNewTab: true)
                     ->icon('heroicon-o-queue-list')
-                    ->group('Utilities')
-                    ->sort(12)
+                    ->group('Platform Utilities')
+                    ->sort(11)
                     ->visible(fn () => self::userCanAccessTool('tooling.horizon')),
-                NavigationItem::make('Application Debug')
+                NavigationItem::make('Laravel Telescope')
                     ->url(fn () => url('/telescope'), shouldOpenInNewTab: true)
-                    ->icon('heroicon-o-magnifying-glass')
-                    ->group('Utilities')
-                    ->sort(13)
+                    ->icon('heroicon-o-bug-ant')
+                    ->group('Platform Utilities')
+                    ->sort(12)
                     ->visible(fn () => self::userCanAccessTool('tooling.telescope')),
+
+                // Control Panels group — external service dashboards
+                // running alongside the app in their own containers.
+                // Each opens in a new tab (it's not a Filament surface)
+                // and points at the service's native admin UI on the
+                // host port. Super-admin only by default — operators
+                // don't need to see the raw infrastructure.
+                //
+                // Host-based URLs use `request()->getHost()` so they
+                // work when the admin panel is reached on localhost,
+                // LAN IP, or a real hostname without hardcoding any
+                // of them — whatever host loaded the admin page is
+                // the host the browser already has cert trust for.
+                NavigationItem::make('Grafana')
+                    // Points at Laravel's reverse-proxy route,
+                    // NOT the raw Grafana host port. Every
+                    // request flows through /admin/grafana/* so
+                    // the session check runs on each hit and
+                    // X-WEBAUTH-USER gets injected for the
+                    // auth-proxy trust chain.
+                    ->url(fn () => route('admin.grafana.forward'), shouldOpenInNewTab: true)
+                    ->icon('heroicon-o-presentation-chart-line')
+                    ->group('Control Panels')
+                    ->sort(10)
+                    ->visible(fn () => self::userCanAccessTool('tooling.grafana')),
+                NavigationItem::make('Prometheus')
+                    ->url(fn () => 'http://'.self::canonicalHost().':9090', shouldOpenInNewTab: true)
+                    ->icon('heroicon-o-fire')
+                    ->group('Control Panels')
+                    ->sort(11)
+                    ->visible(fn () => auth()->user()?->isSuperAdmin() ?? false),
+                NavigationItem::make('MinIO Console')
+                    ->url(fn () => 'http://'.self::canonicalHost().':9001', shouldOpenInNewTab: true)
+                    ->icon('heroicon-o-archive-box')
+                    ->group('Control Panels')
+                    ->sort(12)
+                    ->visible(fn () => auth()->user()?->isSuperAdmin() ?? false),
+                NavigationItem::make('pgAdmin')
+                    ->url(fn () => 'http://'.self::canonicalHost().':5050', shouldOpenInNewTab: true)
+                    ->icon('heroicon-o-circle-stack')
+                    ->group('Control Panels')
+                    ->sort(13)
+                    ->visible(fn () => auth()->user()?->isSuperAdmin() ?? false),
+                NavigationItem::make('Redis Commander')
+                    // Points at Laravel's SSO entry route, NOT
+                    // the raw Commander host port. The entry
+                    // route signs a single-use JWT, then 302s
+                    // into Commander's /sso?access_token flow.
+                    // Visible to anyone with tooling.redis_commander
+                    // (super-admin still passes via userCanAccessTool).
+                    ->url(fn () => route('admin.sso.redis-commander'), shouldOpenInNewTab: true)
+                    ->icon('heroicon-o-bolt')
+                    ->group('Control Panels')
+                    ->sort(14)
+                    ->visible(fn () => self::userCanAccessTool('tooling.redis_commander')),
+                // Mailpit is a dev-only outbound-mail capture UI —
+                // it sinks SMTP into a web inbox so you can see what
+                // would have been sent. In production the SMTP relay
+                // is a real provider (Postal / SES / Postmark) with
+                // no browsable inbox, so this entry is hidden outside
+                // the local environment.
+                NavigationItem::make('Mailpit')
+                    ->url(fn () => 'http://'.self::canonicalHost().':8025', shouldOpenInNewTab: true)
+                    ->icon('heroicon-o-envelope-open')
+                    ->group('Control Panels')
+                    ->sort(15)
+                    ->visible(fn () => app()->environment('local') && (auth()->user()?->isSuperAdmin() ?? false)),
+                NavigationItem::make('Icecast')
+                    // Points at Laravel's reverse-proxy route, NOT
+                    // the raw Icecast host port. The proxy injects
+                    // HTTP Basic Auth with the admin credentials
+                    // from .env on every forwarded request, so
+                    // clicking the nav item drops you straight into
+                    // the Icecast admin UI without a browser prompt.
+                    ->url(fn () => route('admin.icecast.forward'), shouldOpenInNewTab: true)
+                    ->icon('heroicon-o-musical-note')
+                    ->group('Control Panels')
+                    ->sort(16)
+                    ->visible(fn () => self::userCanAccessTool('tooling.icecast')),
             ])
             ->middleware([
                 EncryptCookies::class,
@@ -211,6 +286,22 @@ class AdminPanelProvider extends PanelProvider
             return true;
         }
         return method_exists($user, 'hasPermissionTo') && $user->hasPermissionTo($permission);
+    }
+
+    /**
+     * Canonical browser-side host for direct-to-service control
+     * panel links. Pulled from `config('app.url')` instead of the
+     * current request's host because Laravel-generated URLs (via
+     * `route()`) also use `app.url` — if the user happens to be
+     * browsing via localhost but the nav items use orbital.test,
+     * clicking any Laravel-proxied item would break. Keeping all
+     * nav URLs consistent with `app.url` means "add one /etc/hosts
+     * entry and everything works" rather than "some links work,
+     * others don't, depending on how you got here."
+     */
+    private static function canonicalHost(): string
+    {
+        return parse_url((string) config('app.url'), PHP_URL_HOST) ?: 'localhost';
     }
 
 }

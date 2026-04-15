@@ -12,7 +12,7 @@ class ListExtensions extends ListRecords
 {
     protected static string $resource = ExtensionResource::class;
 
-    protected ?string $subheading = 'Physical SIP phones, ATAs, and standalone clients that plug into the platform PBX. Staff softphones and tenant AI agents are managed elsewhere.';
+    protected ?string $subheading = 'Physical SIP phones, ATAs, and standalone softphone clients.';
 
     protected function getHeaderActions(): array
     {

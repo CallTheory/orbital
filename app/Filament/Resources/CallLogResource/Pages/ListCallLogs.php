@@ -11,5 +11,5 @@ class ListCallLogs extends ListRecords
 {
     protected static string $resource = CallLogResource::class;
 
-    protected ?string $subheading = 'Every inbound and outbound call the platform has handled, searchable across all tenants with recordings and transcripts attached.';
+    protected ?string $subheading = 'Call history with recordings and transcripts.';
 }

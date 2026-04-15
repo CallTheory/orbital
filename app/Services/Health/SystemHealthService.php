@@ -84,6 +84,14 @@ class SystemHealthService
                     : (config('reverb.servers.reverb.host') ?: 'reverb')),
                 'port' => (int) (config('reverb.servers.reverb.port') ?: 8080),
             ],
+            // Dev control panels — pgAdmin (Postgres) and Redis
+            // Commander (Valkey). Both reach the database instances
+            // they wrap over the sail network, so probing them tells
+            // us the container is up and answering HTTP. Marked
+            // optional because they're admin-facing tools — if
+            // either is down the app itself keeps working.
+            'pgadmin' => ['host' => 'pgadmin', 'port' => 80],
+            'redis_commander' => ['host' => 'redis-commander', 'port' => 8081],
         ]);
 
         $checks = [
@@ -104,6 +112,8 @@ class SystemHealthService
             $this->probeResultToCheck($probes['mail'], 'mail', 'Mail', 'System', 'Outbound SMTP relay', 'heroicon-o-envelope'),
             $this->probeResultToCheck($probes['haraka'], 'haraka', 'Inbound Mail', 'Mail', 'Haraka Inbound SMTP gateway', 'heroicon-o-envelope-open'),
             $this->probeResultToCheck($probes['reverb'], 'reverb', 'Reverb', 'System', 'Websocket broadcast server for real-time UI', 'heroicon-o-bolt'),
+            $this->probeResultToCheck($probes['pgadmin'], 'pgadmin', 'pgAdmin', 'Control Panels', 'Postgres admin web UI', 'heroicon-o-circle-stack', optional: true),
+            $this->probeResultToCheck($probes['redis_commander'], 'redis_commander', 'Redis Commander', 'Control Panels', 'Valkey / Redis web browser', 'heroicon-o-bolt', optional: true),
             $this->probeResultToCheck($probes['promtail'], 'promtail', 'Promtail', 'Observability', 'Log shipper feeding Loki', 'heroicon-o-paper-airplane', optional: true),
             $this->checkHorizon(),
             $this->checkScheduler(),

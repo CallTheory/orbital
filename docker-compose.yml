@@ -36,6 +36,121 @@ services:
             - valkey
             - mailpit
 
+    # pgAdmin 4 — web-based Postgres admin UI. Pre-wired to the
+    # orbital pgsql instance via `./docker/pgadmin/servers.json`
+    # which pgAdmin auto-imports on first boot, so the server
+    # shows up under "Servers → Orbital" without manual setup.
+    # Password is NOT pre-filled (pgpass would be required and
+    # it's not worth the complication for a dev tool) — enter
+    # it once and pgAdmin remembers it in its own profile DB
+    # which persists via the sail-pgadmin volume.
+    #
+    # Runs in `desktop mode` (SERVER_MODE=False + no master
+    # password) so there's no per-user registration flow — one
+    # admin account from env vars, straight into the browser.
+    # In prod you'd flip SERVER_MODE=True and front it with TLS
+    # + a real admin email/password from secrets.
+    # Redis Commander — lightweight web UI for Valkey. Valkey is
+    # a drop-in Redis fork and speaks the unmodified Redis protocol,
+    # so any Redis client (including Commander) connects without
+    # special support. Useful for browsing keys during dev: cache
+    # entries, session blobs, Horizon queue state, Reverb channel
+    # subscribers.
+    #
+    # HTTP basic auth is ON — `REDIS_COMMANDER_HTTP_USER` +
+    # `REDIS_COMMANDER_HTTP_PASSWORD` from .env protect the web
+    # UI so hitting the nav entry prompts for creds instead of
+    # landing straight into Valkey's key space.
+    #
+    # REDIS_HOSTS format: `label:host:port:db:password` (colon-
+    # delimited). The trailing password picks up the same strong
+    # random string Valkey's `--requirepass` is pinned to, so the
+    # UI can authenticate without needing a second set of creds.
+    redis-commander:
+        image: 'rediscommander/redis-commander:latest'
+        ports:
+            - '${FORWARD_REDIS_COMMANDER_PORT:-8082}:8081'
+        environment:
+            # REDIS_HOSTS format: `label:host:port:db:password`.
+            # The trailing password matches Valkey's --requirepass
+            # so Commander can authenticate against the data
+            # plane without a second set of creds.
+            REDIS_HOSTS: 'local:valkey:6379:0:${REDIS_PASSWORD}'
+            # Basic-auth creds stay configured as a break-glass
+            # fallback — the primary flow is SSO via the JWT
+            # redirect path below, but if SSO ever breaks, the
+            # admin can still log in directly with these.
+            HTTP_USER: '${REDIS_COMMANDER_HTTP_USER}'
+            HTTP_PASSWORD: '${REDIS_COMMANDER_HTTP_PASSWORD}'
+            # Unified SSO — when SSO_ENABLED is true, Redis
+            # Commander accepts a signed JWT at /sso?access_token=.
+            # Laravel's RedisCommanderSsoController signs the JWT
+            # with SSO_JWT_SECRET and includes `iss=SSO_ISSUER`,
+            # which Commander validates. Env var names confirmed
+            # via the image's custom-environment-variables.json.
+            SSO_ENABLED: 'true'
+            SSO_JWT_SECRET: '${REDIS_COMMANDER_SSO_SECRET}'
+            SSO_ISSUER: '${REDIS_COMMANDER_SSO_ISSUER:-orbital-admin}'
+        networks:
+            - sail
+        depends_on:
+            - valkey
+        restart: unless-stopped
+
+    pgadmin:
+        image: 'dpage/pgadmin4:latest'
+        ports:
+            - '${FORWARD_PGADMIN_PORT:-5050}:80'
+        environment:
+            # Server mode replaces the old "desktop" single-user
+            # profile with a proper multi-user install. Users come
+            # in exclusively via OAuth2 against Laravel's OIDC
+            # endpoints — the default email/password pair below is
+            # kept as a break-glass fallback only; pgAdmin's
+            # authentication_sources setting below excludes the
+            # internal form unless SSO is explicitly disabled.
+            PGADMIN_DEFAULT_EMAIL: 'admin@orbital.app'
+            PGADMIN_DEFAULT_PASSWORD: 'password'
+            PGADMIN_CONFIG_SERVER_MODE: 'True'
+            PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+            # Allow emails on special-use / reserved TLDs (.test,
+            # .local, .example, .invalid) so OIDC-provisioned
+            # users with `@orbital.test` and similar addresses
+            # pass pgAdmin's email validator. Without this pgAdmin
+            # 500s on the OAuth2 callback because email-validator
+            # rejects reserved TLDs by default.
+            PGADMIN_CONFIG_CHECK_EMAIL_DELIVERABILITY: 'False'
+            PGADMIN_CONFIG_ALLOW_SPECIAL_EMAIL_DOMAINS: "['test', 'local', 'example', 'invalid']"
+            # OAuth2 SSO against the Laravel OIDC provider. pgAdmin
+            # discovers the token/authorize/userinfo endpoints from
+            # the /.well-known/openid-configuration URL so we only
+            # have to hardcode the one metadata URL.
+            PGADMIN_CONFIG_AUTHENTICATION_SOURCES: "['oauth2']"
+            PGADMIN_CONFIG_OAUTH2_AUTO_CREATE_USER: 'True'
+            PGADMIN_CONFIG_OAUTH2_CONFIG: |
+                [{
+                    "OAUTH2_NAME": "orbital",
+                    "OAUTH2_DISPLAY_NAME": "Orbital",
+                    "OAUTH2_CLIENT_ID": "${PGADMIN_OAUTH2_CLIENT_ID}",
+                    "OAUTH2_CLIENT_SECRET": "${PGADMIN_OAUTH2_CLIENT_SECRET}",
+                    "OAUTH2_TOKEN_URL": "http://orbital.test/oauth/token",
+                    "OAUTH2_AUTHORIZATION_URL": "http://orbital.test/oauth/authorize",
+                    "OAUTH2_SERVER_METADATA_URL": "http://orbital.test/.well-known/openid-configuration",
+                    "OAUTH2_USERINFO_ENDPOINT": "http://orbital.test/oauth/userinfo",
+                    "OAUTH2_SCOPE": "openid email profile",
+                    "OAUTH2_ICON": "fa-solid fa-key",
+                    "OAUTH2_BUTTON_COLOR": "#4f46e5"
+                }]
+        volumes:
+            - 'sail-pgadmin:/var/lib/pgadmin'
+            - './docker/pgadmin/servers.json:/pgadmin4/servers.json:ro'
+        networks:
+            - sail
+        depends_on:
+            - pgsql
+            - orbital.test
+        restart: unless-stopped
+
     pgsql:
         # pgvector/pgvector:pg17 is vanilla Postgres 17 with the pgvector
         # extension pre-installed. Same on-disk format as postgres:17 so
@@ -68,6 +183,16 @@ services:
 
     valkey:
         image: 'valkey/valkey:8-alpine'
+        # `--requirepass` is set at the command line (not a config
+        # file) so it's pinned in place and can't drift from the
+        # Laravel / LiveKit / Redis Commander clients that all read
+        # REDIS_PASSWORD from .env. The healthcheck authenticates
+        # with the same value — without this the container reports
+        # unhealthy as soon as we turn on requirepass because
+        # unauthenticated PINGs get rejected.
+        command:
+            - '--requirepass'
+            - '${REDIS_PASSWORD}'
         ports:
             - '${FORWARD_REDIS_PORT:-6379}:6379'
         volumes:
@@ -79,6 +204,8 @@ services:
             test:
                 - CMD
                 - valkey-cli
+                - '-a'
+                - '${REDIS_PASSWORD}'
                 - ping
             retries: 3
             timeout: 5s
@@ -251,8 +378,14 @@ services:
     # before exposing this beyond your local docker network.
     icecast:
         image: 'moul/icecast:latest'
+        # Bound to loopback only — the Icecast admin UI ships with
+        # default passwords and Orbital doesn't have SSO in front
+        # of it yet, so exposing 8000 on all interfaces leaks
+        # stream sources + admin access to the LAN. Internal
+        # container-to-container traffic still works via the
+        # telephony network.
         ports:
-            - '8000:8000'
+            - '127.0.0.1:8000:8000'
         environment:
             ICECAST_SOURCE_PASSWORD: '${ICECAST_SOURCE_PASSWORD:-changeme}'
             ICECAST_ADMIN_PASSWORD: '${ICECAST_ADMIN_PASSWORD:-changeme}'
@@ -278,8 +411,15 @@ services:
             - '--config.file=/etc/prometheus/prometheus.yml'
             - '--storage.tsdb.path=/prometheus'
             - '--web.enable-lifecycle'
+        # Bound to loopback only — Prometheus has no auth in front
+        # of it, so exposing 9090 on all interfaces leaks the full
+        # metrics surface (including tenant counts and request
+        # histograms) to the LAN. Grafana still scrapes it over
+        # the sail network by service name; the host-port binding
+        # is only for developer click-through from the admin UI
+        # on the same machine.
         ports:
-            - '9090:9090'
+            - '127.0.0.1:9090:9090'
         volumes:
             - './docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro'
             - 'sail-prometheus:/prometheus'
@@ -331,6 +471,46 @@ services:
         environment:
             MINIO_ROOT_USER: '${MINIO_ROOT_USER:-orbital}'
             MINIO_ROOT_PASSWORD: '${MINIO_ROOT_PASSWORD:-password}'
+            # OIDC SSO against Laravel. The config URL points at
+            # our OIDC discovery endpoint so MinIO auto-discovers
+            # the authorize/token/userinfo endpoints. The root
+            # credentials above stay valid as a break-glass
+            # fallback — MinIO supports both auth paths in
+            # parallel. `CLAIM_NAME=email` makes the OIDC `email`
+            # claim the MinIO user identity; `REDIRECT_URI` must
+            # match the Passport client's registered redirect
+            # (seeded by SsoSecretsBootstrapper).
+            # Named OIDC provider (`orbital`) — the `_orbital` suffix
+            # on each var creates a named provider in MinIO's IAM
+            # config rather than the anonymous default provider,
+            # which MinIO Console surfaces on the login page as a
+            # clickable "Sign in with Orbital" button. The anonymous
+            # default provider works for programmatic clients but
+            # doesn't show up in the Console UI.
+            MINIO_IDENTITY_OPENID_CONFIG_URL_orbital: 'http://orbital.test/.well-known/openid-configuration'
+            MINIO_IDENTITY_OPENID_CLIENT_ID_orbital: '${MINIO_OIDC_CLIENT_ID}'
+            MINIO_IDENTITY_OPENID_CLIENT_SECRET_orbital: '${MINIO_OIDC_CLIENT_SECRET}'
+            MINIO_IDENTITY_OPENID_REDIRECT_URI_orbital: 'http://orbital.test:9001/oauth_callback'
+            MINIO_IDENTITY_OPENID_SCOPES_orbital: 'openid,email,profile'
+            MINIO_IDENTITY_OPENID_DISPLAY_NAME_orbital: 'Sign in with Orbital'
+            # Role policy — assigns the built-in `consoleAdmin`
+            # policy to every user signing in via this OIDC
+            # provider. Without a role policy (or a policy claim
+            # in the JWT) MinIO Console marks the provider as
+            # unusable for login and won't surface it on the UI.
+            # For v1 everyone SSO'd in through Orbital gets full
+            # console access; per-user policy mapping comes later
+            # via claim-driven policies.
+            #
+            # `claim_name` is intentionally NOT set — MinIO treats
+            # role_policy and claim_name as mutually exclusive.
+            # Role policy wins because it's what makes Console
+            # render the OIDC button.
+            MINIO_IDENTITY_OPENID_ROLE_POLICY_orbital: 'consoleAdmin'
+            # Console browser redirect URL. Must match the
+            # Console's host-port binding since the browser has
+            # to reach it.
+            MINIO_BROWSER_REDIRECT_URL: 'http://orbital.test:9001'
         volumes:
             - 'sail-minio:/data'
         command: 'server /data --console-address ":9001"'
@@ -386,14 +566,46 @@ services:
 
     grafana:
         image: 'grafana/grafana:latest'
+        # Loopback binding only — the host port is kept as a
+        # break-glass fallback but only reachable from the host
+        # itself. All admin-panel traffic flows through Laravel's
+        # /admin/grafana/* reverse-proxy route which injects
+        # X-WEBAUTH-USER for auth-proxy mode. Binding to
+        # 127.0.0.1 prevents the LAN from bypassing the proxy.
         ports:
-            - '3000:3000'
+            - '127.0.0.1:3000:3000'
         environment:
             GF_SECURITY_ADMIN_USER: '${GRAFANA_ADMIN_USER:-admin}'
             GF_SECURITY_ADMIN_PASSWORD: '${GRAFANA_ADMIN_PASSWORD:-admin}'
             GF_USERS_ALLOW_SIGN_UP: 'false'
             GF_ANALYTICS_REPORTING_ENABLED: 'false'
             GF_AUTH_ANONYMOUS_ENABLED: 'false'
+            # Auth-proxy mode — Grafana trusts the X-WEBAUTH-USER
+            # header on every request when the request originates
+            # from the whitelisted network. Laravel's reverse
+            # proxy sets the header to the signed-in user's email;
+            # Grafana auto-creates a matching user on first visit
+            # and assigns the default role from
+            # GF_USERS_AUTO_ASSIGN_ORG_ROLE (Viewer, below).
+            GF_AUTH_PROXY_ENABLED: 'true'
+            GF_AUTH_PROXY_HEADER_NAME: 'X-WEBAUTH-USER'
+            GF_AUTH_PROXY_HEADER_PROPERTY: 'username'
+            GF_AUTH_PROXY_AUTO_SIGN_UP: 'true'
+            GF_AUTH_PROXY_HEADERS: 'Email:X-WEBAUTH-EMAIL Name:X-WEBAUTH-NAME'
+            # Sail network CIDR (172.16.0.0/12 covers every docker
+            # bridge Laravel will ever sit on) plus loopback for
+            # the emergency host-port fallback. In prod this list
+            # is replaced by an nginx/Traefik sidecar that
+            # validates the X-Orbital-Proxy-Token header before
+            # forwarding — the sail network trust is dev-only.
+            GF_AUTH_PROXY_WHITELIST: '172.16.0.0/12,127.0.0.1'
+            GF_USERS_AUTO_ASSIGN_ORG_ROLE: 'Viewer'
+            # Serve-from-sub-path so Grafana's own generated URLs
+            # (redirects, static assets, API calls) include the
+            # /admin/grafana/ prefix and the browser keeps routing
+            # through our Laravel proxy.
+            GF_SERVER_ROOT_URL: '%(protocol)s://%(domain)s/admin/grafana/'
+            GF_SERVER_SERVE_FROM_SUB_PATH: 'true'
         volumes:
             - './docker/grafana/provisioning:/etc/grafana/provisioning:ro'
             - 'sail-grafana:/var/lib/grafana'
@@ -412,6 +624,8 @@ networks:
 
 volumes:
     sail-pgsql:
+        driver: local
+    sail-pgadmin:
         driver: local
     sail-valkey:
         driver: local

@@ -21,3 +21,7 @@ room:
 
 redis:
   address: valkey:6379
+  # Must match REDIS_PASSWORD in .env and the `--requirepass` value
+  # on the valkey container. Regenerate via `openssl rand -hex 24`
+  # and update all three in lockstep if you rotate it.
+  password: 8b630691e6e6c2292489d353cbfbccdbdd6073cbcf680f72

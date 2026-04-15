@@ -12,7 +12,7 @@ class ListSipTrunks extends ListRecords
 {
     protected static string $resource = SipTrunkResource::class;
 
-    protected ?string $subheading = 'External SIP connections the platform uses to place and receive calls through your telco providers.';
+    protected ?string $subheading = 'External SIP trunk connectivity for DIDs and inbound/outbound calls.';
 
     protected function getHeaderActions(): array
     {

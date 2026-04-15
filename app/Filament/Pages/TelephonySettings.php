@@ -44,7 +44,7 @@ class TelephonySettings extends Page implements HasForms
 
     protected static ?string $title = 'Telephony Settings';
 
-    protected ?string $subheading = 'What the PBX does with unmatched inbound calls and the last-resort fallbacks when normal call paths are unavailable.';
+    protected ?string $subheading = 'Default telephony configuration and settings.';
 
     protected static ?string $slug = 'telephony';
 

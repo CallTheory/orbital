@@ -35,7 +35,7 @@ class Tools extends Page
 
     protected static ?string $title = 'Tools';
 
-    protected ?string $subheading = 'One-click runners for a curated set of maintenance commands — cache clears, config regeneration, diagnostic dumps. Destructive operations stay on the CLI.';
+    protected ?string $subheading = 'One-click maintenance commands.';
 
     protected static ?string $slug = 'tools';
 

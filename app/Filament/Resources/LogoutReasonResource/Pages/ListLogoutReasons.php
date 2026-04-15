@@ -30,7 +30,7 @@ class ListLogoutReasons extends ListRecords
      */
     public function getSubheading(): ?string
     {
-        $description = 'Reasons operators pick when signing out so supervisors can see why someone is off the floor.';
+        $description = 'Reasons operators pick when logging out of the application.';
 
         $hasActive = LogoutReason::query()->where('is_active', true)->exists();
 

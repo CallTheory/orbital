@@ -1,8 +1,14 @@
 <?php
 
+use App\Http\Controllers\Admin\Sso\GrafanaProxyController;
+use App\Http\Controllers\Admin\Sso\IcecastProxyController;
+use App\Http\Controllers\Admin\Sso\RedisCommanderSsoController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ImpersonationController;
 use App\Http\Controllers\Mail\AttachmentDownloadController;
+use App\Http\Controllers\Oidc\OidcDiscoveryController;
+use App\Http\Controllers\Oidc\OidcJwksController;
+use App\Http\Controllers\Oidc\OidcUserinfoController;
 use Illuminate\Support\Facades\Route;
 
 /**
@@ -67,3 +73,49 @@ Route::middleware(['auth', config('jetstream.auth_session')])->group(function ()
 // No auth: the URL itself is the shared secret.
 Route::get('/chat/{tenant}/{persona}', [ChatController::class, 'show'])
     ->name('chat.show');
+
+// ──────────────────────────────────────────────────────────────────
+// Unified SSO — admin-side control panel entry points.
+//
+// Session-shared (Horizon / Pulse / Telescope) needs no route —
+// Laravel's session cookie already carries auth.
+//
+// Redis Commander uses JWT-via-redirect: Laravel signs a short-lived
+// token and 302s into Commander's /sso endpoint.
+//
+// Grafana uses a full reverse-proxy with X-WEBAUTH-USER injection —
+// every request is forwarded by Laravel so the session check runs
+// on each hit.
+//
+// pgAdmin + MinIO Console use the OIDC endpoints below
+// (/.well-known/openid-configuration and friends).
+// ──────────────────────────────────────────────────────────────────
+
+Route::middleware(['auth'])->prefix('admin')->group(function () {
+    Route::get('sso/redis-commander', RedisCommanderSsoController::class)
+        ->middleware('tool:tooling.redis_commander')
+        ->name('admin.sso.redis-commander');
+
+    Route::any('grafana/{path?}', [GrafanaProxyController::class, 'forward'])
+        ->where('path', '.*')
+        ->middleware('tool:tooling.grafana')
+        ->name('admin.grafana.forward');
+
+    Route::any('icecast/{path?}', [IcecastProxyController::class, 'forward'])
+        ->where('path', '.*')
+        ->middleware('tool:tooling.icecast')
+        ->name('admin.icecast.forward');
+});
+
+// ──────────────────────────────────────────────────────────────────
+// OIDC provider endpoints — discovery + JWKS + userinfo. Passport
+// registers /oauth/authorize + /oauth/token + /oauth/tokens from
+// its service provider; we add the OIDC-specific bits on top.
+// ──────────────────────────────────────────────────────────────────
+Route::get('.well-known/openid-configuration', OidcDiscoveryController::class)
+    ->name('oidc.discovery');
+Route::get('oauth/jwks', OidcJwksController::class)
+    ->name('oidc.jwks');
+Route::get('oauth/userinfo', OidcUserinfoController::class)
+    ->middleware('auth:api')
+    ->name('oidc.userinfo');

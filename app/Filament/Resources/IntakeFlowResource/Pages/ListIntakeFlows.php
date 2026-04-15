@@ -12,7 +12,7 @@ class ListIntakeFlows extends ListRecords
 {
     protected static string $resource = IntakeFlowResource::class;
 
-    protected ?string $subheading = 'Cross-tenant view of every intake flow — the scripted step-by-step the AI agent and operators walk callers through.';
+    protected ?string $subheading = 'Call scripts assembled from intake goals.';
 
     protected function getHeaderActions(): array
     {

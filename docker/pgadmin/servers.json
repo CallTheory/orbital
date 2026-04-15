@@ -1,0 +1,13 @@
+{
+    "Servers": {
+        "1": {
+            "Name": "Orbital",
+            "Group": "Servers",
+            "Host": "pgsql",
+            "Port": 5432,
+            "MaintenanceDB": "orbital",
+            "Username": "orbital",
+            "SSLMode": "prefer"
+        }
+    }
+}

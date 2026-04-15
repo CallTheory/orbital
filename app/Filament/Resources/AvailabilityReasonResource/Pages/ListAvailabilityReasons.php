@@ -32,7 +32,7 @@ class ListAvailabilityReasons extends ListRecords
      */
     public function getSubheading(): ?string
     {
-        $description = 'The states operators can be in while signed in — Available, In meeting, Unavailable, and anything else you add.';
+        $description = 'The states operators can be in while signed in.';
 
         $hasAcceptingRow = AvailabilityReason::query()
             ->where('is_active', true)

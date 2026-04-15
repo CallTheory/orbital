@@ -31,7 +31,7 @@ class SystemSetup extends Page
 
     protected static ?string $title = 'Setup';
 
-    protected ?string $subheading = 'One-time install and recovery actions for the underlying services — pgvector, MinIO buckets, Asterisk configs, LiveKit dispatch, Ollama models, and more.';
+    protected ?string $subheading = 'Installation runners for services we depend on.';
 
     protected static ?string $slug = 'setup';
 
@@ -48,11 +48,6 @@ class SystemSetup extends Page
     public static function canAccess(): bool
     {
         return auth()->user()?->isSuperAdmin() ?? false;
-    }
-
-    public function getSubheading(): ?string
-    {
-        return 'One-click bootstrap for every external service Orbital depends on. Safe to re-run.';
     }
 
     public function refreshStatus(): void

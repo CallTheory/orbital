@@ -44,7 +44,7 @@ class UnroutedMail extends Page implements HasTable
 
     protected static ?string $title = 'Unrouted Mail';
 
-    protected ?string $subheading = 'Inbound email that didn\'t match any tenant or routing rule. Investigate these to fix a rule, onboard a missing tenant, or discard the noise.';
+    protected ?string $subheading = 'Inbound email messages not matching a tenant rule.';
 
     protected static ?string $slug = 'mail/unrouted';
 
@@ -53,11 +53,6 @@ class UnroutedMail extends Page implements HasTable
     public static function canAccess(): bool
     {
         return auth()->user()?->isSuperAdmin() ?? false;
-    }
-
-    public function getSubheading(): ?string
-    {
-        return 'Inbound messages the router couldn\'t place on a tenant. Resolve by adding routing rules or cleaning up orphans.';
     }
 
     public function table(Table $table): Table

@@ -42,6 +42,14 @@ return [
             'driver' => 'session',
             'provider' => 'users',
         ],
+        // Passport-backed bearer-token guard for the OIDC /oauth/userinfo
+        // endpoint (and any future API route that authenticates via a
+        // Passport access token). Uses the 'passport' driver — the
+        // PassportServiceProvider registers it on boot.
+        'api' => [
+            'driver' => 'passport',
+            'provider' => 'users',
+        ],
     ],
 
     /*

@@ -146,6 +146,73 @@ the work.
       skips the grant-access action entirely because it can't
       answer "which tenant?"). ~half-day refactor, plan before
       touching.
+- [ ] **Pluggable infrastructure backends — internal ↔ external
+      swap.** Let the platform operator toggle whether the stack
+      uses our shipped container or an external endpoint they
+      supply, per service. Canonical case: **MinIO ↔ real S3** —
+      admin flips a setting, enters endpoint + keys + bucket,
+      we provision the buckets with the same policy the MinIO
+      bootstrapper applies, flip the `s3` disk config, and the
+      app keeps running. Flipping back should restart the MinIO
+      container and re-bootstrap it. Same shape works for: SMTP
+      (Mailpit ↔ any relay), Redis (Valkey ↔ external), Ollama
+      (↔ external inference), Prometheus / Loki / Grafana (↔
+      external observability stack), Reverb (↔ Pusher / Ably /
+      another self-hosted). Doesn't work for: Asterisk (deep ARA
+      + generated-config coupling), LiveKit SIP bridge (the SIP
+      side is infra you still own even if you point at LiveKit
+      Cloud for media).
+      **Implementation note.** Don't build a generic framework
+      up-front — start with the first real customer ask
+      (probably MinIO ↔ S3), build exactly that swap carefully,
+      then extract a pattern once there are 2–3 real shapes to
+      compare. Per-service `ServiceProvider` abstraction +
+      settings UI + bootstrapper-per-backend comes later.
+      **HA / failover is the related axis** — most of these
+      targets already support HA natively (distributed MinIO,
+      Postgres streaming replication, Valkey Sentinel, LiveKit
+      horizontal via Redis coordination), and the "Big items"
+      section below covers the active-active plan. The pluggable
+      backend work should land first so HA can build on top of
+      "point at external" as one of its primitives.
+- [ ] **MinIO Console OIDC login UI.** The embedded Console in
+      MinIO `RELEASE.2025-09-07` reports `loginStrategy: form` on
+      its `/api/v1/login` endpoint even with a fully configured
+      named OIDC provider (role policy attached, display name set,
+      auto-discovered metadata reachable). `mc idp openid list`
+      shows the provider enabled and `mc` itself can authenticate
+      via OIDC tokens, but the browser UI never surfaces the SSO
+      button. Likely fixes to try: bump to a newer MinIO release,
+      or drop the standalone `minio/console` sidecar (which has
+      confirmed OIDC UI support) in front of the object server.
+      For now the Console login page uses the root credentials as
+      a fallback — programmatic S3/mc access via OIDC still works.
+- [ ] **Grafana dashboards shipped in the repo + portal-side
+      metrics embedding.** Once the observability stack is
+      producing real data:
+      - **Provisioning path.** Build dashboards in the dev
+        Grafana, Share → Export → Save to file, drop the JSON
+        into `docker/grafana/provisioning/dashboards/` next to
+        a `dashboards.yaml` provider config. Grafana auto-loads
+        everything in that directory on container start, so
+        every fresh install boots with the same set of
+        dashboards with no manual click-through. Datasources
+        already work this way — follow the same pattern.
+      - **Admin-side embedding** (super-admins only): iframe
+        Grafana's `/d-solo/<uid>/<slug>?panelId=X` URLs into
+        Filament widgets where useful. Auth is a non-issue
+        because the viewer is already super-admin and can
+        legitimately see everything.
+      - **Tenant-facing embedding** (customer portal):
+        **don't** iframe Grafana — build a small
+        `PrometheusQueryService` in Laravel that wraps
+        `GET /api/v1/query_range` and render the results with
+        Chart.js / ApexCharts in a Filament widget. Why: tenant
+        scope filtering happens naturally via `team_id` labels
+        on the metric names, the visual style matches the rest
+        of the portal, and there's no second authz layer to
+        reimplement in Grafana territory. ~100 lines for the
+        query service + 1 widget per chart.
 
 ## Big items — deliberately scheduled late
 

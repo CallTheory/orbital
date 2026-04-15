@@ -12,7 +12,7 @@ class ListSharedContactLists extends ListRecords
 {
     protected static string $resource = SharedContactListResource::class;
 
-    protected ?string $subheading = 'Contact lists you manage once and attach to multiple tenants so every attached tenant sees the same entries.';
+    protected ?string $subheading = 'Contact lists sharable across multiple tenants.';
 
     protected function getHeaderActions(): array
     {

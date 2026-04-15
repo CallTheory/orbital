@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Jetstream\Events\TeamSwitched;
+use Laravel\Passport\Passport;
 use Spatie\Permission\PermissionRegistrar;
 
 class AppServiceProvider extends ServiceProvider
@@ -59,6 +60,46 @@ class AppServiceProvider extends ServiceProvider
         // an availability state at all) are a cheap no-op.
         Event::listen(Login::class, \App\Listeners\ResetAvailabilityOnLogin::class);
 
+        // OIDC clients for the in-platform control panels (pgAdmin,
+        // MinIO Console, future tools) are first-party — they're
+        // infra we own, not third-party apps that need explicit
+        // user consent. `FirstPartyClient` overrides
+        // `skipsAuthorization` to return true for our registered
+        // client names, so the consent step is skipped entirely.
+        Passport::useClientModel(\App\Models\Passport\FirstPartyClient::class);
+
+        // OIDC scope registration — without this, Passport's
+        // ScopeRepository rejects every authorize request asking
+        // for `openid email profile` with
+        // `invalid_scope: The requested scope is invalid, unknown,
+        // or malformed`. League OAuth2 looks up each requested
+        // scope in the `tokensCan` map and fails the whole request
+        // if any are missing. Descriptions are only user-facing
+        // during the consent step, which our first-party clients
+        // skip — so the strings are informational only.
+        Passport::tokensCan([
+            'openid' => 'Authenticate via OpenID Connect',
+            'email' => 'Access your email address',
+            'profile' => 'Access your profile information',
+        ]);
+
+        // Passport 13 type-hints `AuthorizationViewResponse` as a
+        // method parameter on its AuthorizationController, so Laravel
+        // resolves it from the container BEFORE the method body runs.
+        // If the contract isn't bound, dependency resolution throws
+        // and the controller never executes — which means the
+        // `skipsAuthorization()` short-circuit above never gets a
+        // chance to run either.
+        //
+        // Binding the contract to a stub blade view satisfies the
+        // container. For first-party clients the controller returns
+        // an approve-and-redirect response WITHOUT ever rendering
+        // this view — the binding is load-bearing purely to keep
+        // dependency injection happy. If we ever add a real
+        // third-party OAuth client later, we'll publish Passport's
+        // own consent template and point this binding at it.
+        Passport::authorizationView('auth.passport-consent-stub');
+
         // Boot-time invariant check: no platform-only permission should ever
         // be on a tenant's allow list. Logs critical if violated.
         $this->assertNoPlatformPermissionsInTenantGrants();
@@ -92,7 +133,15 @@ class AppServiceProvider extends ServiceProvider
             ->register($this->app->make(\App\Services\Bootstrap\Bootstrappers\AsteriskBootstrapper::class))
             ->register($this->app->make(\App\Services\Bootstrap\Bootstrappers\LiveKitBootstrapper::class))
             ->register($this->app->make(\App\Services\Bootstrap\Bootstrappers\IcecastBootstrapper::class))
-            ->register($this->app->make(\App\Services\Bootstrap\Bootstrappers\OllamaBootstrapper::class));
+            ->register($this->app->make(\App\Services\Bootstrap\Bootstrappers\OllamaBootstrapper::class))
+            // SSO secrets — generates shared secrets for the
+            // Redis Commander JWT + Grafana reverse-proxy trust
+            // chain, and creates OAuth2 clients for pgAdmin and
+            // MinIO Console OIDC. Registered after the services
+            // whose containers consume the resulting .env values
+            // so the admin's first install flow is: pgvector →
+            // MinIO → Asterisk → ... → SSO secrets → restart.
+            ->register($this->app->make(\App\Services\Bootstrap\Bootstrappers\SsoSecretsBootstrapper::class));
     }
 
     /**

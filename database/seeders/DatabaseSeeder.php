@@ -16,6 +16,8 @@ class DatabaseSeeder extends Seeder
             IntakeGoalLibrarySeeder::class,
             ContactTagLibrarySeeder::class,
             SkillCatalogSeeder::class,
+            AvailabilityReasonSeeder::class,
+            LogoutReasonSeeder::class,
             FirstSuperAdminSeeder::class,
             // Runs after DB-backed seeding so external services see
             // the final row set — MinIO buckets, Ollama models,

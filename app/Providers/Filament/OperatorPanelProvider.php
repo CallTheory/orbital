@@ -6,6 +6,11 @@ namespace App\Providers\Filament;
 
 use App\Http\Middleware\PanelRedirect;
 use App\Http\Middleware\SetPermissionsTeamContext;
+use App\Models\LogoutReason;
+use App\Models\UserLogoutEvent;
+use Filament\Actions\Action;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -43,7 +48,7 @@ class OperatorPanelProvider extends PanelProvider
         return $panel
             ->id('operator')
             ->path('operator')
-            ->profile(isSimple: false)
+            ->profile(page: \App\Filament\Auth\EditProfile::class, isSimple: false)
             ->brandName('Orbital')
             ->brandLogo(fn () => new HtmlString(
                 '<div class="orbital-brand">'
@@ -61,24 +66,96 @@ class OperatorPanelProvider extends PanelProvider
             ])
             ->navigationGroups([
                 'Workspace',
+                'Inbox',
                 'Activity',
             ])
             ->discoverPages(in: app_path('Filament/Operator/Pages'), for: 'App\\Filament\\Operator\\Pages')
-            ->pages([])
+            ->pages([
+                // Shared security page — 2FA, password, sessions.
+                // Lives in App\Filament\Pages so all three panels
+                // share one implementation.
+                \App\Filament\Pages\Security::class,
+            ])
             ->userMenuItems([
+                // Layout mirrors AdminPanelProvider — see that file
+                // for the full section layout explanation. Security
+                // sits in the top section with Profile; panel
+                // switches go in the middle section after the theme
+                // switcher; Sign out is alone in its own section at
+                // the bottom, separated from the panel switches by
+                // our custom user-menu view override.
+                MenuItem::make()
+                    ->label('Security')
+                    ->url(fn () => route('filament.operator.pages.security'))
+                    ->icon('heroicon-o-shield-check')
+                    ->sort(-10),
                 MenuItem::make()
                     ->label('Admin Panel')
                     ->url(fn () => url('/admin'))
                     ->icon('heroicon-o-cog-6-tooth')
+                    ->sort(10)
                     ->visible(fn () => auth()->user()?->isSuperAdmin() ?? false),
                 MenuItem::make()
                     ->label('Customer Portal')
                     ->url(fn () => url('/portal'))
                     ->icon('heroicon-o-globe-alt')
-                    // Only visible when the current user is attached to
-                    // at least one real tenant team (dog-fooding). See
-                    // AdminPanelProvider for the same gating.
+                    ->sort(12)
                     ->visible(fn () => auth()->user()?->belongsToAnyTenant() ?? false),
+                // Replaces Filament's default Sign out link with a
+                // modal-backed Action that requires the operator to
+                // pick a LogoutReason before the session actually
+                // ends. Writes a UserLogoutEvent audit row with the
+                // chosen reason + a snapshot of its label (so later
+                // renames/deletes on the LogoutReason don't rewrite
+                // history), then logs the user out and redirects to
+                // the panel login page.
+                //
+                // Operator panel only — the admin and portal panels
+                // still use the stock logout link because those
+                // sessions aren't the "on the floor" sessions this
+                // audit log is trying to capture.
+                'logout' => Action::make('logout')
+                    ->label('Sign out')
+                    ->icon('heroicon-m-arrow-right-on-rectangle')
+                    ->modalHeading('Sign out')
+                    ->modalDescription('Pick a reason so the supervisor log knows why you\'re off the floor.')
+                    ->modalSubmitActionLabel('Sign out')
+                    ->modalIcon('heroicon-o-arrow-left-on-rectangle')
+                    ->schema([
+                        Select::make('logout_reason_id')
+                            ->label('Reason')
+                            ->options(fn () => LogoutReason::query()
+                                ->where('is_active', true)
+                                ->orderBy('sort_order')
+                                ->orderBy('label')
+                                ->pluck('label', 'id')
+                                ->all())
+                            ->required()
+                            ->native(false),
+                        Textarea::make('note')
+                            ->label('Note (optional)')
+                            ->rows(2)
+                            ->maxLength(500),
+                    ])
+                    ->action(function (array $data) {
+                        $user = auth()->user();
+                        if ($user) {
+                            $reason = LogoutReason::find($data['logout_reason_id'] ?? null);
+                            UserLogoutEvent::create([
+                                'user_id' => $user->id,
+                                'logout_reason_id' => $reason?->id,
+                                'reason_label_snapshot' => $reason?->label,
+                                'logged_out_at' => now(),
+                            ]);
+                        }
+
+                        auth()->guard('web')->logout();
+                        session()->invalidate();
+                        session()->regenerateToken();
+
+                        return redirect()->to(\Filament\Facades\Filament::getPanel('operator')->getLoginUrl() ?? '/operator/login');
+                    })
+                    ->sort(PHP_INT_MAX),
             ])
             ->middleware([
                 EncryptCookies::class,
@@ -101,6 +178,29 @@ class OperatorPanelProvider extends PanelProvider
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
                 fn (): string => view('filament.partials.panel-styles')->render(),
+            )
+            // Top-of-page status bar — same component the admin
+            // panel uses. Operators see the platform-wide health
+            // strip so they know the second a component like
+            // LiveKit or Asterisk is in trouble. Gated on
+            // `hasAnyPlatformRole()` so the login page (which
+            // borrows admin panel context) doesn't get the bar.
+            ->renderHook(
+                PanelsRenderHook::BODY_START,
+                fn (): string => auth()->user()?->hasAnyPlatformRole()
+                    ? Blade::render('@livewire(\App\Livewire\SystemStatusBar::class)')
+                    : '',
+            )
+            // Availability selector in the topbar — sits directly
+            // left of the user menu avatar so it's out from under
+            // the Filament toast notification stack (which renders
+            // in the top-right corner and otherwise overlapped the
+            // pill, blocking clicks until the toast dismissed).
+            ->renderHook(
+                PanelsRenderHook::USER_MENU_BEFORE,
+                fn (): string => auth()->user()?->hasAnyPlatformRole()
+                    ? Blade::render('@livewire(\App\Livewire\AvailabilitySelector::class)')
+                    : '',
             )
             // Persistent softphone on every operator page — same pattern
             // the old desktop.blade used, now injected via a render hook

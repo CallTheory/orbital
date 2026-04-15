@@ -7,7 +7,6 @@ namespace App\Services\Telephony;
 use App\Models\CallQueue;
 use App\Models\Extension;
 use App\Models\RoutingRule;
-use App\Models\SipTrunk;
 use App\Models\Team;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\View;
@@ -24,12 +23,10 @@ use Illuminate\Support\Facades\View;
  * the dispatcher and triggers `dialplan reload` instead of
  * `core reload`.
  *
- * Phases 3 and 4 will move pjsip endpoints + queues out of
- * generated config files and into Asterisk Realtime tables, at
- * which point `generatePjsipConf()` and `generateQueuesConf()` and
- * the matching writers go away. Until then they're kept here for
- * backward compatibility — but the dialplan path is already on
- * the new per-tenant scheme.
+ * Endpoints and queues now live in Asterisk Realtime tables (Phase
+ * 3/4) and are pulled by `res_sorcery_realtime` on call setup, so
+ * this service only writes dialplan files — no more pjsip.conf or
+ * queues.conf generation.
  */
 class AsteriskConfigService
 {
@@ -38,39 +35,6 @@ class AsteriskConfigService
     public function __construct()
     {
         $this->configPath = config('telephony.asterisk.config_path');
-    }
-
-    // ── Legacy generators (Phases 3/4 will retire these) ────────────
-
-    public function generatePjsipConf(?int $teamId = null): string
-    {
-        $trunks = SipTrunk::withoutGlobalScopes()
-            ->when($teamId, fn ($q) => $q->where('team_id', $teamId))
-            ->where('is_active', true)
-            ->get();
-
-        $extensions = Extension::withoutGlobalScopes()
-            ->when($teamId, fn ($q) => $q->where('team_id', $teamId))
-            ->where('is_active', true)
-            ->get();
-
-        return View::make('asterisk.pjsip', [
-            'trunks' => $trunks,
-            'extensions' => $extensions,
-            'sipDomain' => config('telephony.asterisk.sip_domain'),
-        ])->render();
-    }
-
-    public function generateQueuesConf(?int $teamId = null): string
-    {
-        $queues = CallQueue::withoutGlobalScopes()
-            ->when($teamId, fn ($q) => $q->where('team_id', $teamId))
-            ->with('members.extension')
-            ->get();
-
-        return View::make('asterisk.queues', [
-            'queues' => $queues,
-        ])->render();
     }
 
     // ── Per-tenant dialplan generators ──────────────────────────────
@@ -237,35 +201,6 @@ class AsteriskConfigService
         );
     }
 
-    // ── Legacy unified writer (Phases 3/4 will retire) ──────────────
-
-    /**
-     * Regenerate every supported config artefact. Kept for backward
-     * compatibility with the existing job + bootstrap install path.
-     * Writes the legacy pjsip + queues blobs alongside the new
-     * per-tenant dialplan layout.
-     */
-    public function writeConfigs(?int $teamId = null): void
-    {
-        File::ensureDirectoryExists($this->configPath);
-
-        File::put(
-            $this->configPath.'/pjsip_generated.conf',
-            $this->generatePjsipConf($teamId),
-        );
-
-        File::put(
-            $this->configPath.'/queues_generated.conf',
-            $this->generateQueuesConf($teamId),
-        );
-
-        if ($teamId !== null) {
-            $this->writeDialplanForTenant($teamId);
-        } else {
-            $this->writeAllDialplans();
-        }
-    }
-
     public function reloadAsterisk(): bool
     {
         $ami = app(AsteriskAmiService::class);
@@ -287,7 +222,12 @@ class AsteriskConfigService
 
     public function pushConfig(?int $teamId = null): bool
     {
-        $this->writeConfigs($teamId);
+        if ($teamId !== null) {
+            $this->writeDialplanForTenant($teamId);
+        } else {
+            $this->writeAllDialplans();
+            $this->writeDialplanIndex();
+        }
 
         return $this->reloadAsterisk();
     }

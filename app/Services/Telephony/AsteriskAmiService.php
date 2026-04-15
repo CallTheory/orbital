@@ -42,11 +42,21 @@ class AsteriskAmiService
         // Read greeting
         fgets($this->socket);
 
-        // Login
+        // Login with `Events: off` so Asterisk doesn't push async
+        // events (FullyBooted, PeerStatus, Registry, etc.) onto
+        // this socket. Without it, those events queue up between
+        // actions and the next sendAction reads the queued event
+        // as if it were the command response — which has no
+        // Success/Follows marker, so the reload check fails.
+        //
+        // We only use AMI for one-shot commands (reload / originate
+        // / show channels), never for event subscription, so
+        // suppressing events is the right default.
         $response = $this->sendAction([
             'Action' => 'Login',
             'Username' => $this->username,
             'Secret' => $this->secret,
+            'Events' => 'off',
         ]);
 
         return str_contains($response, 'Success');

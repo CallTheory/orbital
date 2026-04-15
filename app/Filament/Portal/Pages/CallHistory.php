@@ -53,6 +53,7 @@ class CallHistory extends Page implements HasTable
                 Tables\Columns\TextColumn::make('started_at')
                     ->label('When')
                     ->dateTime('M j, Y g:i a')
+                    ->timezone(fn () => auth()->user()?->displayTimezone() ?? config('app.timezone'))
                     ->sortable(),
                 Tables\Columns\TextColumn::make('direction')
                     ->badge()

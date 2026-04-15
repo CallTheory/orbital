@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AgentPersonaController;
 use App\Http\Controllers\Api\CallLogController;
 use App\Http\Controllers\Api\CallSessionController;
 use App\Http\Controllers\Api\ExtensionController;
+use App\Http\Controllers\Api\InboundMailController;
 use App\Http\Controllers\Api\KnowledgeController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -29,6 +30,26 @@ Route::post('/agent-worker/heartbeat', function (Request $request) {
     Cache::put('agent_worker:heartbeat', now(), now()->addSeconds(120));
     return ['ok' => true];
 });
+
+/**
+ * Inbound mail webhook. Haraka's SMTP shim POSTs raw RFC822 + envelope
+ * here at end-of-DATA. Controller writes the blob to MinIO, creates a
+ * stub EmailMessage row, dispatches ProcessInboundEmailJob on the
+ * `inbound-mail` queue, returns 202. All heavy lifting happens on the
+ * queue so Haraka gets a fast response and the sender doesn't time out.
+ */
+Route::post('/mail/inbound', [InboundMailController::class, 'store'])
+    ->middleware('inbound-mail-token');
+
+/**
+ * RCPT-TO validation for Haraka. Lets the SMTP shim reject
+ * mail for unknown account_numbers at the protocol level
+ * (550 Unknown recipient) instead of accepting and queueing
+ * garbage Laravel would only drop. 60-second cache inside
+ * the controller so retry bursts don't hammer the DB.
+ */
+Route::get('/mail/validate-recipient', [InboundMailController::class, 'validateRecipient'])
+    ->middleware('inbound-mail-token');
 
 // Agent worker API (Sanctum token auth)
 Route::middleware('auth:sanctum')->group(function () {

@@ -61,13 +61,13 @@ class RegenerateTelephonyConfig implements ShouldBeUnique, ShouldQueue
         // Full regen: every tenant's dialplan + the dispatcher +
         // the index. Used by bootstrap, fresh seed, and the
         // `orbital:generate-config` artisan command.
-        $service->writeConfigs(null);
+        $service->writeAllDialplans();
         $service->writeDialplanIndex();
 
-        if ($service->reloadAsterisk()) {
-            Log::info('Asterisk fully reloaded after global config regen');
+        if ($service->reloadDialplan()) {
+            Log::info('Dialplan reloaded after global regen');
         } else {
-            Log::warning('Asterisk reload failed — config written but not applied');
+            Log::warning('Dialplan reload failed — config written but not applied');
         }
     }
 

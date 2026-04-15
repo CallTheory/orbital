@@ -91,6 +91,34 @@ services:
         networks:
             - sail
 
+    # Haraka SMTP → HTTP webhook shim. Accepts inbound SMTP at
+    # the network edge and POSTs each message to Laravel's
+    # /api/mail/inbound endpoint. Stateless; all routing,
+    # parsing, and storage lives in Laravel. This is the
+    # self-hosted equivalent of SendGrid Inbound Parse.
+    #
+    # Host port 2525 → container 25. Port 25 is usually blocked
+    # on Linux dev hosts by systemd-resolved or stock Postfix,
+    # so we use 2525 locally; production maps to whatever the
+    # MX record points at. Test with:
+    #   swaks --server localhost:2525 --from test@example.com \
+    #         --to 12345@inbound.orbital.test \
+    #         --header "Subject: ping" --body "hello"
+    haraka:
+        build:
+            context: ./docker/haraka
+            dockerfile: Dockerfile
+        ports:
+            - '${FORWARD_INBOUND_SMTP_PORT:-2525}:25'
+        environment:
+            ORBITAL_WEBHOOK_URL: 'http://orbital.test/api/mail/inbound'
+            ORBITAL_WEBHOOK_TOKEN: '${INBOUND_MAIL_TOKEN}'
+        networks:
+            - sail
+        depends_on:
+            - orbital.test
+        restart: unless-stopped
+
     asterisk:
         build:
             context: ./docker/asterisk
@@ -305,20 +333,17 @@ services:
               mc anonymous set download "local/$$MINIO_BUCKET"  || true
 
     # ──────────────────────────────────────────────────────────────────
-    # Ollama — optional local embedding / inference server. Lives under
-    # the `local-ai` profile so it's opt-in: `docker compose up -d`
-    # ignores it; `docker compose --profile local-ai up -d` brings it
-    # online. Used by EmbeddingService when services.embeddings.provider
-    # = ollama. Models are downloaded lazily on first use and persisted
-    # to the sail-ollama volume so they don't re-download across restarts.
+    # Ollama — local embedding / inference server. Used by
+    # EmbeddingService when services.embeddings.provider = ollama, and
+    # by any future local-model path. Models are downloaded lazily on
+    # first use and persisted to the sail-ollama volume so they don't
+    # re-download across restarts.
     #
-    # First-time setup:
-    #   docker compose --profile local-ai up -d ollama
+    # Pull a starter embedding model after the first boot:
     #   docker compose exec ollama ollama pull nomic-embed-text
     # ──────────────────────────────────────────────────────────────────
     ollama:
         image: 'ollama/ollama:latest'
-        profiles: ['local-ai']
         ports:
             - '${FORWARD_OLLAMA_PORT:-11434}:11434'
         volumes:

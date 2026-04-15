@@ -55,6 +55,7 @@ class CallLogResource extends Resource
             ->columns([
                 Tables\Columns\TextColumn::make('started_at')
                     ->dateTime()
+                    ->timezone(fn () => auth()->user()?->displayTimezone() ?? config('app.timezone'))
                     ->sortable(),
                 Tables\Columns\TextColumn::make('team.name')
                     ->label('Tenant')

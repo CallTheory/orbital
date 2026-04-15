@@ -194,7 +194,12 @@ class QueueMemberSyncer
                 'membername' => $operator->name,
                 'state_interface' => 'PJSIP/'.$extension->realtimeEndpointId(),
                 'penalty' => $penalty,
-                'paused' => 0,
+                // Pause when the operator has manually marked
+                // themselves unavailable in the topbar selector.
+                // Asterisk still rings available members first
+                // and only falls back to paused members if
+                // nobody else answers.
+                'paused' => $operator->isAvailableForWork() ? 0 : 1,
             ];
         }
 
@@ -222,13 +227,24 @@ class QueueMemberSyncer
                 continue;
             }
 
+            // Respect User-typed members' availability. Non-user
+            // members (static extension pivots) default to active
+            // since there's no human to flip a topbar toggle.
+            $paused = 0;
+            if ($row->member_type === User::class) {
+                $memberUser = User::find($row->member_id);
+                if ($memberUser && ! $memberUser->isAvailableForWork()) {
+                    $paused = 1;
+                }
+            }
+
             $members[] = [
                 'queue_name' => $queueName,
                 'interface' => 'PJSIP/'.$extension->realtimeEndpointId(),
                 'membername' => $extension->label ?? ('Ext '.$extension->number),
                 'state_interface' => 'PJSIP/'.$extension->realtimeEndpointId(),
                 'penalty' => (int) ($row->penalty ?? 0),
-                'paused' => 0,
+                'paused' => $paused,
             ];
         }
 

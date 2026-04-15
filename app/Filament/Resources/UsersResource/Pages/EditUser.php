@@ -9,6 +9,8 @@ use App\Services\Telephony\PlatformExtensionAllocator;
 use Filament\Actions;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
+use Illuminate\Support\Facades\Password;
+use Laravel\Fortify\Actions\DisableTwoFactorAuthentication;
 
 class EditUser extends EditRecord
 {
@@ -57,6 +59,51 @@ class EditUser extends EditRecord
                         ->title("Allocated extension {$ext->number}")
                         ->send();
                     $this->refreshFormData(['softphone_extension', 'softphone_username', 'softphone_password']);
+                }),
+
+            Actions\Action::make('sendPasswordReset')
+                ->label('Send password reset')
+                ->icon('heroicon-o-envelope')
+                ->color('gray')
+                ->requiresConfirmation()
+                ->modalDescription(fn () => "Email a password-reset link to {$this->record->email}? The link expires in 60 minutes.")
+                ->action(function () {
+                    $status = Password::broker()->sendResetLink(['email' => $this->record->email]);
+
+                    if ($status === Password::RESET_LINK_SENT) {
+                        Notification::make()
+                            ->success()
+                            ->title('Password reset link sent')
+                            ->body("Emailed to {$this->record->email}.")
+                            ->send();
+                    } else {
+                        Notification::make()
+                            ->danger()
+                            ->title('Could not send reset link')
+                            ->body('Status: '.$status)
+                            ->send();
+                    }
+                }),
+
+            Actions\Action::make('resetTwoFactor')
+                ->label('Reset 2FA')
+                ->icon('heroicon-o-shield-exclamation')
+                ->color('warning')
+                ->visible(fn () => ! is_null($this->record->two_factor_secret))
+                ->requiresConfirmation()
+                ->modalHeading('Reset two-factor authentication?')
+                ->modalDescription(fn () => "Disable 2FA on {$this->record->email}'s account. They'll be able to sign in with just their password until they re-enroll from their Security page. Use this when a user has lost access to their authenticator.")
+                ->modalSubmitActionLabel('Reset 2FA')
+                ->action(function () {
+                    app(DisableTwoFactorAuthentication::class)($this->record);
+
+                    Notification::make()
+                        ->success()
+                        ->title('Two-factor authentication reset')
+                        ->body("{$this->record->email} will need to re-enroll on their Security page.")
+                        ->send();
+
+                    $this->refreshFormData(['two_factor_secret']);
                 }),
 
             Actions\DeleteAction::make(),

@@ -41,7 +41,7 @@ class AdminPanelProvider extends PanelProvider
             // user has a styled self-service profile at /{panel}/profile.
             // Replaces the old Jetstream /user/profile page, which we
             // redirect into here from routes/web.php.
-            ->profile(isSimple: false)
+            ->profile(page: \App\Filament\Auth\EditProfile::class, isSimple: false)
             ->brandName('Orbital')
             ->brandLogo(fn () => new HtmlString(
                 '<div class="orbital-brand">'
@@ -58,30 +58,58 @@ class AdminPanelProvider extends PanelProvider
                 'success' => Color::Emerald,
             ])
             ->navigationGroups([
+                'Dashboards',
                 'Platform',
+                'Features',
                 'Telephony',
                 'Conversational AI',
                 'Monitor',
+                'Utilities',
+                'Administration',
             ])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->pages([])
             ->widgets([])
             ->userMenuItems([
-                // Cross-surface jumps. Admin, operator, and portal are
-                // separate Filament panels sharing one user-menu shell
-                // — these links let a super-admin hop between them
-                // without re-logging-in, and operators/supervisors can
-                // jump to the softphone workspace.
+                // User menu layout (all three panels share this shape):
+                //
+                //   Profile              (top, sort -1, Filament builtin)
+                //   Security             (top, sort -10)
+                //   ─── theme switcher ───
+                //   Admin Panel          (mid, sort 10)
+                //   Operator Workspace   (mid, sort 11)
+                //   Customer Portal      (mid, sort 12)
+                //   ─── separator ───
+                //   Sign out             (bottom, sort PHP_INT_MAX, Filament builtin)
+                //
+                // The profile/security section uses negative sorts
+                // so Filament's view puts them in the top dropdown
+                // list. Panel switches use small positive sorts so
+                // they end up in the middle. The separator above
+                // Sign out comes from our custom user-menu view
+                // override at resources/views/vendor/filament-panels
+                // /components/user-menu.blade.php, which splits the
+                // after-theme-switcher section into two lists —
+                // one for regular items, one for logout alone.
+
+                MenuItem::make()
+                    ->label('Security')
+                    ->url(fn () => route('filament.admin.pages.security'))
+                    ->icon('heroicon-o-shield-check')
+                    ->sort(-10),
+
                 MenuItem::make()
                     ->label('Operator Workspace')
                     ->url(fn () => url('/operator'))
                     ->icon('heroicon-o-device-phone-mobile')
+                    ->sort(11)
                     ->visible(fn () => auth()->user()?->hasAnyPlatformRole() ?? false),
                 MenuItem::make()
                     ->label('Customer Portal')
                     ->url(fn () => url('/portal'))
                     ->icon('heroicon-o-globe-alt')
+                    ->sort(12)
                     // Only visible when the current user is attached to
                     // at least one real tenant team (dog-fooding). Super
                     // admin alone isn't enough — the portal is a tenant
@@ -90,35 +118,33 @@ class AdminPanelProvider extends PanelProvider
                     ->visible(fn () => auth()->user()?->belongsToAnyTenant() ?? false),
             ])
             ->navigationItems([
-                // Monitor group order:
-                //   1. Call Logs        (CallLogResource sort=1)
-                //   2. Logs & Metrics   Grafana
-                //   3. User Activity    Pulse
-                //   4. Queue Workers    Horizon
-                //   5. Application Debug Telescope
+                // Utilities group — external dashboards that open in
+                // their own tab. Separated from Monitor so the in-app
+                // monitor pages (Call Logs, Unrouted Mail) don't get
+                // mixed in with things that aren't Filament surfaces.
                 NavigationItem::make('Logs & Metrics')
                     ->url(fn () => 'http://'.request()->getHost().':3000', shouldOpenInNewTab: true)
                     ->icon('heroicon-o-presentation-chart-line')
-                    ->group('Monitor')
-                    ->sort(20)
+                    ->group('Utilities')
+                    ->sort(10)
                     ->visible(fn () => self::userCanAccessTool('tooling.grafana')),
                 NavigationItem::make('User Activity')
                     ->url(fn () => url('/pulse'), shouldOpenInNewTab: true)
                     ->icon('heroicon-o-chart-bar-square')
-                    ->group('Monitor')
-                    ->sort(21)
+                    ->group('Utilities')
+                    ->sort(11)
                     ->visible(fn () => self::userCanAccessTool('tooling.pulse')),
                 NavigationItem::make('Queue Workers')
                     ->url(fn () => url('/horizon'), shouldOpenInNewTab: true)
                     ->icon('heroicon-o-queue-list')
-                    ->group('Monitor')
-                    ->sort(22)
+                    ->group('Utilities')
+                    ->sort(12)
                     ->visible(fn () => self::userCanAccessTool('tooling.horizon')),
                 NavigationItem::make('Application Debug')
                     ->url(fn () => url('/telescope'), shouldOpenInNewTab: true)
                     ->icon('heroicon-o-magnifying-glass')
-                    ->group('Monitor')
-                    ->sort(23)
+                    ->group('Utilities')
+                    ->sort(13)
                     ->visible(fn () => self::userCanAccessTool('tooling.telescope')),
             ])
             ->middleware([
@@ -149,7 +175,19 @@ class AdminPanelProvider extends PanelProvider
             )
             ->renderHook(
                 PanelsRenderHook::BODY_START,
-                fn (): string => $this->renderStatusBar(),
+                // Status bar is only meaningful for logged-in
+                // platform staff (super_admin / operator /
+                // supervisor). The login page renders through this
+                // same panel context (see layouts.filament-simple),
+                // so without an auth check the bar leaks onto
+                // /login. Tenant portal users hitting an admin
+                // route would get bounced by PanelRedirect anyway,
+                // but we don't want a colored bar flashing during
+                // the redirect either — `hasAnyPlatformRole()`
+                // returns false for tenant-only users.
+                fn (): string => auth()->user()?->hasAnyPlatformRole()
+                    ? \Illuminate\Support\Facades\Blade::render('@livewire(\App\Livewire\SystemStatusBar::class)')
+                    : '',
             );
     }
 
@@ -170,37 +208,4 @@ class AdminPanelProvider extends PanelProvider
         return method_exists($user, 'hasPermissionTo') && $user->hasPermissionTo($permission);
     }
 
-    /**
-     * Read the cached system health snapshot and render a thin colored bar at
-     * the very top of the page: green = healthy, amber = degraded, red = outage.
-     * Reads cache only — never triggers fresh probes — so this is free on every
-     * page load. Hidden until the cache has been populated by a dashboard visit.
-     */
-    private function renderStatusBar(): string
-    {
-        $checks = \Illuminate\Support\Facades\Cache::get('system_health:checks');
-        if (! is_array($checks) || empty($checks)) {
-            return '';
-        }
-
-        $down = 0;
-        $warn = 0;
-        foreach ($checks as $c) {
-            if ($c->status === 'down') {
-                $down++;
-            } elseif ($c->status === 'warn') {
-                $warn++;
-            }
-        }
-
-        [$cls, $title] = match (true) {
-            $down > 0 => ['is-down', "{$down} service(s) down".($warn ? ", {$warn} degraded" : '')],
-            $warn > 0 => ['is-warn', "{$warn} service(s) degraded"],
-            default => ['is-ok', 'All systems operational'],
-        };
-
-        return <<<HTML
-            <div class="orbital-status-bar {$cls}" title="{$title}" aria-label="{$title}"></div>
-        HTML;
-    }
 }

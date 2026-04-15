@@ -98,6 +98,7 @@ class ManageTenantDirectory extends ManageRelatedRecords
         $columns[] = Tables\Columns\TextColumn::make('updated_at')
             ->label('Updated')
             ->dateTime()
+            ->timezone(fn () => auth()->user()?->displayTimezone() ?? config('app.timezone'))
             ->sortable()
             ->toggleable(isToggledHiddenByDefault: true);
 

@@ -40,6 +40,18 @@ return [
         'token' => env('AGENT_WORKER_TOKEN'),
     ],
 
+    /*
+     * Shared secret between the Haraka SMTP shim and the
+     * `/api/mail/inbound` webhook. Haraka sends it as
+     * `Authorization: Bearer {token}`. Rotate by setting
+     * INBOUND_MAIL_TOKEN in both the Laravel .env and the
+     * haraka service env in docker-compose.yml.
+     */
+    'inbound_mail' => [
+        'token' => env('INBOUND_MAIL_TOKEN'),
+        'domain' => env('INBOUND_MAIL_DOMAIN', 'inbound.orbital.test'),
+    ],
+
     'anthropic' => [
         'api_key' => env('ANTHROPIC_API_KEY'),
     ],

@@ -37,7 +37,7 @@ class PortalPanelProvider extends PanelProvider
         return $panel
             ->id('portal')
             ->path('portal')
-            ->profile(isSimple: false)
+            ->profile(page: \App\Filament\Auth\EditProfile::class, isSimple: false)
             ->brandName('Orbital')
             ->brandLogo(fn () => new HtmlString(
                 '<div class="orbital-brand">'
@@ -55,20 +55,31 @@ class PortalPanelProvider extends PanelProvider
             ])
             ->navigationGroups([
                 'Activity',
-                'Account',
             ])
             ->discoverPages(in: app_path('Filament/Portal/Pages'), for: 'App\\Filament\\Portal\\Pages')
-            ->pages([])
+            ->pages([
+                // Shared security page — 2FA, password, sessions.
+                \App\Filament\Pages\Security::class,
+            ])
             ->userMenuItems([
+                // Layout mirrors AdminPanelProvider — see that file
+                // for the full section layout explanation.
+                MenuItem::make()
+                    ->label('Security')
+                    ->url(fn () => route('filament.portal.pages.security'))
+                    ->icon('heroicon-o-shield-check')
+                    ->sort(-10),
                 MenuItem::make()
                     ->label('Admin Panel')
                     ->url(fn () => url('/admin'))
                     ->icon('heroicon-o-cog-6-tooth')
+                    ->sort(10)
                     ->visible(fn () => auth()->user()?->isSuperAdmin() ?? false),
                 MenuItem::make()
                     ->label('Operator Workspace')
                     ->url(fn () => url('/operator'))
                     ->icon('heroicon-o-device-phone-mobile')
+                    ->sort(11)
                     ->visible(fn () => auth()->user()?->hasAnyPlatformRole() ?? false),
             ])
             ->middleware([

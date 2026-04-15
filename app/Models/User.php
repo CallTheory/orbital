@@ -28,10 +28,24 @@ class User extends Authenticatable implements FilamentUser
     use Notifiable;
     use TwoFactorAuthenticatable;
 
+    /**
+     * The built-in "taking work" sentinel slug. Every other
+     * allowed value comes from the AvailabilityReason table,
+     * which super-admins manage under Platform → Availability
+     * Reasons. Only `available` is hard-coded because it's the
+     * implicit default state for operators who don't need a
+     * specific reason to be working.
+     */
+    public const AVAILABILITY_AVAILABLE = 'available';
+
     protected $fillable = [
         'name',
         'email',
         'password',
+        'timezone',
+        'locale',
+        'availability_status',
+        'availability_changed_at',
     ];
 
     protected $hidden = [
@@ -50,7 +64,60 @@ class User extends Authenticatable implements FilamentUser
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'availability_changed_at' => 'datetime',
         ];
+    }
+
+    /**
+     * True when this user should receive new work right now.
+     * Used by the Asterisk queue-member sync to pause routing
+     * and by the email inbox to hide new unclaimed threads.
+     *
+     * The built-in `available` state always qualifies. Any other
+     * status is a row in `availability_reasons`, and only blocks
+     * new work if that row's `blocks_new_work` flag is on — soft
+     * statuses (e.g. a "Back in 5" label) can leave it off so the
+     * operator still receives routing despite the visible label.
+     */
+    public function isAvailableForWork(): bool
+    {
+        if ($this->availability_status === self::AVAILABILITY_AVAILABLE) {
+            return true;
+        }
+
+        $reason = \App\Models\AvailabilityReason::query()
+            ->where('slug', $this->availability_status)
+            ->first();
+
+        return $reason !== null && ! $reason->blocks_new_work;
+    }
+
+    /**
+     * Preferred timezone for rendering dates to this user. Falls
+     * back to the platform default when the user hasn't picked
+     * one on their profile page. Pass the return value to
+     * Filament table/column `->timezone()` modifiers or Carbon's
+     * `->setTimezone()` at display time — database writes keep
+     * using UTC via `config('app.timezone')`.
+     */
+    public function displayTimezone(): string
+    {
+        return ! empty($this->timezone)
+            ? $this->timezone
+            : (string) config('app.timezone');
+    }
+
+    /**
+     * Preferred UI language for this user, falling back to the
+     * platform default when unset. The `ApplyUserPreferences`
+     * middleware calls `app()->setLocale()` with this value on
+     * every authenticated request.
+     */
+    public function displayLocale(): string
+    {
+        return ! empty($this->locale)
+            ? $this->locale
+            : (string) config('app.locale');
     }
 
     /**

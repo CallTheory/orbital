@@ -23,7 +23,7 @@ class SystemSetup extends Page
 {
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-wrench-screwdriver';
 
-    protected static string|UnitEnum|null $navigationGroup = 'Platform';
+    protected static string|UnitEnum|null $navigationGroup = 'Administration';
 
     protected static ?int $navigationSort = 6;
 

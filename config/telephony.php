@@ -24,8 +24,10 @@ return [
         'sip_domain' => env('ASTERISK_SIP_DOMAIN', '127.0.0.1'),
         'wss_url' => env('ASTERISK_WSS_URL', 'wss://127.0.0.1:8089/ws'),
 
-        // Path where generated configs are written (mounted into Asterisk container)
-        'config_path' => env('ASTERISK_CONFIG_PATH', '/home/user/projects/orbital/docker/asterisk/config'),
+        // Path where generated configs are written (mounted into Asterisk container).
+        // Resolved via base_path() so it works inside sail (/var/www/html/...)
+        // as well as the host shell — don't hard-code a machine-specific path.
+        'config_path' => env('ASTERISK_CONFIG_PATH', base_path('docker/asterisk/config')),
     ],
 
     /*

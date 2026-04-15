@@ -32,10 +32,22 @@ return new class extends Migration
     {
         Schema::create('contacts', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('team_id')->constrained()->cascadeOnDelete();
+
+            // Either team_id (tenant-private contact) OR
+            // shared_contact_list_id (shared platform-level contact
+            // attached to multiple tenants). Exactly one must be set;
+            // the CHECK constraint below enforces that. The global
+            // scope on the Contact model unions both sources so
+            // tenant queries see their own rows PLUS rows from any
+            // shared lists they're attached to via the pivot.
+            $table->foreignId('team_id')->nullable()->constrained()->cascadeOnDelete();
+            $table->foreignId('shared_contact_list_id')->nullable()
+                ->constrained('shared_contact_lists')->cascadeOnDelete();
 
             // Optional link to a login user. Null = notification-only
-            // contact; set = contact has portal access.
+            // contact; set = contact has portal access. Only meaningful
+            // on tenant-private rows — shared contacts don't own user
+            // sessions.
             $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
 
             // All field values live here, keyed by the slug of a
@@ -48,8 +60,21 @@ return new class extends Migration
             $table->softDeletes();
 
             $table->index('team_id');
+            $table->index('shared_contact_list_id');
             $table->index('user_id');
         });
+
+        // Exactly one parent must be set. Postgres CHECK constraint
+        // because the Laravel schema builder doesn't offer a nice
+        // idiom for it. Filament forms enforce the same rule at save
+        // time, but the DB is the source of truth.
+        \Illuminate\Support\Facades\DB::statement(<<<'SQL'
+            ALTER TABLE contacts ADD CONSTRAINT contacts_parent_exactly_one
+            CHECK (
+                (team_id IS NOT NULL AND shared_contact_list_id IS NULL)
+                OR (team_id IS NULL AND shared_contact_list_id IS NOT NULL)
+            )
+        SQL);
 
         // Tag library. Platform defaults live with team_id = null and
         // are seeded (billing, holiday, newsletter, escalation,

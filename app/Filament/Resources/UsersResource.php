@@ -8,11 +8,14 @@ use App\Filament\Resources\UsersResource\Pages;
 use App\Models\User;
 use BackedEnum;
 use Filament\Forms;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Password;
+use Laravel\Fortify\Actions\DisableTwoFactorAuthentication;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 use UnitEnum;
@@ -184,6 +187,7 @@ class UsersResource extends Resource
                     )->toHtml()),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
+                    ->timezone(fn () => auth()->user()?->displayTimezone() ?? config('app.timezone'))
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
@@ -192,6 +196,51 @@ class UsersResource extends Resource
             ])
             ->bulkActions([
                 \Filament\Actions\BulkActionGroup::make([
+                    \Filament\Actions\BulkAction::make('sendPasswordReset')
+                        ->label('Send password reset')
+                        ->icon('heroicon-o-envelope')
+                        ->color('gray')
+                        ->requiresConfirmation()
+                        ->modalHeading('Send password reset to selected users?')
+                        ->modalDescription('Each user will get a reset-link email that expires in 60 minutes.')
+                        ->deselectRecordsAfterCompletion()
+                        ->action(function (\Illuminate\Database\Eloquent\Collection $records) {
+                            $sent = 0;
+                            $failed = 0;
+                            foreach ($records as $user) {
+                                $status = Password::broker()->sendResetLink(['email' => $user->email]);
+                                $status === Password::RESET_LINK_SENT ? $sent++ : $failed++;
+                            }
+
+                            Notification::make()
+                                ->title("Password reset: {$sent} sent".($failed ? ", {$failed} failed" : ''))
+                                ->{$failed > 0 ? 'warning' : 'success'}()
+                                ->send();
+                        }),
+                    \Filament\Actions\BulkAction::make('resetTwoFactor')
+                        ->label('Reset 2FA')
+                        ->icon('heroicon-o-shield-exclamation')
+                        ->color('warning')
+                        ->requiresConfirmation()
+                        ->modalHeading('Reset two-factor authentication for selected users?')
+                        ->modalDescription('This disables 2FA on every selected account. Users with 2FA configured will be able to sign in with just their password until they re-enroll from their Security page. Users who never enrolled are unaffected.')
+                        ->modalSubmitActionLabel('Reset 2FA')
+                        ->deselectRecordsAfterCompletion()
+                        ->action(function (\Illuminate\Database\Eloquent\Collection $records) {
+                            $disabler = app(DisableTwoFactorAuthentication::class);
+                            $reset = 0;
+                            foreach ($records as $user) {
+                                if (! is_null($user->two_factor_secret)) {
+                                    $disabler($user);
+                                    $reset++;
+                                }
+                            }
+
+                            Notification::make()
+                                ->title("Two-factor authentication reset on {$reset} user(s)")
+                                ->success()
+                                ->send();
+                        }),
                     \Filament\Actions\DeleteBulkAction::make(),
                 ]),
             ]);

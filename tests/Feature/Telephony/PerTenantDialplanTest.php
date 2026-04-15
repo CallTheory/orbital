@@ -202,7 +202,7 @@ class PerTenantDialplanTest extends TestCase
         $svc = $this->mock(AsteriskConfigService::class);
         $svc->shouldReceive('writeDialplanForTenant')->once()->with($teamA->id);
         $svc->shouldReceive('reloadDialplan')->once()->andReturnTrue();
-        $svc->shouldNotReceive('writeConfigs');
+        $svc->shouldNotReceive('writeAllDialplans');
         $svc->shouldNotReceive('reloadAsterisk');
 
         $job->handle($svc);

@@ -43,10 +43,10 @@ class IntakeGoalLibrarySeeder extends Seeder
                 'icon' => 'heroicon-o-user',
                 'description' => 'Collect the caller\'s name and a reliable callback number.',
                 'talking_points' => [
-                    ['text' => 'Greet the caller warmly and thank them for calling.'],
-                    ['text' => 'Ask for the caller\'s full name.'],
-                    ['text' => 'Confirm the best number to reach them on if the call disconnects.'],
-                    ['text' => 'If appropriate, ask what company or relationship they\'re calling from.'],
+                    'Greet the caller warmly and thank them for calling.',
+                    'Ask for the caller\'s full name.',
+                    'Confirm the best number to reach them on if the call disconnects.',
+                    'If appropriate, ask what company or relationship they\'re calling from.',
                 ],
                 'data_fields' => [
                     ['key' => 'caller_name', 'label' => 'Caller name', 'type' => 'string', 'required' => true, 'hint' => 'First and last name.'],
@@ -64,9 +64,9 @@ class IntakeGoalLibrarySeeder extends Seeder
                 'icon' => 'heroicon-o-question-mark-circle',
                 'description' => 'Capture the caller\'s reason for calling in their own words, plus a rough urgency signal.',
                 'talking_points' => [
-                    ['text' => 'Ask what prompted the call today.'],
-                    ['text' => 'Listen without interrupting; let them finish.'],
-                    ['text' => 'Gauge urgency — is this a routine question or time-sensitive?'],
+                    'Ask what prompted the call today.',
+                    'Listen without interrupting; let them finish.',
+                    'Gauge urgency — is this a routine question or time-sensitive?',
                 ],
                 'data_fields' => [
                     ['key' => 'reason', 'label' => 'Reason for call', 'type' => 'textarea', 'required' => true, 'hint' => 'Caller\'s own words.'],
@@ -82,10 +82,10 @@ class IntakeGoalLibrarySeeder extends Seeder
                 'icon' => 'heroicon-o-envelope',
                 'description' => 'Record a message for a staff member who isn\'t available right now.',
                 'talking_points' => [
-                    ['text' => 'Let the caller know you\'ll take a message and make sure it gets to the right person.'],
-                    ['text' => 'Capture the message in the caller\'s own words.'],
-                    ['text' => 'Confirm whether a callback is expected and when is a good time.'],
-                    ['text' => 'Repeat the callback number back to verify.'],
+                    'Let the caller know you\'ll take a message and make sure it gets to the right person.',
+                    'Capture the message in the caller\'s own words.',
+                    'Confirm whether a callback is expected and when is a good time.',
+                    'Repeat the callback number back to verify.',
                 ],
                 'data_fields' => [
                     ['key' => 'recipient', 'label' => 'Message for', 'type' => 'string', 'required' => false, 'hint' => 'Staff member or department.'],
@@ -103,9 +103,9 @@ class IntakeGoalLibrarySeeder extends Seeder
                 'icon' => 'heroicon-o-calendar-days',
                 'description' => 'Propose callback windows and confirm a slot the caller is comfortable with.',
                 'talking_points' => [
-                    ['text' => 'Offer two or three callback windows to choose from.'],
-                    ['text' => 'Confirm the selected window back to the caller.'],
-                    ['text' => 'Note any access restrictions (e.g. "do not call before 10am").'],
+                    'Offer two or three callback windows to choose from.',
+                    'Confirm the selected window back to the caller.',
+                    'Note any access restrictions (e.g. "do not call before 10am").',
                 ],
                 'data_fields' => [
                     ['key' => 'preferred_window', 'label' => 'Preferred callback window', 'type' => 'string', 'required' => true],
@@ -122,9 +122,9 @@ class IntakeGoalLibrarySeeder extends Seeder
                 'icon' => 'heroicon-o-arrow-right-circle',
                 'description' => 'Route the caller to a specific extension, number, or department.',
                 'talking_points' => [
-                    ['text' => 'Confirm the destination with the caller before transferring.'],
-                    ['text' => 'Let them know they may need to re-introduce themselves on the other end.'],
-                    ['text' => 'For warm transfers, stay on the line until the destination answers.'],
+                    'Confirm the destination with the caller before transferring.',
+                    'Let them know they may need to re-introduce themselves on the other end.',
+                    'For warm transfers, stay on the line until the destination answers.',
                 ],
                 'data_fields' => [
                     ['key' => 'destination', 'label' => 'Destination', 'type' => 'string', 'required' => true, 'hint' => 'Extension, number, or department name.'],
@@ -144,9 +144,9 @@ class IntakeGoalLibrarySeeder extends Seeder
                 'icon' => 'heroicon-o-book-open',
                 'description' => 'Look up information in the tenant\'s knowledge store and answer the caller\'s question from it.',
                 'talking_points' => [
-                    ['text' => 'Ask the caller to phrase their question clearly.'],
-                    ['text' => 'Search the knowledge store and answer only from what you find.'],
-                    ['text' => 'If nothing matches, offer to take a message for a human follow-up.'],
+                    'Ask the caller to phrase their question clearly.',
+                    'Search the knowledge store and answer only from what you find.',
+                    'If nothing matches, offer to take a message for a human follow-up.',
                 ],
                 'data_fields' => [
                     ['key' => 'question', 'label' => 'Question asked', 'type' => 'textarea', 'required' => true],
@@ -162,9 +162,9 @@ class IntakeGoalLibrarySeeder extends Seeder
                 'icon' => 'heroicon-o-identification',
                 'description' => 'Check whether the caller is an existing customer using a lookup key.',
                 'talking_points' => [
-                    ['text' => 'Ask for the account number or the phone number on file.'],
-                    ['text' => 'Verify one additional piece of information to confirm identity.'],
-                    ['text' => 'If verification fails, fall back to taking a message for staff.'],
+                    'Ask for the account number or the phone number on file.',
+                    'Verify one additional piece of information to confirm identity.',
+                    'If verification fails, fall back to taking a message for staff.',
                 ],
                 'data_fields' => [
                     ['key' => 'lookup_value', 'label' => 'Lookup value', 'type' => 'string', 'required' => true, 'hint' => 'Account #, phone, or email.'],
@@ -183,10 +183,10 @@ class IntakeGoalLibrarySeeder extends Seeder
                 'icon' => 'heroicon-o-shield-exclamation',
                 'description' => 'Calmly de-escalate a frustrated caller and offer a path forward.',
                 'talking_points' => [
-                    ['text' => 'Acknowledge the frustration without agreeing or disagreeing.'],
-                    ['text' => 'Thank them for telling you.'],
-                    ['text' => 'Offer to take a message for a supervisor or manager.'],
-                    ['text' => 'If they become abusive, warn once and then politely end the call.'],
+                    'Acknowledge the frustration without agreeing or disagreeing.',
+                    'Thank them for telling you.',
+                    'Offer to take a message for a supervisor or manager.',
+                    'If they become abusive, warn once and then politely end the call.',
                 ],
                 'data_fields' => [
                     ['key' => 'concern_summary', 'label' => 'Concern summary', 'type' => 'textarea', 'required' => true],

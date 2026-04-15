@@ -14,6 +14,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [
             \App\Http\Middleware\SetPermissionsTeamContext::class,
+            \App\Http\Middleware\ApplyUserPreferences::class,
         ]);
 
         $middleware->alias([
@@ -23,6 +24,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'check.role' => \App\Http\Middleware\CheckRole::class,
             'platform.role' => \App\Http\Middleware\RequirePlatformRole::class,
             'panel.redirect' => \App\Http\Middleware\PanelRedirect::class,
+            'inbound-mail-token' => \App\Http\Middleware\VerifyInboundMailToken::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

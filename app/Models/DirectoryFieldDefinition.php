@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
-use App\Models\Concerns\BelongsToTeam;
+use App\Models\Concerns\BelongsToTeamOrSharedPool;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -15,7 +15,10 @@ use Illuminate\Database\Eloquent\Model;
  */
 class DirectoryFieldDefinition extends Model
 {
-    use BelongsToTeam;
+    use BelongsToTeamOrSharedPool;
+
+    public const SHARED_PARENT_COLUMN = 'shared_directory_id';
+    public const TEAM_SHARED_PIVOT_TABLE = 'team_shared_directory';
 
     public const TYPES = [
         'text',
@@ -35,6 +38,7 @@ class DirectoryFieldDefinition extends Model
 
     protected $fillable = [
         'team_id',
+        'shared_directory_id',
         'key',
         'label',
         'type',

@@ -3,11 +3,26 @@
 use App\Jobs\PruneExpiredCallRecordingsJob;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schedule;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
+
+// Heartbeat touched every minute by the scheduler. The system health
+// dashboard alarms if this key goes stale — it's the only thing that
+// catches a crashed/unstarted scheduler container, since nothing else
+// depends on it at minute granularity.
+//
+// Stored forever, not with a TTL: the value's age is the signal we
+// read, and expiring the key would silently reset the DOWN card
+// back to "no heartbeat yet" (WARN) once the TTL elapsed, hiding a
+// long-dead scheduler behind a "still starting" message.
+Schedule::call(fn () => Cache::forever('scheduler:heartbeat', now()->toIso8601String()))
+    ->everyMinute()
+    ->name('scheduler-heartbeat')
+    ->withoutOverlapping();
 
 // Walk every call log past its tenant's retention window, delete the
 // S3 objects, and null the columns. Runs at 03:15 local so overnight

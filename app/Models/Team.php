@@ -101,6 +101,21 @@ class Team extends JetstreamTeam
         return $this->hasMany(RoutingRule::class);
     }
 
+    public function emailRoutingRules(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(EmailRoutingRule::class);
+    }
+
+    public function emailQueues(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(EmailQueue::class);
+    }
+
+    public function emailThreads(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(EmailThread::class);
+    }
+
     public function callLogs(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(CallLog::class);
@@ -166,6 +181,35 @@ class Team extends JetstreamTeam
     public function directoryFieldDefinitions(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(DirectoryFieldDefinition::class)->orderBy('sort_order');
+    }
+
+    /**
+     * Platform-level shared contact lists this tenant is
+     * subscribed to. Managed by super-admins under
+     * `/admin/shared-contact-lists`. The `is_active` pivot flag
+     * lets a super-admin temporarily detach a list without
+     * destroying the link. The Contact global scope checks
+     * this pivot via subquery to union shared rows into
+     * tenant-scoped queries.
+     */
+    public function sharedContactLists(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(SharedContactList::class, 'team_shared_contact_list')
+            ->withPivot('is_active')
+            ->withTimestamps();
+    }
+
+    /**
+     * Platform-level shared directories this tenant is
+     * subscribed to. Same pattern as sharedContactLists but
+     * targeting the "phone book used during call handling"
+     * side of the split.
+     */
+    public function sharedDirectories(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(SharedDirectory::class, 'team_shared_directory')
+            ->withPivot('is_active')
+            ->withTimestamps();
     }
 
     /**

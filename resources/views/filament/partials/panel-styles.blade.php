@@ -192,6 +192,100 @@
         margin-bottom: 0.375rem;
     }
 
+    /* Per-account security page forms (/{panel}/security).
+       Filament's bundled CSS doesn't ship arbitrary Tailwind
+       spacing utilities, so these classes give the 2FA / password
+       / sessions forms proper vertical rhythm without pulling
+       the app Tailwind bundle into every Filament page. */
+    .orbital-form-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+    .orbital-form-field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    .orbital-form-field label {
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: rgb(55 65 81);
+    }
+    .dark .orbital-form-field label {
+        color: rgb(209 213 219);
+    }
+    .orbital-form-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.5rem;
+        margin-top: 0.5rem;
+    }
+    .orbital-section-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+    .orbital-text-muted {
+        font-size: 0.875rem;
+        line-height: 1.5;
+        color: rgb(75 85 99);
+    }
+    .dark .orbital-text-muted {
+        color: rgb(156 163 175);
+    }
+
+    /* Operator availability pill — rendered in the operator panel
+       topbar via the TOPBAR_END render hook. Dot color tracks the
+       operator's work status so it's readable at a glance without
+       opening the dropdown. Available = green, everything else =
+       amber/gray "don't ring me" states. */
+    .orbital-availability {
+        display: inline-flex;
+        align-items: center;
+    }
+    .orbital-availability-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.375rem 0.75rem;
+        background: var(--gray-50);
+        border: 1px solid var(--gray-200);
+        border-radius: 9999px;
+        cursor: pointer;
+    }
+    .dark .orbital-availability-label {
+        background: var(--gray-900);
+        border-color: var(--gray-700);
+    }
+    .orbital-availability-label:hover {
+        border-color: var(--gray-300);
+    }
+    .dark .orbital-availability-label:hover {
+        border-color: var(--gray-600);
+    }
+    .orbital-availability-dot {
+        width: 0.625rem;
+        height: 0.625rem;
+        border-radius: 9999px;
+        flex-shrink: 0;
+        /* Actual color is painted via inline style from the
+           admin's color picker. No fixed palette here —
+           whatever hex the admin saved on AvailabilityReason.dot_color
+           is rendered directly on the element. */
+    }
+    .orbital-availability-select {
+        background: none;
+        border: 0;
+        color: inherit;
+        font: inherit;
+        font-size: 0.875rem;
+        font-weight: 500;
+        cursor: pointer;
+        padding: 0 0.25rem;
+        outline: none;
+    }
+
     /* Card-footer action row. Used by /admin/setup cards (and any
        other section with a single trailing button) so the button
        doesn't butt up against the preceding metrics list. Border +
@@ -206,6 +300,125 @@
     .dark .orbital-card-actions {
         border-top-color: var(--gray-800);
     }
+
+    /* Dashboard health-check card body. Keeps every card the same
+       shape regardless of metric count — a one-line message with
+       an optional Details button. Metrics themselves live in the
+       click-to-open modal below so the grid row never has to
+       stretch to accommodate the Asterisk card's five probes vs.
+       a simple one-metric card. */
+    .orbital-card-body {
+        display: flex;
+        flex-direction: column;
+        min-height: 4rem;
+    }
+    .orbital-card-message {
+        font-size: 0.875rem;
+        color: var(--gray-600);
+        line-height: 1.4;
+        flex: 1;
+    }
+    .dark .orbital-card-message {
+        color: var(--gray-400);
+    }
+    .orbital-card-details-btn {
+        background: none;
+        border: 0;
+        padding: 0;
+        margin-top: 0.75rem;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        color: var(--primary-600);
+        cursor: pointer;
+        align-self: flex-end;
+        font-family: inherit;
+    }
+    .orbital-card-details-btn:hover {
+        color: var(--primary-700);
+        text-decoration: underline;
+    }
+    .dark .orbital-card-details-btn {
+        color: var(--primary-400);
+    }
+    .dark .orbital-card-details-btn:hover {
+        color: var(--primary-300);
+    }
+
+    /* Click-to-open metric detail modal. Fixed, centered, closes on
+       backdrop click or Escape. Used by the dashboard health cards
+       so metrics stay tucked away until an operator specifically
+       wants to see them. */
+    .orbital-modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.55);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5rem;
+        z-index: 60;
+    }
+    .orbital-modal {
+        width: 100%;
+        max-width: 32rem;
+        max-height: calc(100vh - 3rem);
+        background: white;
+        color: var(--gray-900);
+        border: 1px solid var(--gray-200);
+        border-radius: 0.75rem;
+        box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.35);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+    .dark .orbital-modal {
+        background: var(--gray-900);
+        color: var(--gray-100);
+        border-color: var(--gray-800);
+    }
+    .orbital-modal-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid var(--gray-200);
+    }
+    .dark .orbital-modal-header {
+        border-bottom-color: var(--gray-800);
+    }
+    .orbital-modal-title {
+        font-size: 1rem;
+        font-weight: 600;
+    }
+    .orbital-modal-close {
+        background: none;
+        border: 0;
+        font-size: 1.125rem;
+        line-height: 1;
+        color: var(--gray-500);
+        cursor: pointer;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.25rem;
+    }
+    .orbital-modal-close:hover {
+        color: var(--gray-900);
+        background: var(--gray-100);
+    }
+    .dark .orbital-modal-close:hover {
+        color: var(--gray-100);
+        background: var(--gray-800);
+    }
+    .orbital-modal-body {
+        padding: 1.25rem;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    .orbital-modal-body .orbital-card-metrics {
+        margin-top: 0;
+        padding-top: 0;
+    }
 </style>
 @endverbatim
 
@@ -215,3 +428,88 @@
      first is a hard requirement: a site without public internet still
      needs to be able to place calls and browse the admin UI. --}}
 @vite(['resources/js/app.js'])
+
+{{-- Sidebar Status nav-item sync.
+
+     The Dashboards → Status nav entry shows a badge reflecting
+     the cached system-health state. Filament's sidebar is server-
+     rendered on full page loads only, so without this script the
+     badge would freeze at whatever state it was in when the user
+     navigated to the page and never update until the next full
+     reload. The `SystemStatusBar` Livewire component polls every
+     60s + listens for `system-health-updated`, and on every
+     refresh it dispatches `orbital-status-update` as a Livewire
+     browser event. This listener catches it and patches the
+     sidebar entry's badge text + fi-color-* class in place so all
+     three surfaces (nav badge, top-of-page bar, dashboard cards)
+     stay in lockstep without a reload. --}}
+<script>
+    (function () {
+        // Only these four are valid Filament color slugs for the
+        // fi-color-* class. Anything else (undefined, empty, a
+        // typo) gets rejected by the patch so we can never
+        // accidentally strip the badge's color and leave it in
+        // the grayscale fallback state.
+        var VALID_COLORS = ['success', 'warning', 'danger', 'gray'];
+
+        function patchStatusNavItem(badge, color) {
+            // Guard #1: reject malformed payloads outright. If
+            // Livewire ever dispatches with missing named args
+            // (happened intermittently on wire:poll re-renders),
+            // we keep whatever the badge's current classes are
+            // rather than stripping them and applying nothing.
+            if (typeof color !== 'string' || VALID_COLORS.indexOf(color) === -1) {
+                return;
+            }
+
+            // Scope the selector to sidebar items so we don't
+            // accidentally grab a breadcrumb or user-menu link
+            // that also points at /admin. The Status page is the
+            // panel root, so its href ends with `/admin`.
+            var link = document.querySelector('.fi-sidebar-item a[href$="/admin"]');
+            if (!link) return;
+
+            var container = link.closest('.fi-sidebar-item') || link.parentElement;
+            if (!container) return;
+
+            var badgeEl = container.querySelector('.fi-badge');
+            var labelEl = container.querySelector('.fi-badge-label');
+
+            // Guard #2: only write the label if the payload
+            // brought one. An undefined badge text would clear
+            // the span and look like a blank pill.
+            if (labelEl && typeof badge === 'string' && badge.length > 0) {
+                labelEl.textContent = badge;
+            }
+
+            if (badgeEl) {
+                // Strip any existing fi-color-* class and apply
+                // the new one. Done as two passes so we never
+                // transiently have the wrong color class applied.
+                VALID_COLORS.forEach(function (c) {
+                    badgeEl.classList.remove('fi-color-' + c);
+                });
+                badgeEl.classList.add('fi-color-' + color);
+            }
+        }
+
+        // Hook into Livewire's event bus once it's ready.
+        // `system-health-updated` is already dispatched by the
+        // Dashboard page refresh + the status bar's poll cycle;
+        // we hang the nav-item update off the same event so the
+        // sidebar, bar, and cards all tick together.
+        document.addEventListener('livewire:init', function () {
+            if (typeof window.Livewire === 'undefined') return;
+            window.Livewire.on('orbital-status-update', function (params) {
+                // Livewire 3 normally passes the detail object
+                // directly as the first callback arg, but some
+                // poll/re-render paths wrap it in an array —
+                // handle both. Anything beyond that just falls
+                // through the guard in patchStatusNavItem.
+                var data = Array.isArray(params) ? params[0] : params;
+                if (! data || typeof data !== 'object') return;
+                patchStatusNavItem(data.badge, data.color);
+            });
+        });
+    })();
+</script>

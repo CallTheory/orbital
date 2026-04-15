@@ -98,6 +98,7 @@ return [
 
     'waits' => [
         'redis:default' => 60,
+        'redis:inbound-mail' => 120,
     ],
 
     /*
@@ -210,6 +211,30 @@ return [
             'timeout' => 60,
             'nice' => 0,
         ],
+
+        // Dedicated supervisor for the inbound-mail queue so a flood
+        // of incoming email never competes with the default queue
+        // (telephony jobs, ARA syncs, roll-ups, etc.) for workers.
+        // Separate supervisor also lets operators pause mail
+        // processing independently in the Horizon dashboard if
+        // something goes wrong with a spammy sender.
+        'supervisor-inbound-mail' => [
+            'connection' => 'redis',
+            'queue' => ['inbound-mail'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'time',
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 128,
+            // ProcessInboundEmailJob defines its own retry policy
+            // (tries=3, exponential backoff) — let the job win.
+            'tries' => 3,
+            // Parsing + MinIO round-trip should never exceed 30s
+            // even for fat messages with large attachments.
+            'timeout' => 60,
+            'nice' => 0,
+        ],
     ],
 
     'environments' => [
@@ -219,11 +244,19 @@ return [
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],
+            'supervisor-inbound-mail' => [
+                'maxProcesses' => 5,
+                'balanceMaxShift' => 1,
+                'balanceCooldown' => 3,
+            ],
         ],
 
         'local' => [
             'supervisor-1' => [
                 'maxProcesses' => 3,
+            ],
+            'supervisor-inbound-mail' => [
+                'maxProcesses' => 2,
             ],
         ],
     ],

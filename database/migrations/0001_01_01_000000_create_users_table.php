@@ -20,6 +20,25 @@ return new class extends Migration
             $table->rememberToken();
             $table->foreignId('current_team_id')->nullable();
             $table->string('profile_photo_path', 2048)->nullable();
+            // Per-user preferences: UI renders dates in the user's
+            // timezone and strings in their locale. Both nullable
+            // so a freshly-seeded user falls through to config('app.timezone')
+            // / config('app.locale') until they set their own on the
+            // profile page.
+            $table->string('timezone', 64)->nullable();
+            $table->string('locale', 16)->nullable();
+            // Operator availability — the "am I taking work right now"
+            // toggle shown in the operator panel topbar. Defaults to
+            // `offline_manual` so freshly-created or freshly-seeded
+            // operators have to explicitly flip themselves to
+            // `available` before they start getting routed work.
+            // Less surprising than being thrown into rotation on
+            // first login. The selector is populated from the
+            // availability_reasons table; `available` is always the
+            // implicit "taking work" state and lives outside that
+            // table so tenants can't accidentally delete it.
+            $table->string('availability_status', 32)->default('offline_manual');
+            $table->timestamp('availability_changed_at')->nullable();
             $table->timestamps();
         });
 

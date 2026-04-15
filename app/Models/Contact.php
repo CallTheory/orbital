@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
-use App\Models\Concerns\BelongsToTeam;
+use App\Models\Concerns\BelongsToTeamOrSharedPool;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -30,11 +30,26 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  */
 class Contact extends Model
 {
-    use BelongsToTeam;
+    use BelongsToTeamOrSharedPool;
     use SoftDeletes;
+
+    /**
+     * Column that points at the platform-level container when a
+     * row is shared. Read by the BelongsToTeamOrSharedPool trait
+     * to union shared rows into tenant-scoped queries.
+     */
+    public const SHARED_PARENT_COLUMN = 'shared_contact_list_id';
+
+    /**
+     * Pivot table linking tenants to the shared contact lists
+     * they're subscribed to. Read by the trait's global scope
+     * to resolve which shared rows a tenant can see.
+     */
+    public const TEAM_SHARED_PIVOT_TABLE = 'team_shared_contact_list';
 
     protected $fillable = [
         'team_id',
+        'shared_contact_list_id',
         'user_id',
         'values',
     ];
@@ -127,11 +142,29 @@ class Contact extends Model
             return $this->resolvedRoleFields[$role];
         }
 
-        $this->resolvedRoleFields[$role] = ContactFieldDefinition::query()
-            ->where('team_id', $this->team_id)
+        // Parent-scoped lookup: tenant-private contacts use the
+        // tenant's own field definitions; shared contacts use
+        // their shared list's own definitions. The resolver is
+        // scoped to whichever parent the row has.
+        //
+        // Bypassing the global scope because the definitions
+        // table ALSO uses BelongsToTeamOrSharedPool and would
+        // otherwise OR in shared definitions via the pivot
+        // lookup — we want a strict parent-owned lookup here,
+        // not the unified tenant-view.
+        $query = ContactFieldDefinition::withoutGlobalScope('team')
             ->where('role', $role)
-            ->where('is_active', true)
-            ->first();
+            ->where('is_active', true);
+
+        if ($this->shared_contact_list_id !== null) {
+            $query->where('shared_contact_list_id', $this->shared_contact_list_id)
+                  ->whereNull('team_id');
+        } else {
+            $query->where('team_id', $this->team_id)
+                  ->whereNull('shared_contact_list_id');
+        }
+
+        $this->resolvedRoleFields[$role] = $query->first();
 
         return $this->resolvedRoleFields[$role];
     }

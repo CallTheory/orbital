@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Health;
 
+use App\Models\HealthCheckAcknowledgment;
 use App\Models\SipTrunk;
-use App\Models\User;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
@@ -63,6 +63,16 @@ class SystemHealthService
                 config('services.ollama.url') ?: 'http://ollama:11434',
                 11434,
             ),
+            'mail' => [
+                'host' => (string) (config('mail.mailers.smtp.host') ?: 'mailpit'),
+                'port' => (int) (config('mail.mailers.smtp.port') ?: 1025),
+            ],
+            'promtail' => ['host' => 'promtail', 'port' => 9080],
+            // Haraka SMTP shim — inbound mail gateway. TCP probe on
+            // its SMTP listener (port 25 inside the container). Not
+            // optional: once we depend on Haraka for inbound email,
+            // it being down is a real outage.
+            'haraka' => ['host' => 'haraka', 'port' => 25],
         ]);
 
         $checks = [
@@ -70,18 +80,28 @@ class SystemHealthService
             $this->checkValkey(),
             $this->checkAppDisk(),
             $this->checkAsterisk($probes, $asteriskHost),
-            $this->probeResultToCheck($probes['livekit'], 'livekit', 'LiveKit', 'Media', 'WebRTC server', 'heroicon-o-signal'),
-            $this->probeResultToCheck($probes['livekit_sip'], 'livekit_sip', 'LiveKit SIP', 'Telephony', 'SIP bridge', 'heroicon-o-arrows-right-left'),
+            $this->probeResultToCheck($probes['livekit'], 'livekit', 'LiveKit', 'Media', 'LiveKit WebRTC server', 'heroicon-o-signal'),
+            $this->probeResultToCheck($probes['livekit_sip'], 'livekit_sip', 'LiveKit SIP', 'Telephony', 'LiveKit SIP bridge', 'heroicon-o-arrows-right-left'),
             $this->checkAgentWorker(),
-            $this->probeResultToCheck($probes['icecast'], 'icecast', 'Icecast', 'Media', 'Hold-music server', 'heroicon-o-musical-note', optional: true),
+            $this->probeResultToCheck($probes['icecast'], 'icecast', 'Icecast', 'Media', 'Streaming hold music server', 'heroicon-o-musical-note', optional: true),
             $this->checkSipTrunks(),
-            $this->checkOnlineOperators(),
-            $this->probeResultToCheck($probes['prometheus'], 'prometheus', 'Prometheus', 'Observability', 'Metrics collector', 'heroicon-o-chart-bar'),
-            $this->probeResultToCheck($probes['loki'], 'loki', 'Loki', 'Observability', 'Log aggregator', 'heroicon-o-document-text'),
-            $this->probeResultToCheck($probes['grafana'], 'grafana', 'Grafana', 'Observability', 'Dashboard UI', 'heroicon-o-presentation-chart-line'),
+            $this->probeResultToCheck($probes['prometheus'], 'prometheus', 'Prometheus', 'Observability', 'Metrics collector for Grafana', 'heroicon-o-chart-bar'),
+            $this->probeResultToCheck($probes['loki'], 'loki', 'Loki', 'Observability', 'Log aggregator for Grafana', 'heroicon-o-document-text'),
+            $this->probeResultToCheck($probes['grafana'], 'grafana', 'Grafana', 'Observability', 'Grafana dashboard', 'heroicon-o-presentation-chart-line'),
             $this->probeResultToCheck($probes['minio'], 'minio', 'MinIO', 'Storage', 'S3-compatible object storage', 'heroicon-o-archive-box'),
-            $this->probeResultToCheck($probes['ollama'], 'ollama', 'Ollama', 'AI', 'Local embeddings & inference', 'heroicon-o-cpu-chip', optional: true),
+            $this->probeResultToCheck($probes['ollama'], 'ollama', 'Ollama', 'AI', 'Local embeddings and inference server', 'heroicon-o-cpu-chip', optional: true),
+            $this->probeResultToCheck($probes['mail'], 'mail', 'Mail', 'System', 'Outbound SMTP relay', 'heroicon-o-envelope'),
+            $this->probeResultToCheck($probes['haraka'], 'haraka', 'Inbound Mail', 'Mail', 'Haraka Inbound SMTP gateway', 'heroicon-o-envelope-open'),
+            $this->probeResultToCheck($probes['promtail'], 'promtail', 'Promtail', 'Observability', 'Log shipper feeding Loki', 'heroicon-o-paper-airplane', optional: true),
+            $this->checkHorizon(),
+            $this->checkScheduler(),
         ];
+
+        // Layer active acknowledgments onto the raw results.
+        // Cards keep their true status for display; effectiveStatus()
+        // is what aggregate rollup reads, so acked cards count as
+        // OK for the nav badge / status bar / summary.
+        $checks = $this->applyAcknowledgments($checks);
 
         Cache::put('system_health:checks', $checks, now()->addSeconds(60));
 
@@ -89,28 +109,111 @@ class SystemHealthService
     }
 
     /**
+     * Look up every active ack, attach the ack metadata to any
+     * check whose key matches, and auto-clear acks whose
+     * underlying check has returned to OK on its own.
+     *
+     * Auto-clear is what makes the ack "sticky until recovery"
+     * — the operator doesn't have to remember to toggle it off
+     * when the maintenance window ends and the component comes
+     * back. Manually cleared acks stay in the audit log via
+     * `cleared_by_user_id` being set; auto-cleared acks have
+     * `cleared_by_user_id = null` so the history distinguishes
+     * them.
+     *
+     * @param  array<int, HealthCheck>  $checks
+     * @return array<int, HealthCheck>
+     */
+    private function applyAcknowledgments(array $checks): array
+    {
+        $activeAcks = HealthCheckAcknowledgment::active()
+            ->get()
+            ->keyBy('check_key');
+
+        if ($activeAcks->isEmpty()) {
+            return $checks;
+        }
+
+        $out = [];
+        foreach ($checks as $check) {
+            $ack = $activeAcks->get($check->key);
+
+            if ($ack === null) {
+                $out[] = $check;
+                continue;
+            }
+
+            // Auto-clear: if the underlying check is back to OK
+            // on its own, the ack has served its purpose. Stamp
+            // cleared_at with a null cleared_by_user_id so the
+            // audit log distinguishes it from manual clears.
+            if ($check->isOk()) {
+                $ack->forceFill([
+                    'cleared_at' => now(),
+                    'cleared_by_user_id' => null,
+                ])->save();
+                $out[] = $check;
+                continue;
+            }
+
+            // Active ack on a non-OK check → attach metadata so
+            // the card renders the "Acknowledged by {name}" note
+            // and summarize() rolls it up as OK.
+            $out[] = $check->withAck([
+                'id' => $ack->id,
+                'user_name' => $ack->acknowledgedBy?->name ?? 'Unknown',
+                'acknowledged_at' => $ack->acknowledged_at->toIso8601String(),
+                'reason' => $ack->reason,
+            ]);
+        }
+
+        return $out;
+    }
+
+    /**
      * @param  array<int, HealthCheck>  $checks
      */
     public function summarize(array $checks): array
     {
+        // Aggregate counts use effectiveStatus() so acknowledged
+        // cards roll up as OK — the top bar / nav badge / summary
+        // label all stay green during planned maintenance even
+        // though individual cards still display their raw state.
         $down = 0;
         $warn = 0;
         foreach ($checks as $c) {
-            if ($c->isDown()) {
+            $status = $c->effectiveStatus();
+            if ($status === HealthCheck::DOWN) {
                 $down++;
-            } elseif ($c->isWarn()) {
+            } elseif ($status === HealthCheck::WARN) {
                 $warn++;
             }
         }
 
+        // Labels kept in lockstep with HealthCheck::statusLabel(),
+        // the nav badge (Dashboard::getNavigationBadge), and the
+        // status bar dispatch (SystemStatusBar::load). One
+        // vocabulary everywhere: Operational / Degraded / Outage.
         if ($down > 0) {
-            return ['status' => HealthCheck::DOWN, 'label' => 'Outage', 'message' => "{$down} service(s) down".($warn ? ", {$warn} degraded" : '')];
+            return [
+                'status' => HealthCheck::DOWN,
+                'label' => 'Problem',
+                'message' => "{$down} component(s) with problems".($warn ? ", {$warn} degraded" : ''),
+            ];
         }
         if ($warn > 0) {
-            return ['status' => HealthCheck::WARN, 'label' => 'Degraded', 'message' => "{$warn} service(s) degraded"];
+            return [
+                'status' => HealthCheck::WARN,
+                'label' => 'Degraded',
+                'message' => "{$warn} component(s) degraded",
+            ];
         }
 
-        return ['status' => HealthCheck::OK, 'label' => 'All systems operational', 'message' => 'Every check is passing.'];
+        return [
+            'status' => HealthCheck::OK,
+            'label' => 'OK',
+            'message' => 'Every check is passing.',
+        ];
     }
 
     private function checkPostgres(): HealthCheck
@@ -126,7 +229,7 @@ class SystemHealthService
                 name: 'PostgreSQL',
                 category: 'Data',
                 status: HealthCheck::OK,
-                message: 'Connected and responsive.',
+                message: 'Primary relational database',
                 metrics: ['Version' => $version, 'DB size' => $size],
                 icon: 'heroicon-o-circle-stack',
             );
@@ -159,7 +262,7 @@ class SystemHealthService
                 name: 'Valkey',
                 category: 'Data',
                 status: HealthCheck::OK,
-                message: 'Cache, queue, and session backend reachable.',
+                message: 'In-memory key-value store',
                 metrics: ['Used' => $used ?? '—', 'Peak' => $peak ?? '—'],
                 icon: 'heroicon-o-bolt',
             );
@@ -194,11 +297,7 @@ class SystemHealthService
                 default => HealthCheck::OK,
             };
 
-            $message = match ($status) {
-                HealthCheck::DOWN => 'Disk is critically full.',
-                HealthCheck::WARN => 'Disk usage is high.',
-                default => 'Plenty of headroom.',
-            };
+            $message = 'Application container disk';
 
             return new HealthCheck(
                 key: 'app_disk',
@@ -263,7 +362,7 @@ class SystemHealthService
                 name: 'Asterisk',
                 category: 'Telephony',
                 status: HealthCheck::DOWN,
-                message: "AMI unreachable at {$host}:5038 — Asterisk is down or unreachable from the app container.",
+                message: "AMI unreachable at {$host}:5038 — Asterisk is down or unreachable from the app container",
                 metrics: $metrics,
                 icon: 'heroicon-o-phone-arrow-up-right',
             );
@@ -276,7 +375,7 @@ class SystemHealthService
                 name: 'Asterisk',
                 category: 'Telephony',
                 status: HealthCheck::OK,
-                message: 'AMI, SIP (UDP/TCP/TLS), and WSS all reachable.',
+                message: 'Asterisk PBX and SIP server',
                 metrics: $metrics,
                 icon: 'heroicon-o-phone-arrow-up-right',
             );
@@ -298,7 +397,7 @@ class SystemHealthService
             name: 'Asterisk',
             category: 'Telephony',
             status: HealthCheck::WARN,
-            message: 'Process up (AMI reachable) but some transports are not bound: '.implode(', ', $down).'.',
+            message: 'Process up (AMI reachable) but some transports are not bound: '.implode(', ', $down),
             metrics: $metrics,
             icon: 'heroicon-o-phone-arrow-up-right',
         );
@@ -314,7 +413,7 @@ class SystemHealthService
                 name: 'Agent Worker',
                 category: 'AI',
                 status: HealthCheck::WARN,
-                message: 'No heartbeat reported. Worker may not be configured to report.',
+                message: 'No heartbeat reported — worker may not be configured to report',
                 icon: 'heroicon-o-cpu-chip',
             );
         }
@@ -335,8 +434,8 @@ class SystemHealthService
             category: 'AI',
             status: $status,
             message: $status === HealthCheck::OK
-                ? 'Reporting heartbeats normally.'
-                : "Last heartbeat {$age}s ago.",
+                ? 'Python LiveKit AI agent worker'
+                : "Last heartbeat {$age}s ago",
             metrics: ['Last seen' => "{$age}s ago"],
             icon: 'heroicon-o-cpu-chip',
         );
@@ -354,7 +453,7 @@ class SystemHealthService
                     name: 'SIP Trunks',
                     category: 'Telephony',
                     status: HealthCheck::WARN,
-                    message: 'No SIP trunks configured yet.',
+                    message: 'No SIP trunks configured yet',
                     icon: 'heroicon-o-link',
                 );
             }
@@ -364,7 +463,7 @@ class SystemHealthService
                 name: 'SIP Trunks',
                 category: 'Telephony',
                 status: HealthCheck::OK,
-                message: "{$active} of {$total} marked active. (Live registration check pending AMI integration.)",
+                message: 'SIP carrier connections',
                 metrics: ['Active' => (string) $active, 'Total' => (string) $total],
                 icon: 'heroicon-o-link',
             );
@@ -380,50 +479,117 @@ class SystemHealthService
         }
     }
 
-    private function checkOnlineOperators(): HealthCheck
+    /**
+     * Horizon master supervisor status. If nothing is registered, the
+     * queue worker is down and jobs pile up in Valkey silently. Horizon
+     * itself persists supervisor records in Redis so this check is cheap
+     * and doesn't require a TCP probe.
+     */
+    private function checkHorizon(): HealthCheck
     {
         try {
-            $operatorRoleExists = DB::table('roles')
-                ->where('name', 'operator')
-                ->whereNull('team_id')
-                ->exists();
+            $repo = app(\Laravel\Horizon\Contracts\MasterSupervisorRepository::class);
+            $masters = $repo->all();
 
-            $totalOperators = $operatorRoleExists
-                ? User::query()
-                    ->whereExists(function ($q) {
-                        $q->select(DB::raw(1))
-                            ->from('model_has_roles')
-                            ->join('roles', 'roles.id', '=', 'model_has_roles.role_id')
-                            ->whereColumn('model_has_roles.model_id', 'users.id')
-                            ->where('model_has_roles.model_type', User::class)
-                            ->where('roles.name', 'operator')
-                            ->whereNull('model_has_roles.team_id');
-                    })
-                    ->count()
-                : 0;
+            if (empty($masters)) {
+                return new HealthCheck(
+                    key: 'horizon',
+                    name: 'Horizon',
+                    category: 'System',
+                    status: HealthCheck::DOWN,
+                    message: 'No master supervisors running — queue worker is down',
+                    icon: 'heroicon-o-queue-list',
+                );
+            }
 
-            // Live softphone registration count comes from AMI in a future pass.
-            $online = (int) (Cache::get('operators:online_count') ?? 0);
+            $paused = 0;
+            foreach ($masters as $master) {
+                if (($master->status ?? null) === 'paused') {
+                    $paused++;
+                }
+            }
+
+            $status = $paused > 0 ? HealthCheck::WARN : HealthCheck::OK;
 
             return new HealthCheck(
-                key: 'operators',
-                name: 'Online Operators',
-                category: 'Workforce',
-                status: HealthCheck::OK,
-                message: "{$online} of {$totalOperators} operator(s) currently registered.",
-                metrics: ['Online' => (string) $online, 'Total' => (string) $totalOperators],
-                icon: 'heroicon-o-user-group',
+                key: 'horizon',
+                name: 'Horizon',
+                category: 'System',
+                status: $status,
+                message: $paused > 0
+                    ? "{$paused} supervisor(s) paused"
+                    : 'Laravel background job worker',
+                metrics: [
+                    'Masters' => (string) count($masters),
+                    'Paused' => (string) $paused,
+                ],
+                icon: 'heroicon-o-queue-list',
             );
         } catch (Throwable $e) {
             return new HealthCheck(
-                key: 'operators',
-                name: 'Online Operators',
-                category: 'Workforce',
+                key: 'horizon',
+                name: 'Horizon',
+                category: 'System',
                 status: HealthCheck::WARN,
                 message: $e->getMessage(),
-                icon: 'heroicon-o-user-group',
+                icon: 'heroicon-o-queue-list',
             );
         }
+    }
+
+    /**
+     * Scheduler heartbeat. An every-minute task in routes/console.php
+     * touches `scheduler:heartbeat`; if the key is missing or stale by
+     * more than two minutes, the scheduler container isn't running.
+     * This is the only check that catches that specific failure since
+     * everything else uses on-demand triggers.
+     */
+    private function checkScheduler(): HealthCheck
+    {
+        $heartbeat = Cache::get('scheduler:heartbeat');
+
+        if (! $heartbeat) {
+            return new HealthCheck(
+                key: 'scheduler',
+                name: 'Scheduler',
+                category: 'System',
+                status: HealthCheck::WARN,
+                message: 'No heartbeat yet — scheduler may still be starting',
+                icon: 'heroicon-o-clock',
+            );
+        }
+
+        try {
+            $heartbeatAt = \Carbon\Carbon::parse((string) $heartbeat);
+        } catch (Throwable) {
+            return new HealthCheck(
+                key: 'scheduler',
+                name: 'Scheduler',
+                category: 'System',
+                status: HealthCheck::WARN,
+                message: 'Heartbeat value unparseable',
+                icon: 'heroicon-o-clock',
+            );
+        }
+
+        $age = (int) abs(now()->diffInSeconds($heartbeatAt));
+        $status = match (true) {
+            $age <= 120 => HealthCheck::OK,
+            $age <= 300 => HealthCheck::WARN,
+            default => HealthCheck::DOWN,
+        };
+
+        return new HealthCheck(
+            key: 'scheduler',
+            name: 'Scheduler',
+            category: 'System',
+            status: $status,
+            message: $status === HealthCheck::OK
+                ? 'Laravel scheduled task runner'
+                : "Last beat {$age}s ago",
+            metrics: ['Last beat' => "{$age}s ago"],
+            icon: 'heroicon-o-clock',
+        );
     }
 
     /**
@@ -479,6 +645,14 @@ class SystemHealthService
         return number_format(self::PROBE_TIMEOUT, 1);
     }
 
+    /**
+     * The `$label` passed in is a short description of what the
+     * service does (e.g. "WebRTC media server", "SIP bridge").
+     * In the OK state we emit it verbatim — the status color is
+     * already doing the "it's up" communication. In the DOWN state
+     * we include the endpoint + error so the diagnostic detail
+     * isn't lost to color-only status.
+     */
     private function probeResultToCheck(array $probe, string $key, string $name, string $category, string $label, string $icon, bool $optional = false): HealthCheck
     {
         $endpoint = "{$probe['host']}:{$probe['port']}";
@@ -489,7 +663,7 @@ class SystemHealthService
                 name: $name,
                 category: $category,
                 status: HealthCheck::OK,
-                message: "{$label} reachable.",
+                message: $label,
                 metrics: ['Endpoint' => $endpoint],
                 icon: $icon,
             );
@@ -500,7 +674,7 @@ class SystemHealthService
             name: $name,
             category: $category,
             status: $optional ? HealthCheck::WARN : HealthCheck::DOWN,
-            message: ($optional ? 'Optional. ' : '')."Cannot reach {$endpoint} — {$probe['error']}",
+            message: ($optional ? 'Optional — ' : '')."cannot reach {$endpoint} ({$probe['error']})",
             metrics: ['Endpoint' => $endpoint],
             icon: $icon,
         );
@@ -520,8 +694,16 @@ class SystemHealthService
 
     private function parseRedisInfo(mixed $info, string $key): ?string
     {
-        if (is_array($info) && isset($info[$key])) {
-            return (string) $info[$key];
+        if (is_array($info)) {
+            if (isset($info[$key])) {
+                return (string) $info[$key];
+            }
+
+            foreach ($info as $section) {
+                if (is_array($section) && isset($section[$key])) {
+                    return (string) $section[$key];
+                }
+            }
         }
 
         if (is_string($info)) {

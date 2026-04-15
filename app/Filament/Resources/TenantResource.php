@@ -226,6 +226,7 @@ class TenantResource extends Resource
                     ->getStateUsing(fn (Team $record) => $record->suspended_at === null),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
+                    ->timezone(fn () => auth()->user()?->displayTimezone() ?? config('app.timezone'))
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
@@ -254,6 +255,8 @@ class TenantResource extends Resource
             Pages\ManageTenantExtensions::class,
             Pages\ManageTenantCallQueues::class,
             Pages\ManageTenantRoutingRules::class,
+            Pages\ManageTenantEmailRules::class,
+            Pages\ManageTenantEmailQueues::class,
             Pages\ManageTenantPersonas::class,
             Pages\ManageTenantIntakeGoals::class,
             Pages\ManageTenantFlows::class,
@@ -274,6 +277,8 @@ class TenantResource extends Resource
             'extensions' => Pages\ManageTenantExtensions::route('/{record}/extensions'),
             'call-queues' => Pages\ManageTenantCallQueues::route('/{record}/call-queues'),
             'routing-rules' => Pages\ManageTenantRoutingRules::route('/{record}/routing-rules'),
+            'email-rules' => Pages\ManageTenantEmailRules::route('/{record}/email-rules'),
+            'email-queues' => Pages\ManageTenantEmailQueues::route('/{record}/email-queues'),
             'personas' => Pages\ManageTenantPersonas::route('/{record}/personas'),
             'intake-goals' => Pages\ManageTenantIntakeGoals::route('/{record}/intake-goals'),
             'intake-flows' => Pages\ManageTenantFlows::route('/{record}/intake-flows'),

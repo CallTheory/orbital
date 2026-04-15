@@ -19,7 +19,15 @@ return new class extends Migration
     {
         Schema::create('directory_field_definitions', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('team_id')->constrained()->cascadeOnDelete();
+
+            // Tenant-private definitions get team_id set; definitions
+            // belonging to a shared directory get shared_directory_id
+            // set instead. DirectoryEntry::resolveFieldByRole() knows
+            // which parent column to look up.
+            $table->foreignId('team_id')->nullable()->constrained()->cascadeOnDelete();
+            $table->foreignId('shared_directory_id')->nullable()
+                ->constrained('shared_directories')->cascadeOnDelete();
+
             $table->string('key');
             $table->string('label');
             $table->string('type', 32);
@@ -33,8 +41,19 @@ return new class extends Migration
             $table->timestamps();
 
             $table->unique(['team_id', 'key']);
+            $table->unique(['shared_directory_id', 'key']);
             $table->index(['team_id', 'sort_order']);
+            $table->index(['shared_directory_id', 'sort_order']);
         });
+
+        // Exactly one parent must be set.
+        \Illuminate\Support\Facades\DB::statement(<<<'SQL'
+            ALTER TABLE directory_field_definitions ADD CONSTRAINT directory_field_definitions_parent_exactly_one
+            CHECK (
+                (team_id IS NOT NULL AND shared_directory_id IS NULL)
+                OR (team_id IS NULL AND shared_directory_id IS NOT NULL)
+            )
+        SQL);
     }
 
     public function down(): void

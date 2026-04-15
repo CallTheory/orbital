@@ -1,0 +1,12 @@
+# Haraka plugin list. Haraka loads these in order and fires each
+# one's hooks during the SMTP conversation.
+#
+# Minimal stack for an SMTP → HTTP shim:
+#   - dnsbl is deliberately OFF. We're not a public MX yet, so
+#     DNS blocklists are noise.
+#   - spf / dkim_verify are OFF for the same reason. Phase 2+ may
+#     enable them when we open to the real internet.
+#   - orbital-webhook is our custom plugin that POSTs the message
+#     to Laravel at end-of-DATA. It's the only thing that matters.
+
+orbital-webhook

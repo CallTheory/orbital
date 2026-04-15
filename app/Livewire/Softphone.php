@@ -16,8 +16,14 @@ class Softphone extends Component
             return [];
         }
 
-        // Find the user's WebRTC extension
-        $extension = Extension::where('type', 'webrtc')
+        // Find the user's WebRTC softphone. The canonical type is
+        // `staff_softphone` (created by PlatformExtensionAllocator),
+        // but older seed / manual rows may use `webrtc` — accept
+        // both so migration churn doesn't leave operators offline.
+        // The ARA syncer treats all three as webrtc-flavored for
+        // the purposes of pjsip endpoint generation.
+        $extension = Extension::withoutGlobalScope('team')
+            ->whereIn('type', ['staff_softphone', 'webrtc', 'webrtc_client'])
             ->where('assignable_type', $user->getMorphClass())
             ->where('assignable_id', $user->id)
             ->where('is_active', true)

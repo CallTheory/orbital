@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
-use App\Models\Concerns\BelongsToTeam;
+use App\Models\Concerns\BelongsToTeamOrSharedPool;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -23,11 +23,15 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  */
 class DirectoryEntry extends Model
 {
-    use BelongsToTeam;
+    use BelongsToTeamOrSharedPool;
     use SoftDeletes;
+
+    public const SHARED_PARENT_COLUMN = 'shared_directory_id';
+    public const TEAM_SHARED_PIVOT_TABLE = 'team_shared_directory';
 
     protected $fillable = [
         'team_id',
+        'shared_directory_id',
         'values',
     ];
 
@@ -105,11 +109,22 @@ class DirectoryEntry extends Model
             return $this->resolvedRoleFields[$role];
         }
 
-        $this->resolvedRoleFields[$role] = DirectoryFieldDefinition::query()
-            ->where('team_id', $this->team_id)
+        // Same pattern as Contact::resolveFieldByRole — look
+        // up the row's OWN parent's definitions, bypassing the
+        // unified tenant-view scope.
+        $query = DirectoryFieldDefinition::withoutGlobalScope('team')
             ->where('role', $role)
-            ->where('is_active', true)
-            ->first();
+            ->where('is_active', true);
+
+        if ($this->shared_directory_id !== null) {
+            $query->where('shared_directory_id', $this->shared_directory_id)
+                  ->whereNull('team_id');
+        } else {
+            $query->where('team_id', $this->team_id)
+                  ->whereNull('shared_directory_id');
+        }
+
+        $this->resolvedRoleFields[$role] = $query->first();
 
         return $this->resolvedRoleFields[$role];
     }

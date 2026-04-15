@@ -26,7 +26,15 @@ return new class extends Migration
     {
         Schema::create('directory_entries', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('team_id')->constrained()->cascadeOnDelete();
+
+            // Either team_id (tenant-private entry) OR
+            // shared_directory_id (shared platform-level entry
+            // attached to multiple tenants via the pivot). Exactly
+            // one must be set; CHECK constraint below enforces.
+            // The DirectoryEntry global scope unions both sources.
+            $table->foreignId('team_id')->nullable()->constrained()->cascadeOnDelete();
+            $table->foreignId('shared_directory_id')->nullable()
+                ->constrained('shared_directories')->cascadeOnDelete();
 
             // All field values live here, keyed by the slug of a
             // DirectoryFieldDefinition row. Shape mirrors the
@@ -37,7 +45,17 @@ return new class extends Migration
             $table->softDeletes();
 
             $table->index('team_id');
+            $table->index('shared_directory_id');
         });
+
+        // Exactly one parent must be set.
+        \Illuminate\Support\Facades\DB::statement(<<<'SQL'
+            ALTER TABLE directory_entries ADD CONSTRAINT directory_entries_parent_exactly_one
+            CHECK (
+                (team_id IS NOT NULL AND shared_directory_id IS NULL)
+                OR (team_id IS NULL AND shared_directory_id IS NOT NULL)
+            )
+        SQL);
 
         // Separate tag vocabulary from contact_tags because the routing
         // semantics differ (after-hours, emergency, spanish-speaker,

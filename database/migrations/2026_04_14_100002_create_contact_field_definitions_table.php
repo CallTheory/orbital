@@ -28,7 +28,15 @@ return new class extends Migration
     {
         Schema::create('contact_field_definitions', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('team_id')->constrained()->cascadeOnDelete();
+
+            // Tenant-private definitions get team_id set; definitions
+            // belonging to a shared contact list get shared_contact_list_id
+            // set instead. Contact::resolveFieldByRole() knows which
+            // parent column to look up.
+            $table->foreignId('team_id')->nullable()->constrained()->cascadeOnDelete();
+            $table->foreignId('shared_contact_list_id')->nullable()
+                ->constrained('shared_contact_lists')->cascadeOnDelete();
+
             $table->string('key');
             $table->string('label');
             $table->string('type', 32);
@@ -41,9 +49,23 @@ return new class extends Migration
             $table->boolean('is_active')->default(true);
             $table->timestamps();
 
+            // Unique per parent, not across parents. A tenant can
+            // have a "name" field and an attached shared list can
+            // also have a "name" field — they don't collide.
             $table->unique(['team_id', 'key']);
+            $table->unique(['shared_contact_list_id', 'key']);
             $table->index(['team_id', 'sort_order']);
+            $table->index(['shared_contact_list_id', 'sort_order']);
         });
+
+        // Exactly one parent must be set.
+        \Illuminate\Support\Facades\DB::statement(<<<'SQL'
+            ALTER TABLE contact_field_definitions ADD CONSTRAINT contact_field_definitions_parent_exactly_one
+            CHECK (
+                (team_id IS NOT NULL AND shared_contact_list_id IS NULL)
+                OR (team_id IS NULL AND shared_contact_list_id IS NOT NULL)
+            )
+        SQL);
     }
 
     public function down(): void

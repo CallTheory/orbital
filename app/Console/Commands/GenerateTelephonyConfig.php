@@ -21,7 +21,12 @@ class GenerateTelephonyConfig extends Command
 
         $this->info('Generating telephony configuration...');
 
-        $service->writeConfigs($teamId);
+        if ($teamId !== null) {
+            $service->writeDialplanForTenant($teamId);
+        } else {
+            $service->writeAllDialplans();
+            $service->writeDialplanIndex();
+        }
 
         $path = config('telephony.asterisk.config_path');
         $this->info("Configs written to: {$path}");

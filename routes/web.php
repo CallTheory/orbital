@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ImpersonationController;
+use App\Http\Controllers\Mail\AttachmentDownloadController;
 use Illuminate\Support\Facades\Route;
 
 /**
@@ -42,6 +43,18 @@ Route::middleware(['auth', config('jetstream.auth_session')])->group(function ()
         ->name('impersonate.start');
     Route::post('/impersonate/stop', [ImpersonationController::class, 'stop'])
         ->name('impersonate.stop');
+});
+
+// Email attachment download + raw MIME viewer. Authed via the
+// default web guard; tenant-access checks live in the controller.
+// Signed URLs aren't used here because the audience is logged-in
+// platform staff; if we later expose attachments to tenants, we
+// can switch this to a signed route without breaking the shape.
+Route::middleware(['auth', config('jetstream.auth_session')])->group(function () {
+    Route::get('/mail/attachments/{attachment}/download', [AttachmentDownloadController::class, 'download'])
+        ->name('mail.attachments.download');
+    Route::get('/mail/messages/{emailMessage}/raw', [AttachmentDownloadController::class, 'rawMessage'])
+        ->name('mail.messages.raw');
 });
 
 // /operator and /portal are both Filament panels now — see

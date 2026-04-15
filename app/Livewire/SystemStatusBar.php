@@ -11,13 +11,20 @@ use Livewire\Component;
 
 /**
  * Thin colored bar injected at the top of every Filament panel page.
- * Polls the cached health snapshot on the same 60s cadence as the
- * dashboard cards and listens for a `system-health-updated` event so
- * a dashboard refresh updates both surfaces in the same tick.
  *
- * Reads cache only — never triggers fresh probes — so it's free on
- * every poll. The dashboard's refresh action is the authoritative
- * writer (clears cache + re-runs every check) and then broadcasts.
+ * Primary update path is a Reverb broadcast: SystemHealthService
+ * dispatches `SystemHealthUpdated` on the public `system-health`
+ * channel every time the snapshot is re-probed (both automatic
+ * refreshes and admin ack/clear actions). Every connected Filament
+ * tab on every panel picks it up instantly via Livewire's
+ * `echo:system-health,.system-health-updated` listener — no poll,
+ * no page reload.
+ *
+ * A 60s `wire:poll` stays as a degraded-mode fallback: if Reverb is
+ * down or the browser's websocket drops (laptop sleep, flaky wifi),
+ * the bar still reconverges to the current state on its own. The
+ * poll pulls from the 60s-cached snapshot on the hot path, so it's
+ * free when nothing has changed.
  */
 class SystemStatusBar extends Component
 {
@@ -30,23 +37,48 @@ class SystemStatusBar extends Component
         $this->load();
     }
 
+    /**
+     * Primary real-time update path. Reverb delivers the payload
+     * straight from SystemHealthUpdated::broadcastWith() — status
+     * rollup, counts, badge label, color. No DB / cache round-trip
+     * because the event already carries everything the bar renders.
+     * The dashboard cards still re-read cache on their own poll,
+     * which is fine because the service just re-wrote it.
+     *
+     * @param  array<int, array<string, mixed>>  $payload
+     */
+    #[On('echo:system-health,.system-health-updated')]
+    public function onHealthBroadcast(array $payload = []): void
+    {
+        // Echo hands Livewire the event data as the first element of
+        // an array ([$data]). Unwrap defensively so a future Echo
+        // format change doesn't silently break the bar.
+        $data = $payload[0] ?? $payload;
+        $down = (int) ($data['down'] ?? 0);
+        $warn = (int) ($data['warn'] ?? 0);
+
+        $this->applyRollup($down, $warn);
+    }
+
+    /**
+     * Fallback loader used on initial mount and on the 60s poll.
+     * Reads cache only — runAll() is the authoritative writer and
+     * broadcaster, so we never re-probe from here. Cache misses
+     * fall through to runAll which will broadcast on our behalf.
+     */
     #[On('system-health-updated')]
     public function load(): void
     {
         $checks = Cache::get('system_health:checks');
 
         if (! is_array($checks) || empty($checks)) {
-            // Nothing cached yet — run the probe suite inline so the
-            // bar shows a real state on first paint instead of
-            // staying hidden until someone visits the dashboard.
-            $checks = app(SystemHealthService::class)->runAll(useCache: true);
+            // Cache miss — re-run probes. runAll writes cache and
+            // dispatches SystemHealthUpdated, which loops back into
+            // onHealthBroadcast for every OTHER tab. This tab's own
+            // paint happens below via the rollup we compute inline.
+            $checks = app(SystemHealthService::class)->runAll(useCache: false);
         }
 
-        // Use effectiveStatus() so acknowledged checks count as
-        // OK for the top-bar rollup — matches what
-        // SystemHealthService::summarize() does for the summary
-        // label. The raw status is still visible on the dashboard
-        // cards themselves.
         $down = 0;
         $warn = 0;
         foreach ($checks as $c) {
@@ -62,24 +94,27 @@ class SystemStatusBar extends Component
             }
         }
 
+        $this->applyRollup($down, $warn);
+    }
+
+    /**
+     * One place to compute classes, tooltip text, and the sidebar
+     * badge browser event. Shared by both the Reverb broadcast
+     * listener and the cache-backed fallback loader so both paths
+     * produce identical DOM state.
+     *
+     * Labels are in lockstep with HealthCheck::statusLabel() and
+     * Dashboard::getNavigationBadge — one vocabulary across every
+     * surface: OK / Degraded / Problem.
+     */
+    private function applyRollup(int $down, int $warn): void
+    {
         [$this->cls, $this->title] = match (true) {
             $down > 0 => ['is-down', "{$down} component(s) with problems".($warn ? ", {$warn} degraded" : '')],
             $warn > 0 => ['is-warn', "{$warn} component(s) degraded"],
             default => ['is-ok', 'All systems OK'],
         };
 
-        // Broadcast the current state to the client. The sidebar
-        // nav-item sync script in panel-styles.blade.php listens
-        // for this event and patches the Status entry's badge in
-        // place — so the sidebar, the top-of-page status bar, and
-        // the dashboard cards all stay in lockstep without
-        // requiring a full page reload. Passed as browser event
-        // (not ->to()/->self()) so any listener on the page can
-        // subscribe via `window.addEventListener`.
-        //
-        // Labels are in lockstep with HealthCheck::statusLabel()
-        // and Dashboard::getNavigationBadge — one vocabulary
-        // across every surface: Operational / Degraded / Outage.
         $badge = match (true) {
             $down > 0 => 'Problem',
             $warn > 0 => 'Degraded',
@@ -90,6 +125,10 @@ class SystemStatusBar extends Component
             $warn > 0 => 'warning',
             default => 'success',
         };
+
+        // Browser event for the sidebar nav-item sync script in
+        // panel-styles.blade.php to pick up and patch the Status
+        // entry's badge in place.
         $this->dispatch('orbital-status-update', badge: $badge, color: $color);
     }
 

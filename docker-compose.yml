@@ -83,6 +83,38 @@ services:
             retries: 3
             timeout: 5s
 
+    # Laravel Reverb — self-hosted websocket broadcasting server. Runs
+    # `php artisan reverb:start` inside a fresh copy of the app image
+    # so it has every model/event class available without a separate
+    # build. Clients connect via ws://localhost:8080 from the browser
+    # on dev; production fronts the same port with TLS under the app
+    # domain. Credentials live in .env (REVERB_APP_*).
+    #
+    # Bound to both networks so the app container can reach it for
+    # authz callbacks AND future services on the telephony network can
+    # push events (operator availability, call state) onto the same bus.
+    reverb:
+        build:
+            context: ./docker/8.4
+            dockerfile: Dockerfile
+            args:
+                WWWGROUP: '${WWWGROUP}'
+        command: ['php', '/var/www/html/artisan', 'reverb:start', '--host=0.0.0.0', '--port=8080']
+        ports:
+            - '${FORWARD_REVERB_PORT:-8080}:8080'
+        environment:
+            WWWUSER: '${WWWUSER}'
+            LARAVEL_SAIL: 1
+        volumes:
+            - '.:/var/www/html'
+        networks:
+            - sail
+            - telephony
+        depends_on:
+            - pgsql
+            - valkey
+        restart: unless-stopped
+
     mailpit:
         image: 'axllent/mailpit:latest'
         ports:

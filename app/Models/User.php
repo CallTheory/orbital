@@ -73,15 +73,17 @@ class User extends Authenticatable implements FilamentUser
      * Used by the Asterisk queue-member sync to pause routing
      * and by the email inbox to hide new unclaimed threads.
      *
-     * The built-in `available` state always qualifies. Any other
-     * status is a row in `availability_reasons`, and only blocks
-     * new work if that row's `blocks_new_work` flag is on — soft
-     * statuses (e.g. a "Back in 5" label) can leave it off so the
-     * operator still receives routing despite the visible label.
+     * Every state — including the built-in `available` row — lives
+     * in `availability_reasons`, so the logic is one lookup: the
+     * row's `blocks_new_work` flag is authoritative. A null or
+     * unknown status (brand-new user, migrated data, wiped row)
+     * falls through to the AVAILABILITY_AVAILABLE sentinel early
+     * return as a safety net so we never accidentally strand an
+     * operator whose status we can't find.
      */
     public function isAvailableForWork(): bool
     {
-        if ($this->availability_status === self::AVAILABILITY_AVAILABLE) {
+        if (empty($this->availability_status) || $this->availability_status === self::AVAILABILITY_AVAILABLE) {
             return true;
         }
 

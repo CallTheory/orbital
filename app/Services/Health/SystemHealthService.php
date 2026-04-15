@@ -73,6 +73,17 @@ class SystemHealthService
             // optional: once we depend on Haraka for inbound email,
             // it being down is a real outage.
             'haraka' => ['host' => 'haraka', 'port' => 25],
+            // Reverb websocket broadcast server. Load-bearing: status
+            // bar, nav badge, and future in-app notifications all
+            // ride this channel. If Reverb is down, every tab falls
+            // back to the 15s polling path — degraded but not dead —
+            // so we surface it but not as an outage.
+            'reverb' => [
+                'host' => (string) (config('reverb.servers.reverb.host') === '0.0.0.0'
+                    ? 'reverb'
+                    : (config('reverb.servers.reverb.host') ?: 'reverb')),
+                'port' => (int) (config('reverb.servers.reverb.port') ?: 8080),
+            ],
         ]);
 
         $checks = [
@@ -92,6 +103,7 @@ class SystemHealthService
             $this->probeResultToCheck($probes['ollama'], 'ollama', 'Ollama', 'AI', 'Local embeddings and inference server', 'heroicon-o-cpu-chip', optional: true),
             $this->probeResultToCheck($probes['mail'], 'mail', 'Mail', 'System', 'Outbound SMTP relay', 'heroicon-o-envelope'),
             $this->probeResultToCheck($probes['haraka'], 'haraka', 'Inbound Mail', 'Mail', 'Haraka Inbound SMTP gateway', 'heroicon-o-envelope-open'),
+            $this->probeResultToCheck($probes['reverb'], 'reverb', 'Reverb', 'System', 'Websocket broadcast server for real-time UI', 'heroicon-o-bolt'),
             $this->probeResultToCheck($probes['promtail'], 'promtail', 'Promtail', 'Observability', 'Log shipper feeding Loki', 'heroicon-o-paper-airplane', optional: true),
             $this->checkHorizon(),
             $this->checkScheduler(),
@@ -104,6 +116,14 @@ class SystemHealthService
         $checks = $this->applyAcknowledgments($checks);
 
         Cache::put('system_health:checks', $checks, now()->addSeconds(60));
+
+        // Broadcast the new aggregate state on the `system-health`
+        // Reverb channel so every connected Filament tab (every
+        // panel, every open window) repaints its status bar + nav
+        // badge immediately. Only fires on a real re-probe — the
+        // cached hot path above returns without broadcasting, so we
+        // don't flood the channel on every page load.
+        \App\Events\SystemHealthUpdated::dispatch($checks);
 
         return $checks;
     }

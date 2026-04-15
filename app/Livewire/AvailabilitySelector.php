@@ -13,15 +13,17 @@ use Livewire\Component;
 /**
  * Operator availability selector — pill rendered in the operator
  * panel topbar (left of the user menu) that lets the current
- * operator toggle between "Available" and any "not taking work
- * right now" reason defined in the `availability_reasons` table.
+ * operator flip between any active row in the `availability_reasons`
+ * table. The "I'm taking work" row is slug=`available`, seeded as
+ * a regular row with `blocks_new_work=false` and protected against
+ * deletion by the model layer.
  *
  * Side effects on change:
  *   1. Persist the status slug + stamp availability_changed_at
  *   2. Resync Asterisk queue_members for this operator so
  *      `paused` reflects the new state — calls stop ringing
- *      their softphone the moment they flip away from
- *      Available, and start ringing again when they flip back
+ *      their softphone the moment they flip to a blocking
+ *      status, and start ringing again when they flip back
  *   3. Dispatch `availability-updated` so the email inbox
  *      nav badge and any other listeners can refresh
  *
@@ -29,10 +31,8 @@ use Livewire\Component;
  * threads already claimed by this operator) stays with them —
  * the toggle only affects what NEW work routes to them.
  *
- * `available` is the implicit "taking work" state, always shown
- * at the top of the dropdown. Everything else comes from the
- * AvailabilityReason table and is editable by super-admins
- * under Platform → Availability Reasons.
+ * The whole vocabulary (including the Available row itself) is
+ * editable by super-admins under Features → Availability Reasons.
  */
 class AvailabilitySelector extends Component
 {
@@ -51,13 +51,14 @@ class AvailabilitySelector extends Component
             return;
         }
 
-        // Accept `available` plus any active reason slug. Anything
-        // else gets rejected — UI shouldn't send unknown values,
-        // but defend against direct Livewire calls anyway.
+        // Accept any active reason slug. The Available row lives in
+        // the table now, so it's already included — no extra push
+        // needed. Anything not in the active set gets rejected:
+        // Livewire shouldn't send unknown values from the UI, but
+        // defend against direct component calls anyway.
         $allowedSlugs = AvailabilityReason::query()
             ->where('is_active', true)
             ->pluck('slug')
-            ->push(AvailabilityReason::AVAILABLE)
             ->all();
 
         if (! in_array($value, $allowedSlugs, true)) {
@@ -101,20 +102,14 @@ class AvailabilitySelector extends Component
             ->orderBy('label')
             ->get();
 
-        // Always-on "Available" option at the top of the list,
-        // followed by every active reason in sort order. The
-        // `dot_color` gets passed through so the pill dot paints
-        // correctly for whichever reason is currently selected.
-        // The built-in `available` state has no row in the table,
-        // so it ships a fixed green hex that matches the Filament
-        // success color. Every other entry passes through the
-        // admin-picked hex from AvailabilityReason::dot_color.
-        $options = [
-            AvailabilityReason::AVAILABLE => [
-                'label' => 'Available',
-                'dot_color' => '#22c55e',
-            ],
-        ];
+        // Every active row in the table, ordered by sort_order.
+        // The `available` row is seeded at sort_order=0 so it
+        // naturally leads the dropdown, and the admin can drag
+        // other rows above or below it from the list page if
+        // they want a different default. The dot_color flows
+        // straight from the row so whatever the admin picked
+        // in the color picker paints on the pill.
+        $options = [];
         foreach ($reasons as $r) {
             $options[$r->slug] = [
                 'label' => $r->label,
@@ -122,10 +117,18 @@ class AvailabilitySelector extends Component
             ];
         }
 
+        // Fallback color for edge cases: a brand-new user whose
+        // availability_status is still null, or the split-second
+        // between is_active being flipped off on an operator's
+        // current row and them picking a new one. Green matches
+        // the default Available row color so nothing jumps
+        // visually.
+        $currentDotColor = $options[$this->status]['dot_color']
+            ?? ($options[AvailabilityReason::AVAILABLE]['dot_color'] ?? '#22c55e');
+
         return view('livewire.availability-selector', [
             'options' => $options,
-            'currentDotColor' => $options[$this->status]['dot_color']
-                ?? $options[AvailabilityReason::AVAILABLE]['dot_color'],
+            'currentDotColor' => $currentDotColor,
         ]);
     }
 

@@ -7,21 +7,26 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Platform-level vocabulary for operator availability reasons.
- * Each row is one entry in the availability selector dropdown
- * (other than `available` itself, which is the implicit "I'm
- * taking work" state and lives outside this table).
+ * Platform-level vocabulary for operator availability states.
+ * Each row is one entry in the availability selector dropdown,
+ * including the `available` row itself — which is seeded with
+ * slug='available', blocks_new_work=false, and is protected
+ * from deletion by the model's `deleting` hook. There's no
+ * "implicit" state anymore; everything lives in this table.
  *
  * Managed by super-admins under Features → Availability Reasons.
- * Seeded with a reasonable starter set (On break, In meeting,
+ * Seeded with a starter set (Available, On break, In meeting,
  * Lunch, Training, Offline) that the platform operator can
- * edit, disable, or augment to match their workflow.
+ * edit, reorder, disable, or augment to match their workflow.
+ * The Available row specifically can be renamed and recolored
+ * but not deleted or marked inactive — the resource UI locks
+ * those fields and the model rejects deletion as a safety net.
  *
- * `slug` is still the stable key stored on `users.availability_status`,
- * but it's auto-generated on create and hidden from the admin
- * form — admins only see the friendly fields. The backing key
- * matters for migration safety (renaming a label doesn't strand
- * operators) but operators shouldn't have to think about it.
+ * `slug` is the stable key stored on `users.availability_status`,
+ * auto-generated on create and hidden from the admin form.
+ * The Available row's slug is the literal `available` constant
+ * (AvailabilityReason::AVAILABLE) so code paths have a canonical
+ * reference regardless of what the admin renames the label to.
  *
  * `dot_color` holds an arbitrary hex color that the operator
  * picks via a color picker in the admin form. The AvailabilitySelector

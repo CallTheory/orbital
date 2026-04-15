@@ -28,16 +28,18 @@ return new class extends Migration
             $table->string('timezone', 64)->nullable();
             $table->string('locale', 16)->nullable();
             // Operator availability — the "am I taking work right now"
-            // toggle shown in the operator panel topbar. Defaults to
-            // `offline_manual` so freshly-created or freshly-seeded
-            // operators have to explicitly flip themselves to
-            // `available` before they start getting routed work.
-            // Less surprising than being thrown into rotation on
-            // first login. The selector is populated from the
-            // availability_reasons table; `available` is always the
-            // implicit "taking work" state and lives outside that
-            // table so tenants can't accidentally delete it.
-            $table->string('availability_status', 32)->default('offline_manual');
+            // state shown in the operator panel topbar. Defaults to
+            // `unavailable` so a freshly-created operator has to
+            // explicitly flip themselves to `available` before they
+            // start getting routed work. A Login event listener
+            // (ResetAvailabilityOnLogin) ALSO resets the state to
+            // `unavailable` on every fresh login, so operators
+            // always opt in to taking work rather than being thrown
+            // into rotation automatically. Every state, including
+            // `available` and `unavailable`, is a row in
+            // availability_reasons — `available` is protected from
+            // deletion by the model's `deleting` hook.
+            $table->string('availability_status', 32)->default('unavailable');
             $table->timestamp('availability_changed_at')->nullable();
             $table->timestamps();
         });

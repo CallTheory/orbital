@@ -61,10 +61,10 @@ class LogoutReasonResource extends Resource
                     ->rows(2)
                     ->maxLength(500)
                     ->placeholder('Short explanation shown as a tooltip.'),
-                Forms\Components\TextInput::make('sort_order')
-                    ->numeric()
-                    ->default(50)
-                    ->helperText('Lower numbers appear first in the logout dropdown.'),
+                // sort_order is intentionally not in the form —
+                // controlled from the list page's drag-to-reorder
+                // handles so admins rearrange the whole list visually
+                // instead of editing one row's number at a time.
                 Forms\Components\Toggle::make('is_active')
                     ->default(true)
                     ->helperText('Inactive reasons are hidden from the logout modal but existing audit entries stay intact.'),
@@ -83,17 +83,18 @@ class LogoutReasonResource extends Resource
                     ->limit(60)
                     ->placeholder('—')
                     ->toggleable(),
-                Tables\Columns\TextColumn::make('sort_order')
-                    ->label('Order')
-                    ->alignCenter()
-                    ->sortable(),
                 Tables\Columns\IconColumn::make('is_active')
                     ->boolean(),
             ])
             ->defaultSort('sort_order')
+            // Drag-to-reorder on `sort_order`. Filament renders a
+            // grip handle on each row and writes the new ordering
+            // back to the column — the operator logout modal's
+            // reason dropdown picks it up on the next render since
+            // it queries ordered by `sort_order` ASC.
+            ->reorderable('sort_order')
             ->actions([
                 \Filament\Actions\EditAction::make(),
-                \Filament\Actions\DeleteAction::make(),
             ])
             ->bulkActions([
                 \Filament\Actions\BulkActionGroup::make([

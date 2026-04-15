@@ -12,23 +12,26 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 use UnitEnum;
 
 /**
  * Platform-level CRUD for operator availability reasons.
  *
- * Super-admin only — controls the vocabulary of "I'm not
- * available right now, because __" labels shown in the
- * operator panel topbar selector. Seeded with a starter set
- * (On break, Lunch, In meeting, Training, Offline) via
- * AvailabilityReasonSeeder; the list is fully editable from
- * here at any time.
+ * Super-admin only — controls the vocabulary of the states
+ * operators can be in, shown in the operator panel topbar
+ * selector. Seeded with a starter set (Available, On break,
+ * Lunch, In meeting, Training, Offline) via AvailabilityReasonSeeder.
  *
- * Note: the built-in `available` state is NOT managed here.
- * It's the implicit "taking work" sentinel and always lives
- * at the top of the selector regardless of what the admin
- * puts in this table.
+ * The built-in `available` row lives in the same table as every
+ * other state but is protected here: the delete action is hidden
+ * for it, the `blocks_new_work` and `is_active` toggles are
+ * disabled on edit, and the model rejects deletion at the backend
+ * as a safety net. Admins CAN rename the Available row, re-color
+ * it, or edit the description — they just can't delete it or flip
+ * it off, because without it the system has no "accepting work"
+ * state and every operator is stranded.
  *
  * The slug column is hidden from the form — it's auto-
  * generated from the label on create and intentionally
@@ -74,14 +77,21 @@ class AvailabilityReasonResource extends Resource
                 Forms\Components\Toggle::make('blocks_new_work')
                     ->label('Block new work')
                     ->default(true)
-                    ->helperText('When ON (typical), operators on this status stop receiving new calls and email. Turn OFF for soft statuses where operators should still get new work despite the label.'),
-                Forms\Components\TextInput::make('sort_order')
-                    ->numeric()
-                    ->default(50)
-                    ->helperText('Lower numbers appear first in the selector dropdown.'),
+                    ->disabled(fn (?Model $record): bool => self::isBuiltInAvailable($record))
+                    ->helperText(fn (?Model $record): string => self::isBuiltInAvailable($record)
+                        ? 'Locked: the built-in Available row is the one state that must never block work — without it no operator can receive anything.'
+                        : 'When ON (typical), operators on this status stop receiving new calls and email. Turn OFF for soft statuses where operators should still get new work despite the label.'),
+                // sort_order is intentionally not in the form — it's
+                // controlled from the list page's drag-to-reorder
+                // handles so admins can see the whole list while they
+                // rearrange it, instead of editing one row's number
+                // at a time and hoping the others still make sense.
                 Forms\Components\Toggle::make('is_active')
                     ->default(true)
-                    ->helperText('Inactive reasons are hidden from the selector but existing assignments stay intact.'),
+                    ->disabled(fn (?Model $record): bool => self::isBuiltInAvailable($record))
+                    ->helperText(fn (?Model $record): string => self::isBuiltInAvailable($record)
+                        ? 'Locked: the built-in Available row is always active. Deactivating it would strand every operator.'
+                        : 'Inactive reasons are hidden from the selector but existing assignments stay intact.'),
             ]);
     }
 
@@ -97,6 +107,19 @@ class AvailabilityReasonResource extends Resource
     {
         $data['slug'] = $data['slug'] ?? Str::slug($data['label'] ?? '', '_');
         return $data;
+    }
+
+    /**
+     * Centralized check for "is this the built-in Available row?"
+     * so the form's disabled/helperText closures and the delete
+     * action's visibility check all share one rule. Returns false
+     * on the create page where $record is null — nothing to protect
+     * because the slug constraint would already block creating a
+     * second row with the same slug.
+     */
+    private static function isBuiltInAvailable(?Model $record): bool
+    {
+        return $record !== null && $record->slug === AvailabilityReason::AVAILABLE;
     }
 
     public static function table(Table $table): Table
@@ -117,20 +140,28 @@ class AvailabilityReasonResource extends Resource
                     ->label('Blocks work')
                     ->boolean()
                     ->alignCenter(),
-                Tables\Columns\TextColumn::make('sort_order')
-                    ->label('Order')
-                    ->alignCenter()
-                    ->sortable(),
                 Tables\Columns\IconColumn::make('is_active')
                     ->boolean(),
             ])
             ->defaultSort('sort_order')
+            // Drag-to-reorder on `sort_order`. Filament renders a
+            // grip handle on each row and writes the new ordering
+            // back to the column automatically — the AvailabilitySelector
+            // dropdown + anywhere else reading AvailabilityReason in
+            // `sort_order` ASC picks it up on the next render.
+            ->reorderable('sort_order')
             ->actions([
                 \Filament\Actions\EditAction::make(),
-                \Filament\Actions\DeleteAction::make(),
             ])
             ->bulkActions([
                 \Filament\Actions\BulkActionGroup::make([
+                    // No special handling here — the model's
+                    // `deleting` hook returns false for the
+                    // Available row, which Eloquent treats as
+                    // "skip this one, keep going" during a bulk
+                    // delete. The admin's other selections still
+                    // go through and the Available row quietly
+                    // survives.
                     \Filament\Actions\DeleteBulkAction::make(),
                 ]),
             ]);

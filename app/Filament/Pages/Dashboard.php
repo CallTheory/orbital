@@ -11,6 +11,7 @@ use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 use Filament\Pages\Dashboard as BaseDashboard;
 use Illuminate\Support\Facades\Cache;
+use Livewire\Attributes\On;
 use UnitEnum;
 
 /**
@@ -129,6 +130,23 @@ class Dashboard extends BaseDashboard
     {
         \Illuminate\Support\Facades\Cache::forget('system_health:checks');
         $this->loadChecks(useCache: false);
+    }
+
+    /**
+     * Repaint the card grid in response to a Reverb broadcast from
+     * any tab that just re-probed (the admin who clicked refresh,
+     * the operator whose ack timed out, a scheduled health run, etc).
+     *
+     * Reads cache only — the broadcaster just wrote it, so this tab
+     * gets the fresh snapshot for free without re-probing the network.
+     * Without this listener, another admin's "Acknowledge" action
+     * would only update their own tab; every other open dashboard
+     * would still show the un-acked state until the next page load.
+     */
+    #[On('echo:system-health,.system-health-updated')]
+    public function onHealthBroadcast(): void
+    {
+        $this->loadChecks(useCache: true);
     }
 
     private function loadChecks(bool $useCache): void

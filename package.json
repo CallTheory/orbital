@@ -19,6 +19,8 @@
         "vite": "^7.0.7"
     },
     "dependencies": {
+        "laravel-echo": "^2.3.4",
+        "pusher-js": "^8.5.0",
         "sip.js": "^0.21.2",
         "wavesurfer.js": "^7.12.6"
     }

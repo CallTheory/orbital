@@ -102,41 +102,76 @@ class OperatorPanelProvider extends PanelProvider
                     ->sort(12)
                     ->visible(fn () => auth()->user()?->belongsToAnyTenant() ?? false),
                 // Replaces Filament's default Sign out link with a
-                // modal-backed Action that requires the operator to
-                // pick a LogoutReason before the session actually
-                // ends. Writes a UserLogoutEvent audit row with the
-                // chosen reason + a snapshot of its label (so later
-                // renames/deletes on the LogoutReason don't rewrite
-                // history), then logs the user out and redirects to
-                // the panel login page.
+                // modal-backed Action that asks the operator to pick
+                // a LogoutReason before the session ends. Writes a
+                // UserLogoutEvent audit row with the chosen reason +
+                // a snapshot of its label (so later renames/deletes
+                // on the LogoutReason don't rewrite history), then
+                // logs the user out and redirects to the panel login.
                 //
                 // Operator panel only — the admin and portal panels
                 // still use the stock logout link because those
                 // sessions aren't the "on the floor" sessions this
                 // audit log is trying to capture.
+                //
+                // Degrades gracefully when the logout_reasons table
+                // is empty (admin deleted everything, or an upgrade
+                // dropped seed data): the schema closure swaps the
+                // required Select for a Placeholder explaining the
+                // situation, so the operator can still submit and
+                // sign out instead of being trapped by a required
+                // field with no options. The UserLogoutEvent row
+                // still lands with `reason_label_snapshot` set to
+                // '(no reasons configured)' so the audit log records
+                // WHY the reason is missing.
                 'logout' => Action::make('logout')
                     ->label('Sign out')
                     ->icon('heroicon-m-arrow-right-on-rectangle')
                     ->modalHeading('Sign out')
-                    ->modalDescription('Pick a reason so the supervisor log knows why you\'re off the floor.')
+                    ->modalDescription(fn (): ?string => LogoutReason::query()->where('is_active', true)->exists()
+                        ? 'Pick a reason so the supervisor log knows why you\'re off the floor.'
+                        : null)
                     ->modalSubmitActionLabel('Sign out')
                     ->modalIcon('heroicon-o-arrow-left-on-rectangle')
-                    ->schema([
-                        Select::make('logout_reason_id')
-                            ->label('Reason')
-                            ->options(fn () => LogoutReason::query()
-                                ->where('is_active', true)
-                                ->orderBy('sort_order')
-                                ->orderBy('label')
-                                ->pluck('label', 'id')
-                                ->all())
-                            ->required()
-                            ->native(false),
-                        Textarea::make('note')
-                            ->label('Note (optional)')
-                            ->rows(2)
-                            ->maxLength(500),
-                    ])
+                    // Narrow modal — `sm` is tighter than the default
+                    // `md` and fits the two short fields without the
+                    // whole dialog taking up half the screen.
+                    ->modalWidth('sm')
+                    ->schema(function (): array {
+                        $reasons = LogoutReason::query()
+                            ->where('is_active', true)
+                            ->orderBy('sort_order')
+                            ->orderBy('label')
+                            ->pluck('label', 'id')
+                            ->all();
+
+                        // No reasons configured: hide the select + its
+                        // surrounding verbiage entirely and just show
+                        // the note field. The action handler still
+                        // writes a UserLogoutEvent with a sentinel
+                        // label so the audit trail records why the
+                        // reason is missing.
+                        if (empty($reasons)) {
+                            return [
+                                Textarea::make('note')
+                                    ->label('Note (optional)')
+                                    ->rows(2)
+                                    ->maxLength(500),
+                            ];
+                        }
+
+                        return [
+                            Select::make('logout_reason_id')
+                                ->label('Reason')
+                                ->options($reasons)
+                                ->required()
+                                ->native(false),
+                            Textarea::make('note')
+                                ->label('Note (optional)')
+                                ->rows(2)
+                                ->maxLength(500),
+                        ];
+                    })
                     ->action(function (array $data) {
                         $user = auth()->user();
                         if ($user) {
@@ -144,7 +179,13 @@ class OperatorPanelProvider extends PanelProvider
                             UserLogoutEvent::create([
                                 'user_id' => $user->id,
                                 'logout_reason_id' => $reason?->id,
-                                'reason_label_snapshot' => $reason?->label,
+                                // When no reasons were configured the
+                                // select didn't render, so $reason is
+                                // null and we stamp a sentinel label
+                                // so the audit log distinguishes this
+                                // case from "operator picked a reason
+                                // that was later deleted".
+                                'reason_label_snapshot' => $reason?->label ?? '(no reasons configured)',
                                 'logged_out_at' => now(),
                             ]);
                         }

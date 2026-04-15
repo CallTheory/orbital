@@ -11,7 +11,9 @@ use App\Observers\QuotaObserver;
 use App\Observers\StaffExtensionObserver;
 use App\Observers\TelephonyObserver;
 use App\Services\Tenancy\TenantPermissionGatekeeper;
+use Illuminate\Auth\Events\Login;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -48,6 +50,14 @@ class AppServiceProvider extends ServiceProvider
         $this->app['events']->listen(TeamSwitched::class, function () {
             app(PermissionRegistrar::class)->forgetCachedPermissions();
         });
+
+        // Every fresh login resets operators to `unavailable` so they
+        // always opt in to taking work after signing in rather than
+        // being silently thrown into rotation because their previous
+        // tab happened to leave them on Available. Listener gates on
+        // `hasAnyPlatformRole` so tenant-only users (who don't have
+        // an availability state at all) are a cheap no-op.
+        Event::listen(Login::class, \App\Listeners\ResetAvailabilityOnLogin::class);
 
         // Boot-time invariant check: no platform-only permission should ever
         // be on a tenant's allow list. Logs critical if violated.

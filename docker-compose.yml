@@ -278,14 +278,48 @@ services:
             - orbital.test
         restart: unless-stopped
 
-    asterisk:
+    # Kamailio — SIP signaling proxy in front of Asterisk.
+    # All inbound SIP trunk traffic enters here on 5060; Kamailio
+    # dispatches it to Asterisk on the internal telephony network.
+    # Provides call draining for maintenance: the admin UI marks
+    # the Asterisk backend as "inactive" via JSON-RPC, Kamailio
+    # stops sending new calls but lets existing dialogs finish,
+    # operator restarts Asterisk after the last call completes.
+    #
+    # What bypasses Kamailio (goes directly to Asterisk):
+    #   - Operator softphone WebRTC (WSS 8089)
+    #   - LiveKit SIP bridge (5069)
+    #   - RTP media (10000-10099) — signaling-only proxy
+    #   - Outbound trunk registrations (Asterisk → provider)
+    kamailio:
         build:
-            context: ./docker/asterisk
+            context: ./docker/kamailio
             dockerfile: Dockerfile
         ports:
             - '5060:5060/udp'
             - '5060:5060/tcp'
             - '5061:5061/tcp'
+            # JSON-RPC management for the admin UI's drain/activate
+            # controls. Loopback-only because it has no auth — the
+            # app container reaches it via the telephony network,
+            # not the host port.
+            - '127.0.0.1:8090:8090/tcp'
+        networks:
+            - telephony
+        depends_on:
+            - asterisk
+        restart: unless-stopped
+
+    asterisk:
+        build:
+            context: ./docker/asterisk
+            dockerfile: Dockerfile
+        # SIP 5060/5061 are no longer host-bound — inbound SIP
+        # enters via Kamailio on the telephony network instead.
+        # AMI (5038), WSS softphone (8089), and RTP media
+        # (10000-10099) stay host-bound because they bypass the
+        # proxy by design.
+        ports:
             - '5038:5038/tcp'
             - '8089:8089/tcp'
             - '10000-10099:10000-10099/udp'

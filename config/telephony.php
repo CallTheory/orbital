@@ -112,4 +112,26 @@ return [
         'disclosure_message' => env('RECORDING_DISCLOSURE_MESSAGE', ''),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Kamailio SIP Proxy
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, a Kamailio container sits between external SIP
+    | trunks and Asterisk on the telephony network. Provides call
+    | draining for maintenance (mark Asterisk as inactive via the
+    | dispatcher module, let active calls complete, restart Asterisk
+    | at zero) and is the foundation for future multi-Asterisk HA.
+    |
+    | `enabled` controls whether the SIP Proxy admin page appears
+    | in the Telephony nav group and whether the health probe
+    | treats Kamailio as required or optional. Installs without the
+    | container leave this false.
+    |
+    */
+    'kamailio' => [
+        'enabled' => (bool) env('KAMAILIO_ENABLED', false),
+        'jsonrpc_url' => env('KAMAILIO_JSONRPC_URL', 'http://kamailio:8090/jsonrpc'),
+    ],
+
 ];

@@ -1,0 +1,12 @@
+# Dispatcher set 1 — Asterisk backends.
+# Format: setid destination flags priority attrs
+#
+# Phase 0: single backend. Phase 1 adds more lines here.
+# Kamailio resolves `asterisk` via docker DNS on the telephony
+# network — it's the compose service name for the Asterisk
+# container.
+#
+# Flags: 0 = no special flags
+# Priority: 0 = equal
+# Attrs: weight=100
+1 sip:asterisk:5060 0 0 weight=100

@@ -527,7 +527,7 @@ class SystemHealthService
                     name: 'Horizon',
                     category: 'System',
                     status: HealthCheck::DOWN,
-                    message: 'No master supervisors running — queue worker is down',
+                    message: 'Horizon queue worker is down',
                     icon: 'heroicon-o-queue-list',
                 );
             }

@@ -29,7 +29,7 @@ use UnitEnum;
  */
 class Dashboard extends BaseDashboard
 {
-    protected static string|UnitEnum|null $navigationGroup = 'Dashboards';
+    protected static string|UnitEnum|null $navigationGroup = 'Monitor';
 
     protected static ?string $navigationLabel = 'Status';
 
@@ -89,7 +89,15 @@ class Dashboard extends BaseDashboard
     {
         $checks = Cache::get('system_health:checks');
         if (! is_array($checks) || empty($checks)) {
-            return null;
+            // Cache expired between probe runs. Default to 'ok'
+            // rather than null (which renders a gray badge) because
+            // the system was almost certainly fine the last time we
+            // checked — showing "unknown" in the nav for a 1-second
+            // gap between cache expiry and the next poll is alarming
+            // and misleading. The next SystemStatusBar poll or
+            // Reverb broadcast will re-cache and update the badge
+            // to the real state within seconds.
+            return 'ok';
         }
 
         // Same effectiveStatus() treatment as SystemStatusBar /
@@ -130,7 +138,7 @@ class Dashboard extends BaseDashboard
 
     public function refresh(): void
     {
-        \Illuminate\Support\Facades\Cache::forget('system_health:checks');
+        Cache::forget('system_health:checks');
         $this->loadChecks(useCache: false);
     }
 

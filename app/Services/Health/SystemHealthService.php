@@ -4,11 +4,16 @@ declare(strict_types=1);
 
 namespace App\Services\Health;
 
+use App\Events\SystemHealthUpdated;
 use App\Models\HealthCheckAcknowledgment;
 use App\Models\SipTrunk;
+use App\Services\CertificateService;
+use Carbon\Carbon;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
+use Laravel\Horizon\Contracts\MasterSupervisorRepository;
 use Throwable;
 
 /**
@@ -96,7 +101,7 @@ class SystemHealthService
             // us the container is up and answering HTTP. Marked
             // optional because they're admin-facing tools — if
             // either is down the app itself keeps working.
-            'pgadmin' => ['host' => 'pgadmin', 'port' => 80],
+            'pgadmin' => ['host' => 'pgadmin', 'port' => 443],
             'redis_commander' => ['host' => 'redis-commander', 'port' => 8081],
         ]);
 
@@ -141,7 +146,7 @@ class SystemHealthService
         // badge immediately. Only fires on a real re-probe — the
         // cached hot path above returns without broadcasting, so we
         // don't flood the channel on every page load.
-        \App\Events\SystemHealthUpdated::dispatch($checks);
+        SystemHealthUpdated::dispatch($checks);
 
         return $checks;
     }
@@ -178,6 +183,7 @@ class SystemHealthService
 
             if ($ack === null) {
                 $out[] = $check;
+
                 continue;
             }
 
@@ -191,6 +197,7 @@ class SystemHealthService
                     'cleared_by_user_id' => null,
                 ])->save();
                 $out[] = $check;
+
                 continue;
             }
 
@@ -456,9 +463,9 @@ class SystemHealthService
             );
         }
 
-        $heartbeatAt = $heartbeat instanceof \Carbon\CarbonInterface
+        $heartbeatAt = $heartbeat instanceof CarbonInterface
             ? $heartbeat
-            : \Carbon\Carbon::parse($heartbeat);
+            : Carbon::parse($heartbeat);
         $age = (int) abs(now()->diffInSeconds($heartbeatAt));
         $status = match (true) {
             $age <= 90 => HealthCheck::OK,
@@ -526,7 +533,7 @@ class SystemHealthService
     private function checkHorizon(): HealthCheck
     {
         try {
-            $repo = app(\Laravel\Horizon\Contracts\MasterSupervisorRepository::class);
+            $repo = app(MasterSupervisorRepository::class);
             $masters = $repo->all();
 
             if (empty($masters)) {
@@ -598,7 +605,7 @@ class SystemHealthService
         }
 
         try {
-            $heartbeatAt = \Carbon\Carbon::parse((string) $heartbeat);
+            $heartbeatAt = Carbon::parse((string) $heartbeat);
         } catch (Throwable) {
             return new HealthCheck(
                 key: 'scheduler',
@@ -656,7 +663,7 @@ class SystemHealthService
 
         $output = [];
         $exitCode = 0;
-        @exec("bash -c ".escapeshellarg($script), $output, $exitCode);
+        @exec('bash -c '.escapeshellarg($script), $output, $exitCode);
 
         $statusByKey = [];
         foreach ($output as $line) {
@@ -724,6 +731,7 @@ class SystemHealthService
     private function parseHostPort(string $url, int $defaultPort): array
     {
         $parts = parse_url($url);
+
         return [
             'host' => $parts['host'] ?? 'localhost',
             'port' => $parts['port'] ?? $defaultPort,
@@ -789,7 +797,7 @@ class SystemHealthService
             );
         }
 
-        $service = app(\App\Services\CertificateService::class);
+        $service = app(CertificateService::class);
 
         if (! $service->certExists()) {
             return new HealthCheck(

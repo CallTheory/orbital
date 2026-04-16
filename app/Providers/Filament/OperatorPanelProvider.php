@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace App\Providers\Filament;
 
+use App\Filament\Auth\EditProfile;
+use App\Filament\AvatarProviders\LocalAvatarProvider;
+use App\Filament\Pages\Security;
 use App\Http\Middleware\PanelRedirect;
 use App\Http\Middleware\SetPermissionsTeamContext;
 use App\Models\LogoutReason;
 use App\Models\UserLogoutEvent;
 use Filament\Actions\Action;
+use Filament\Facades\Filament;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Http\Middleware\Authenticate;
@@ -48,7 +52,8 @@ class OperatorPanelProvider extends PanelProvider
         return $panel
             ->id('operator')
             ->path('operator')
-            ->profile(page: \App\Filament\Auth\EditProfile::class, isSimple: false)
+            ->spa()
+            ->profile(page: EditProfile::class, isSimple: false)
             ->brandName('Orbital')
             ->brandLogo(fn () => new HtmlString(
                 '<div class="orbital-brand">'
@@ -65,7 +70,7 @@ class OperatorPanelProvider extends PanelProvider
                 'success' => Color::Emerald,
             ])
             // Offline-first avatar provider — see AdminPanelProvider.
-            ->defaultAvatarProvider(\App\Filament\AvatarProviders\LocalAvatarProvider::class)
+            ->defaultAvatarProvider(LocalAvatarProvider::class)
             ->navigationGroups([
                 'Workspace',
                 'Inbox',
@@ -76,7 +81,7 @@ class OperatorPanelProvider extends PanelProvider
                 // Shared security page — 2FA, password, sessions.
                 // Lives in App\Filament\Pages so all three panels
                 // share one implementation.
-                \App\Filament\Pages\Security::class,
+                Security::class,
             ])
             ->userMenuItems([
                 // Layout mirrors AdminPanelProvider — see that file
@@ -196,7 +201,7 @@ class OperatorPanelProvider extends PanelProvider
                         session()->invalidate();
                         session()->regenerateToken();
 
-                        return redirect()->to(\Filament\Facades\Filament::getPanel('operator')->getLoginUrl() ?? '/operator/login');
+                        return redirect()->to(Filament::getPanel('operator')->getLoginUrl() ?? '/operator/login');
                     })
                     ->sort(PHP_INT_MAX),
             ])

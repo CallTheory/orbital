@@ -4,22 +4,21 @@ declare(strict_types=1);
 
 namespace App\Filament\Operator\Pages;
 
-use App\Models\EmailMessage;
+use App\Models\ConversationActivity;
 use App\Models\EmailThread;
-use App\Services\Mail\OutboundReplyService;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
-use Filament\Forms;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
-use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\Cache;
 use UnitEnum;
 
 /**
@@ -62,12 +61,14 @@ class EmailInbox extends Page implements HasTable
     }
 
     /**
-     * Sidebar badge count: unclaimed threads in a working state
-     * that any operator could pick up. Cached per-user for 15
-     * seconds so opening an app page doesn't N-query the DB on
-     * every nav render. The 15s window is tight enough that a
-     * newly-arrived thread shows up almost immediately without
-     * being free.
+     * Sidebar badge count: open threads that need this operator's
+     * attention — anything assigned to them that isn't closed, plus
+     * unclaimed threads (when available for work). Matches the
+     * same scope as the table query so the number always reflects
+     * what they'll see when they click in.
+     *
+     * Cached per-user for 15 seconds so nav renders don't hit the
+     * DB on every page load.
      */
     public static function getNavigationBadge(): ?string
     {
@@ -76,26 +77,30 @@ class EmailInbox extends Page implements HasTable
             return null;
         }
 
-        // Unavailable operators don't see a count of unclaimed
-        // work — the whole point of flipping to on_break / in_meeting
-        // / offline is that new work should be invisible. Their
-        // own assigned threads are still visible in the inbox
-        // body, just not surfaced in the badge.
-        if (! $user->isAvailableForWork()) {
-            return null;
-        }
+        $isAvailable = $user->isAvailableForWork();
 
-        $count = \Illuminate\Support\Facades\Cache::remember(
-            "operator:{$user->id}:email_inbox_unclaimed",
+        $count = Cache::remember(
+            "operator:{$user->id}:email_inbox_badge",
             15,
-            fn () => EmailThread::query()
-                ->whereNull('assigned_operator_id')
-                ->whereIn('status', [
+            function () use ($user, $isAvailable) {
+                $openStatuses = [
                     EmailThread::STATUS_NEW,
                     EmailThread::STATUS_IN_PROGRESS,
                     EmailThread::STATUS_AWAITING_REPLY,
-                ])
-                ->count(),
+                ];
+
+                return EmailThread::query()
+                    ->whereIn('status', $openStatuses)
+                    ->where(function ($q) use ($user, $isAvailable) {
+                        // Always count threads assigned to this operator.
+                        $q->where('assigned_operator_id', $user->id);
+                        // When available, also count unclaimed threads.
+                        if ($isAvailable) {
+                            $q->orWhereNull('assigned_operator_id');
+                        }
+                    })
+                    ->count();
+            },
         );
 
         return $count > 0 ? (string) $count : null;
@@ -104,6 +109,17 @@ class EmailInbox extends Page implements HasTable
     public static function getNavigationBadgeColor(): ?string
     {
         return 'primary';
+    }
+
+    /**
+     * Bust the cached badge count and refresh the sidebar so the
+     * nav badge updates immediately after state-changing actions
+     * without a full page reload.
+     */
+    public function bustBadgeCache(): void
+    {
+        Cache::forget('operator:'.auth()->id().':email_inbox_badge');
+        $this->dispatch('refresh-sidebar');
     }
 
     public function table(Table $table): Table
@@ -115,19 +131,13 @@ class EmailInbox extends Page implements HasTable
         return $table
             ->query(
                 EmailThread::query()
-                    // Always show threads already claimed by this
-                    // operator — they can finish whatever they
-                    // started even on break. Unassigned threads
-                    // only show when the operator is available;
-                    // flipping to on_break hides new work without
-                    // dropping their in-flight conversations.
                     ->where(function ($q) use ($userId, $isAvailable) {
                         $q->where('assigned_operator_id', $userId);
                         if ($isAvailable) {
                             $q->orWhereNull('assigned_operator_id');
                         }
                     })
-                    ->with(['team', 'assignedOperator', 'emailQueue'])
+                    ->with(['team', 'assignedOperator', 'emailQueue', 'messages'])
                     ->latest('last_message_at'),
             )
             ->filters([
@@ -137,7 +147,7 @@ class EmailInbox extends Page implements HasTable
                     ->trueLabel('Include closed')
                     ->falseLabel('Closed threads only')
                     ->queries(
-                        true: fn ($query) => $query, // no filter — everything
+                        true: fn ($query) => $query,
                         false: fn ($query) => $query->where('status', EmailThread::STATUS_CLOSED),
                         blank: fn ($query) => $query->whereIn('status', [
                             EmailThread::STATUS_NEW,
@@ -150,10 +160,40 @@ class EmailInbox extends Page implements HasTable
             ->searchPlaceholder('Search subject, sender, body…')
             ->columns([
                 Tables\Columns\TextColumn::make('last_message_at')
-                    ->label('Last activity')
-                    ->dateTime('M j, g:i a')
+                    ->label('Received')
+                    ->dateTime('M j, g:i a T')
                     ->timezone(fn () => auth()->user()?->displayTimezone() ?? config('app.timezone'))
-                    ->sortable(),
+                    ->sortable()
+                    ->url(fn (EmailThread $record) => url("/operator/email-thread/{$record->id}")),
+                Tables\Columns\TextColumn::make('subject_root')
+                    ->label('Subject')
+                    ->wrap()
+                    ->searchable(query: function ($query, string $search) {
+                        $like = '%'.$search.'%';
+                        $query->where(function ($q) use ($like) {
+                            $q->where('subject_root', 'ilike', $like)
+                                ->orWhereHas('messages', function ($mq) use ($like) {
+                                    $mq->where('body_text', 'ilike', $like)
+                                        ->orWhere('from_address', 'ilike', $like)
+                                        ->orWhere('subject', 'ilike', $like);
+                                });
+                        });
+                    })
+                    ->url(fn (EmailThread $record) => url("/operator/email-thread/{$record->id}")),
+                Tables\Columns\TextColumn::make('team.name')
+                    ->label('Tenant')
+                    ->sortable()
+                    ->searchable(),
+                Tables\Columns\TextColumn::make('delivered_to')
+                    ->label('Delivered to')
+                    ->getStateUsing(function (EmailThread $record) {
+                        $first = $record->messages->first(fn ($m) => $m->direction === 'inbound');
+
+                        return $first
+                            ? implode(', ', $first->metadata['envelope_to'] ?? $first->to_addresses ?? [])
+                            : '—';
+                    })
+                    ->limit(40),
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->color(fn (string $state) => match ($state) {
@@ -163,48 +203,14 @@ class EmailInbox extends Page implements HasTable
                         EmailThread::STATUS_CLOSED => 'gray',
                         default => 'gray',
                     }),
-                Tables\Columns\TextColumn::make('team.name')
-                    ->label('Tenant')
-                    ->sortable()
-                    ->searchable(),
                 Tables\Columns\TextColumn::make('emailQueue.name')
                     ->label('Queue')
                     ->placeholder('—'),
-                Tables\Columns\TextColumn::make('subject_root')
-                    ->label('Subject')
-                    ->wrap()
-                    // Full-text scope — also match message body
-                    // and sender address, not just the stripped
-                    // subject on the thread row itself. Keeps
-                    // operators from having to open every thread
-                    // to find the one they're looking for.
-                    ->searchable(query: function ($query, string $search) {
-                        $like = '%'.$search.'%';
-                        $query->where(function ($q) use ($like) {
-                            $q->where('subject_root', 'ilike', $like)
-                              ->orWhereHas('messages', function ($mq) use ($like) {
-                                  $mq->where('body_text', 'ilike', $like)
-                                     ->orWhere('from_address', 'ilike', $like)
-                                     ->orWhere('subject', 'ilike', $like);
-                              });
-                        });
-                    }),
                 Tables\Columns\TextColumn::make('assignedOperator.name')
                     ->label('Claimed by')
                     ->placeholder('— unclaimed —'),
             ])
             ->actions([
-                Action::make('open')
-                    ->label('Open')
-                    ->icon('heroicon-m-envelope-open')
-                    ->color('gray')
-                    ->modalHeading(fn (EmailThread $record) => $record->subject_root ?: '(no subject)')
-                    ->modalContent(fn (EmailThread $record) => view('filament.operator.partials.thread-viewer', [
-                        'thread' => $record->load(['messages', 'team']),
-                    ]))
-                    ->modalSubmitAction(false)
-                    ->modalCancelActionLabel('Close')
-                    ->modalWidth('4xl'),
                 Action::make('claim')
                     ->label('Claim')
                     ->icon('heroicon-m-hand-raised')
@@ -215,52 +221,10 @@ class EmailInbox extends Page implements HasTable
                             'assigned_operator_id' => auth()->id(),
                             'status' => EmailThread::STATUS_IN_PROGRESS,
                         ])->save();
+                        ConversationActivity::log($record, 'claimed', user: auth()->user());
+                        $this->bustBadgeCache();
                         Notification::make()
                             ->title('Thread claimed')
-                            ->success()
-                            ->send();
-                    }),
-                Action::make('reply')
-                    ->label('Reply')
-                    ->icon('heroicon-m-arrow-uturn-left')
-                    ->color('success')
-                    ->schema([
-                        Forms\Components\Textarea::make('body_text')
-                            ->label('Reply')
-                            ->rows(10)
-                            ->required()
-                            ->placeholder('Write your reply to the customer…'),
-                    ])
-                    ->modalWidth('3xl')
-                    ->action(function (EmailThread $record, array $data) {
-                        try {
-                            app(OutboundReplyService::class)->reply(
-                                thread: $record,
-                                bodyText: $data['body_text'],
-                                sentByOperator: auth()->user(),
-                            );
-                            Notification::make()
-                                ->title('Reply sent')
-                                ->success()
-                                ->send();
-                        } catch (\Throwable $e) {
-                            Notification::make()
-                                ->title('Reply failed')
-                                ->body($e->getMessage())
-                                ->danger()
-                                ->send();
-                        }
-                    }),
-                Action::make('close')
-                    ->label('Close thread')
-                    ->icon('heroicon-m-check-circle')
-                    ->color('gray')
-                    ->requiresConfirmation()
-                    ->modalDescription('Mark this thread as handled. It will drop out of the default inbox view.')
-                    ->action(function (EmailThread $record) {
-                        $record->update(['status' => EmailThread::STATUS_CLOSED]);
-                        Notification::make()
-                            ->title('Thread closed')
                             ->success()
                             ->send();
                     }),
@@ -273,12 +237,33 @@ class EmailInbox extends Page implements HasTable
                         ->color('gray')
                         ->requiresConfirmation()
                         ->deselectRecordsAfterCompletion()
-                        ->action(function (\Illuminate\Database\Eloquent\Collection $records) {
+                        ->action(function (Collection $records) {
+                            $user = auth()->user();
                             foreach ($records as $r) {
                                 $r->update(['status' => EmailThread::STATUS_CLOSED]);
+                                ConversationActivity::log($r, 'closed', user: $user);
                             }
+                            $this->bustBadgeCache();
                             Notification::make()
                                 ->title('Threads closed')
+                                ->success()
+                                ->send();
+                        }),
+                    BulkAction::make('bulk_reopen')
+                        ->label('Reopen selected')
+                        ->icon('heroicon-m-arrow-path')
+                        ->color('warning')
+                        ->requiresConfirmation()
+                        ->deselectRecordsAfterCompletion()
+                        ->action(function (Collection $records) {
+                            $user = auth()->user();
+                            foreach ($records as $r) {
+                                $r->update(['status' => EmailThread::STATUS_IN_PROGRESS]);
+                                ConversationActivity::log($r, 'reopened', user: $user);
+                            }
+                            $this->bustBadgeCache();
+                            Notification::make()
+                                ->title('Threads reopened')
                                 ->success()
                                 ->send();
                         }),

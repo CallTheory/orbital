@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Database\Factories\TeamFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Laravel\Jetstream\Events\TeamCreated;
 use Laravel\Jetstream\Events\TeamDeleted;
 use Laravel\Jetstream\Events\TeamUpdated;
@@ -21,6 +23,7 @@ class Team extends JetstreamTeam
      */
     protected $fillable = [
         'name',
+        'timezone',
         'account_number',
         'personal_team',
         'max_users',
@@ -61,72 +64,72 @@ class Team extends JetstreamTeam
         ];
     }
 
-    public function sipTrunks(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function sipTrunks(): HasMany
     {
         return $this->hasMany(SipTrunk::class);
     }
 
-    public function extensions(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function extensions(): HasMany
     {
         return $this->hasMany(Extension::class);
     }
 
-    public function agentPersonas(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function agentPersonas(): HasMany
     {
         return $this->hasMany(AgentPersona::class);
     }
 
-    public function intakeGoals(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function intakeGoals(): HasMany
     {
         return $this->hasMany(IntakeGoal::class);
     }
 
-    public function intakeFlows(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function intakeFlows(): HasMany
     {
         return $this->hasMany(IntakeFlow::class);
     }
 
-    public function knowledgeStores(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function knowledgeStores(): HasMany
     {
         return $this->hasMany(KnowledgeStore::class);
     }
 
-    public function callQueues(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function callQueues(): HasMany
     {
         return $this->hasMany(CallQueue::class);
     }
 
-    public function routingRules(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function routingRules(): HasMany
     {
         return $this->hasMany(RoutingRule::class);
     }
 
-    public function emailRoutingRules(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function emailRoutingRules(): HasMany
     {
         return $this->hasMany(EmailRoutingRule::class);
     }
 
-    public function emailQueues(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function emailQueues(): HasMany
     {
         return $this->hasMany(EmailQueue::class);
     }
 
-    public function emailThreads(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function emailThreads(): HasMany
     {
         return $this->hasMany(EmailThread::class);
     }
 
-    public function callLogs(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function callLogs(): HasMany
     {
         return $this->hasMany(CallLog::class);
     }
 
-    public function operatingHours(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function operatingHours(): HasMany
     {
         return $this->hasMany(OperatingHour::class);
     }
 
-    public function tenantDids(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function tenantDids(): HasMany
     {
         return $this->hasMany(TenantDid::class)->orderBy('priority');
     }
@@ -147,7 +150,7 @@ class Team extends JetstreamTeam
      * the tenant's account (billing, holiday, newsletter, escalation).
      * Most contacts never log in; the ones that do have `user_id` set.
      */
-    public function contacts(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function contacts(): HasMany
     {
         return $this->hasMany(Contact::class);
     }
@@ -157,7 +160,7 @@ class Team extends JetstreamTeam
      * while handling a call. Separate from `contacts` — different use
      * case, different vocabulary, different table.
      */
-    public function directoryEntries(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function directoryEntries(): HasMany
     {
         return $this->hasMany(DirectoryEntry::class);
     }
@@ -169,7 +172,7 @@ class Team extends JetstreamTeam
      * / phone / organization). The values captured by these
      * definitions live in the `contacts.values` JSONB column.
      */
-    public function contactFieldDefinitions(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function contactFieldDefinitions(): HasMany
     {
         return $this->hasMany(ContactFieldDefinition::class)->orderBy('sort_order');
     }
@@ -178,7 +181,7 @@ class Team extends JetstreamTeam
      * Tenant-authored Directory field schema. Parallel to contact
      * fields — separate table, separate vocabulary.
      */
-    public function directoryFieldDefinitions(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function directoryFieldDefinitions(): HasMany
     {
         return $this->hasMany(DirectoryFieldDefinition::class)->orderBy('sort_order');
     }
@@ -192,7 +195,7 @@ class Team extends JetstreamTeam
      * this pivot via subquery to union shared rows into
      * tenant-scoped queries.
      */
-    public function sharedContactLists(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    public function sharedContactLists(): BelongsToMany
     {
         return $this->belongsToMany(SharedContactList::class, 'team_shared_contact_list')
             ->withPivot('is_active')
@@ -205,11 +208,22 @@ class Team extends JetstreamTeam
      * targeting the "phone book used during call handling"
      * side of the split.
      */
-    public function sharedDirectories(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    public function sharedDirectories(): BelongsToMany
     {
         return $this->belongsToMany(SharedDirectory::class, 'team_shared_directory')
             ->withPivot('is_active')
             ->withTimestamps();
+    }
+
+    /**
+     * The timezone the tenant operates in. Falls back to app
+     * default when not explicitly set.
+     */
+    public function displayTimezone(): string
+    {
+        return ! empty($this->timezone)
+            ? $this->timezone
+            : (string) config('app.timezone');
     }
 
     /**

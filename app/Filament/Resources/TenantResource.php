@@ -9,9 +9,14 @@ use App\Models\Team;
 use App\Services\Tenancy\TenantPermissionGatekeeper;
 use BackedEnum;
 use Database\Seeders\PermissionCatalogSeeder;
+use Filament\Actions\BulkActionGroup;
+use Filament\Actions\DeleteBulkAction;
+use Filament\Actions\EditAction;
 use Filament\Forms;
 use Filament\Resources\Pages\Page;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Tabs;
+use Filament\Schemas\Components\Tabs\Tab;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -74,9 +79,9 @@ class TenantResource extends Resource
     {
         return $schema
             ->schema([
-                \Filament\Schemas\Components\Tabs::make('Tenant')
+                Tabs::make('Tenant')
                     ->tabs([
-                        \Filament\Schemas\Components\Tabs\Tab::make('Details')
+                        Tab::make('Details')
                             ->icon('heroicon-o-identification')
                             ->schema([
                                 Forms\Components\TextInput::make('name')
@@ -92,6 +97,11 @@ class TenantResource extends Resource
                                     ->relationship('owner', 'name')
                                     ->searchable()
                                     ->required(),
+                                Forms\Components\Select::make('timezone')
+                                    ->options(fn () => collect(timezone_identifiers_list())->mapWithKeys(fn ($tz) => [$tz => $tz]))
+                                    ->searchable()
+                                    ->placeholder('App default ('.config('app.timezone').')')
+                                    ->helperText('Timezone used when displaying dates to operators handling this tenant\'s messages and calls.'),
                                 Forms\Components\DateTimePicker::make('suspended_at')
                                     ->label('Suspended At')
                                     ->helperText('If set, the tenant is suspended.'),
@@ -99,7 +109,7 @@ class TenantResource extends Resource
                                     ->default(false),
                             ]),
 
-                        \Filament\Schemas\Components\Tabs\Tab::make('Quotas')
+                        Tab::make('Quotas')
                             ->icon('heroicon-o-scale')
                             ->schema([
                                 Forms\Components\Placeholder::make('quotas_help')
@@ -112,7 +122,7 @@ class TenantResource extends Resource
                                     ->helperText('Maximum number of simultaneous calls this tenant can have in flight. Leave blank for unlimited.'),
                             ]),
 
-                        \Filament\Schemas\Components\Tabs\Tab::make('Permission Ceiling')
+                        Tab::make('Permission Ceiling')
                             ->icon('heroicon-o-key')
                             ->schema([
                                 Forms\Components\Placeholder::make('ceiling_help')
@@ -134,7 +144,7 @@ class TenantResource extends Resource
                                     ->dehydrated(false),
                             ]),
 
-                        \Filament\Schemas\Components\Tabs\Tab::make('Recording')
+                        Tab::make('Recording')
                             ->icon('heroicon-o-microphone')
                             ->schema([
                                 Forms\Components\Placeholder::make('recording_help')
@@ -232,12 +242,12 @@ class TenantResource extends Resource
             ])
             ->defaultSort('account_number')
             ->actions([
-                \Filament\Actions\EditAction::make()
+                EditAction::make()
                     ->label('Open'),
             ])
             ->bulkActions([
-                \Filament\Actions\BulkActionGroup::make([
-                    \Filament\Actions\DeleteBulkAction::make(),
+                BulkActionGroup::make([
+                    DeleteBulkAction::make(),
                 ]),
             ]);
     }
@@ -305,6 +315,7 @@ class TenantResource extends Resource
             }
             $options[$name] = $name;
         }
+
         return $options;
     }
 
@@ -327,6 +338,7 @@ class TenantResource extends Resource
         if ($state === null || $state === '') {
             return '';
         }
+
         return $state ? '1' : '0';
     }
 }

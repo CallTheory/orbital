@@ -15,6 +15,8 @@ use Filament\Tables;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\Storage;
 use UnitEnum;
 
 /**
@@ -39,6 +41,8 @@ class UnroutedMail extends Page implements HasTable
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-exclamation-triangle';
 
     protected static string|UnitEnum|null $navigationGroup = 'Monitor';
+
+    protected static ?int $navigationSort = 30;
 
     protected static ?string $navigationLabel = 'Unrouted Mail';
 
@@ -102,7 +106,7 @@ class UnroutedMail extends Page implements HasTable
                     ->color('gray')
                     ->modalHeading(fn (EmailMessage $record) => "Raw message #{$record->id}")
                     ->modalContent(fn (EmailMessage $record) => view('filament.pages.partials.raw-mail-viewer', [
-                        'raw' => \Illuminate\Support\Facades\Storage::disk('s3')->get($record->raw_storage_path),
+                        'raw' => Storage::disk('s3')->get($record->raw_storage_path),
                     ]))
                     ->modalSubmitAction(false)
                     ->modalCancelActionLabel('Close'),
@@ -113,7 +117,7 @@ class UnroutedMail extends Page implements HasTable
                     ->requiresConfirmation()
                     ->modalDescription('This deletes the DB row and the raw MIME blob in MinIO. Use for junk that you\'re sure you don\'t need.')
                     ->action(function (EmailMessage $record) {
-                        \Illuminate\Support\Facades\Storage::disk('s3')->delete($record->raw_storage_path);
+                        Storage::disk('s3')->delete($record->raw_storage_path);
                         $record->delete();
                         Notification::make()->title('Discarded')->success()->send();
                     }),
@@ -126,10 +130,10 @@ class UnroutedMail extends Page implements HasTable
                         ->color('danger')
                         ->requiresConfirmation()
                         ->deselectRecordsAfterCompletion()
-                        ->action(function (\Illuminate\Database\Eloquent\Collection $records) {
+                        ->action(function (Collection $records) {
                             $count = 0;
                             foreach ($records as $r) {
-                                \Illuminate\Support\Facades\Storage::disk('s3')->delete($r->raw_storage_path);
+                                Storage::disk('s3')->delete($r->raw_storage_path);
                                 $r->delete();
                                 $count++;
                             }

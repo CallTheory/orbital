@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Providers\Filament;
 
+use App\Filament\Auth\EditProfile;
+use App\Filament\AvatarProviders\LocalAvatarProvider;
 use App\Http\Middleware\PanelRedirect;
 use App\Http\Middleware\SetPermissionsTeamContext;
 use Filament\Http\Middleware\Authenticate;
@@ -16,12 +18,13 @@ use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
 use Filament\View\PanelsRenderHook;
-use Illuminate\Support\HtmlString;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
+use Illuminate\Support\Facades\Blade;
+use Illuminate\Support\HtmlString;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 class AdminPanelProvider extends PanelProvider
@@ -41,7 +44,7 @@ class AdminPanelProvider extends PanelProvider
             // user has a styled self-service profile at /{panel}/profile.
             // Replaces the old Jetstream /user/profile page, which we
             // redirect into here from routes/web.php.
-            ->profile(page: \App\Filament\Auth\EditProfile::class, isSimple: false)
+            ->profile(page: EditProfile::class, isSimple: false)
             ->brandName('Orbital')
             ->brandLogo(fn () => new HtmlString(
                 '<div class="orbital-brand">'
@@ -61,14 +64,13 @@ class AdminPanelProvider extends PanelProvider
             // SVG data URL from LocalAvatarGenerator instead of hitting
             // ui-avatars.com. Same shape across all three panels so
             // the fallback avatar is consistent everywhere.
-            ->defaultAvatarProvider(\App\Filament\AvatarProviders\LocalAvatarProvider::class)
+            ->defaultAvatarProvider(LocalAvatarProvider::class)
             ->navigationGroups([
-                'Dashboards',
+                'Monitor',
                 'Platform',
                 'Features',
                 'Telephony',
                 'Conversational AI',
-                'Monitor',
                 'Administration',
                 'Platform Utilities',
                 'Control Panels',
@@ -269,7 +271,7 @@ class AdminPanelProvider extends PanelProvider
                 // the redirect either — `hasAnyPlatformRole()`
                 // returns false for tenant-only users.
                 fn (): string => auth()->user()?->hasAnyPlatformRole()
-                    ? \Illuminate\Support\Facades\Blade::render('@livewire(\App\Livewire\SystemStatusBar::class)')
+                    ? Blade::render('@livewire(\App\Livewire\SystemStatusBar::class)')
                     : '',
             );
     }
@@ -288,6 +290,7 @@ class AdminPanelProvider extends PanelProvider
         if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
             return true;
         }
+
         return method_exists($user, 'hasPermissionTo') && $user->hasPermissionTo($permission);
     }
 
@@ -306,5 +309,4 @@ class AdminPanelProvider extends PanelProvider
     {
         return parse_url((string) config('app.url'), PHP_URL_HOST) ?: 'localhost';
     }
-
 }

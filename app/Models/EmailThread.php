@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTeam;
+use App\Models\Concerns\HasConversationActivities;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -32,11 +33,15 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class EmailThread extends Model
 {
     use BelongsToTeam;
+    use HasConversationActivities;
     use HasFactory;
 
     public const STATUS_NEW = 'new';
+
     public const STATUS_IN_PROGRESS = 'in_progress';
+
     public const STATUS_AWAITING_REPLY = 'awaiting_reply';
+
     public const STATUS_CLOSED = 'closed';
 
     protected $fillable = [

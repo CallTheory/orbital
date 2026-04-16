@@ -119,6 +119,7 @@ class SystemHealthService
             $this->probeResultToCheck($probes['haraka'], 'haraka', 'Inbound Mail', 'Mail', 'Haraka Inbound SMTP gateway', 'heroicon-o-envelope-open'),
             $this->probeResultToCheck($probes['reverb'], 'reverb', 'Reverb', 'System', 'Websocket broadcast server for real-time UI', 'heroicon-o-bolt'),
             $this->probeResultToCheck($probes['kamailio'], 'kamailio', 'Kamailio', 'Telephony', 'SIP proxy for call routing and draining', 'heroicon-o-arrows-right-left', optional: ! config('telephony.kamailio.enabled')),
+            $this->checkTlsCertificate(),
             $this->probeResultToCheck($probes['pgadmin'], 'pgadmin', 'pgAdmin', 'Control Panels', 'Postgres admin web UI', 'heroicon-o-circle-stack', optional: true),
             $this->probeResultToCheck($probes['redis_commander'], 'redis_commander', 'Redis Commander', 'Control Panels', 'Valkey / Redis web browser', 'heroicon-o-bolt', optional: true),
             $this->probeResultToCheck($probes['promtail'], 'promtail', 'Promtail', 'Observability', 'Log shipper feeding Loki', 'heroicon-o-paper-airplane', optional: true),
@@ -765,5 +766,86 @@ class SystemHealthService
         }
 
         return sprintf('%.1f %s', $value, $units[$i]);
+    }
+
+    /**
+     * Check the managed TLS certificate's expiry status. Reads the
+     * PEM file from the shared tls-certs volume via CertificateService.
+     *
+     * When `tls.enabled` is false, returns WARN "not configured" —
+     * always-visible so the admin knows TLS isn't set up, but not red
+     * so it doesn't alarm during initial install.
+     */
+    private function checkTlsCertificate(): HealthCheck
+    {
+        if (! config('tls.enabled')) {
+            return new HealthCheck(
+                key: 'tls',
+                name: 'TLS Certificate',
+                category: 'System',
+                status: HealthCheck::WARN,
+                message: 'TLS not configured — set ACME_ENABLED=true in .env',
+                icon: 'heroicon-o-lock-closed',
+            );
+        }
+
+        $service = app(\App\Services\CertificateService::class);
+
+        if (! $service->certExists()) {
+            return new HealthCheck(
+                key: 'tls',
+                name: 'TLS Certificate',
+                category: 'System',
+                status: HealthCheck::WARN,
+                message: 'No certificate file found — issue one from the TLS Certificates page',
+                icon: 'heroicon-o-lock-closed',
+            );
+        }
+
+        $info = $service->getCertificateInfo();
+        if ($info === null) {
+            return new HealthCheck(
+                key: 'tls',
+                name: 'TLS Certificate',
+                category: 'System',
+                status: HealthCheck::WARN,
+                message: 'Certificate file exists but could not be parsed',
+                icon: 'heroicon-o-lock-closed',
+            );
+        }
+
+        if ($info->isExpired()) {
+            return new HealthCheck(
+                key: 'tls',
+                name: 'TLS Certificate',
+                category: 'System',
+                status: HealthCheck::DOWN,
+                message: "Certificate expired on {$info->validTo->format('M j, Y')}",
+                metrics: [
+                    'Domain' => $info->domain,
+                    'Issuer' => $info->issuer,
+                    'Expired' => $info->validTo->format('M j, Y g:i A'),
+                ],
+                icon: 'heroicon-o-lock-closed',
+            );
+        }
+
+        $status = $info->isExpiringSoon(14) ? HealthCheck::WARN : HealthCheck::OK;
+
+        return new HealthCheck(
+            key: 'tls',
+            name: 'TLS Certificate',
+            category: 'System',
+            status: $status,
+            message: "{$info->daysRemaining} days remaining ({$info->domain})",
+            metrics: [
+                'Domain' => $info->domain,
+                'Issuer' => $info->issuer,
+                'Expires' => $info->validTo->format('M j, Y'),
+                'Days remaining' => (string) $info->daysRemaining,
+                'Staging' => $info->isStaging ? 'Yes' : 'No',
+            ],
+            icon: 'heroicon-o-lock-closed',
+        );
     }
 }

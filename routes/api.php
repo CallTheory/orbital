@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\CallSessionController;
 use App\Http\Controllers\Api\ExtensionController;
 use App\Http\Controllers\Api\InboundMailController;
 use App\Http\Controllers\Api\KnowledgeController;
+use App\Http\Controllers\Api\TlsRenewalWebhookController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Route;
@@ -80,3 +81,11 @@ Route::get('/call-sessions/{sessionKey}', [CallSessionController::class, 'show']
     ->middleware('auth:sanctum');
 Route::post('/call-sessions/{sessionKey}/field', [CallSessionController::class, 'captureField']);
 Route::post('/call-sessions/{sessionKey}/advance', [CallSessionController::class, 'advance']);
+
+/**
+ * TLS cert renewal webhook. acme.sh's deploy-hook.sh POSTs here
+ * after each successful renewal. The controller dispatches a
+ * queued job that reloads services consuming the cert. Token-gated
+ * by ACME_WEBHOOK_TOKEN so arbitrary callers can't trigger reloads.
+ */
+Route::post('/tls/renewed', TlsRenewalWebhookController::class);

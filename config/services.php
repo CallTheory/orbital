@@ -96,6 +96,9 @@ return [
         'sso_secret' => env('REDIS_COMMANDER_SSO_SECRET'),
         'sso_issuer' => env('REDIS_COMMANDER_SSO_ISSUER', 'orbital-admin'),
         'public_port' => env('FORWARD_REDIS_COMMANDER_PORT', 8082),
+        'internal_url' => env('REDIS_COMMANDER_INTERNAL_URL', 'http://redis-commander:8081'),
+        'http_user' => env('REDIS_COMMANDER_HTTP_USER', 'admin'),
+        'http_password' => env('REDIS_COMMANDER_HTTP_PASSWORD', ''),
     ],
     'grafana' => [
         // In-network URL the Laravel reverse proxy forwards to.
@@ -124,6 +127,13 @@ return [
     'pgadmin' => [
         'oauth_client_id' => env('PGADMIN_OAUTH2_CLIENT_ID'),
         'oauth_client_secret' => env('PGADMIN_OAUTH2_CLIENT_SECRET'),
+        'internal_url' => env('PGADMIN_INTERNAL_URL', 'http://pgadmin:80'),
+    ],
+    'prometheus' => [
+        'internal_url' => env('PROMETHEUS_INTERNAL_URL', 'http://prometheus:9090'),
+    ],
+    'mailpit' => [
+        'internal_url' => env('MAILPIT_INTERNAL_URL', 'http://mailpit:8025'),
     ],
     'seaweedfs' => [
         // In-network URLs for the reverse proxy. Both endpoints

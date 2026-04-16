@@ -1,4 +1,64 @@
 services:
+    # ──────────────────────────────────────────────────────────────────
+    # TLS terminator — nginx reverse proxy on port 443.
+    # Terminates HTTPS + WSS and proxies to the app (80) + Reverb
+    # (8080). Reads cert from the tls-certs shared volume. On first
+    # boot with no cert, the entrypoint generates a temporary self-
+    # signed cert so the admin can reach the dashboard to configure
+    # acme.sh and issue a real one.
+    # ──────────────────────────────────────────────────────────────────
+    nginx-tls:
+        build:
+            context: ./docker/nginx
+            dockerfile: Dockerfile
+        # nginx-tls owns BOTH host ports — 443 for HTTPS (primary)
+        # and 80 for the HTTP→HTTPS redirect. The Laravel app
+        # container (`orbital.test`) no longer binds port 80 on the
+        # host; it listens on 80 inside the sail network only, and
+        # nginx proxies to it after TLS termination.
+        ports:
+            - '${APP_PORT:-80}:80'
+            - '443:443'
+        volumes:
+            - 'tls-certs:/etc/nginx/certs'
+        networks:
+            - sail
+        depends_on:
+            - orbital.test
+        restart: unless-stopped
+
+    # ──────────────────────────────────────────────────────────────────
+    # acme.sh — ACME client for Let's Encrypt cert issuance + renewal.
+    # Runs as a daemon with a built-in cron that auto-renews every 60
+    # days. DNS-01 validation so certs work without public HTTP. After
+    # each renewal, the deploy hook POSTs to Laravel's webhook which
+    # dispatches service-reload jobs.
+    #
+    # DNS provider credentials come from .env — each provider has its
+    # own set of env vars (e.g. CF_Token + CF_Zone_ID for Cloudflare).
+    # See: https://github.com/acmesh-official/acme.sh/wiki/dnsapi
+    # ──────────────────────────────────────────────────────────────────
+    acme:
+        image: 'neilpang/acme.sh:latest'
+        command: ['daemon']
+        environment:
+            # Cloudflare (default example — change to match your DNS provider)
+            CF_Token: '${ACME_DNS_CF_TOKEN:-}'
+            CF_Zone_ID: '${ACME_DNS_CF_ZONE_ID:-}'
+            # AWS Route53 (uncomment if using Route53 instead)
+            # AWS_ACCESS_KEY_ID: '${ACME_DNS_AWS_ACCESS_KEY_ID:-}'
+            # AWS_SECRET_ACCESS_KEY: '${ACME_DNS_AWS_SECRET_ACCESS_KEY:-}'
+            # Webhook config for deploy hooks
+            ACME_WEBHOOK_URL: 'http://orbital.test/api/tls/renewed'
+            ACME_WEBHOOK_TOKEN: '${ACME_WEBHOOK_TOKEN:-}'
+        volumes:
+            - 'tls-certs:/etc/acme-certs'
+            - 'acme-data:/acme.sh'
+            - './docker/acme/deploy-hook.sh:/opt/deploy-hook.sh:ro'
+        networks:
+            - sail
+        restart: unless-stopped
+
     orbital.test:
         build:
             context: ./docker/8.4
@@ -7,8 +67,12 @@ services:
                 WWWGROUP: '${WWWGROUP}'
         extra_hosts:
             - 'host.docker.internal:host-gateway'
+        # Port 80 is no longer host-bound — nginx-tls owns both 80
+        # and 443 on the host. The app still listens on 80 inside
+        # the sail network so nginx can proxy to it, but external
+        # HTTP requests hit nginx first and get 301'd to HTTPS.
+        # Vite dev server stays host-bound for HMR.
         ports:
-            - '${APP_PORT:-80}:80'
             - '${VITE_PORT:-5173}:${VITE_PORT:-5173}'
         environment:
             WWWUSER: '${WWWUSER}'
@@ -28,6 +92,10 @@ services:
             # time. Keyed by content hash, so identical messages across
             # tenants share a single file.
             - 'asterisk-prompts:/var/spool/asterisk/prompts'
+            # Shared TLS cert volume — CertificateService reads
+            # the PEM files here for the admin dashboard + health
+            # probe. Read-only because Laravel never writes certs.
+            - 'tls-certs:/etc/tls:ro'
         networks:
             - sail
             - telephony
@@ -57,40 +125,25 @@ services:
     # entries, session blobs, Horizon queue state, Reverb channel
     # subscribers.
     #
-    # HTTP basic auth is ON — `REDIS_COMMANDER_HTTP_USER` +
-    # `REDIS_COMMANDER_HTTP_PASSWORD` from .env protect the web
-    # UI so hitting the nav entry prompts for creds instead of
-    # landing straight into Valkey's key space.
+    # Auth is handled ENTIRELY by the Laravel reverse proxy at
+    # /admin/redis-commander/* (session + tooling.redis_commander
+    # permission). Commander's own auth is disabled so its SPA
+    # doesn't try to show a login form — same pattern as
+    # SeaweedFS filer and Prometheus where the backend has no
+    # auth and the proxy is the sole trust boundary.
     #
-    # REDIS_HOSTS format: `label:host:port:db:password` (colon-
-    # delimited). The trailing password picks up the same strong
-    # random string Valkey's `--requirepass` is pinned to, so the
-    # UI can authenticate without needing a second set of creds.
+    # The container is loopback-bound so only the host machine
+    # can reach it directly; all admin traffic goes through the
+    # proxy.
     redis-commander:
         image: 'rediscommander/redis-commander:latest'
         ports:
-            - '${FORWARD_REDIS_COMMANDER_PORT:-8082}:8081'
+            - '127.0.0.1:${FORWARD_REDIS_COMMANDER_PORT:-8082}:8081'
         environment:
-            # REDIS_HOSTS format: `label:host:port:db:password`.
-            # The trailing password matches Valkey's --requirepass
-            # so Commander can authenticate against the data
-            # plane without a second set of creds.
             REDIS_HOSTS: 'local:valkey:6379:0:${REDIS_PASSWORD}'
-            # Basic-auth creds stay configured as a break-glass
-            # fallback — the primary flow is SSO via the JWT
-            # redirect path below, but if SSO ever breaks, the
-            # admin can still log in directly with these.
-            HTTP_USER: '${REDIS_COMMANDER_HTTP_USER}'
-            HTTP_PASSWORD: '${REDIS_COMMANDER_HTTP_PASSWORD}'
-            # Unified SSO — when SSO_ENABLED is true, Redis
-            # Commander accepts a signed JWT at /sso?access_token=.
-            # Laravel's RedisCommanderSsoController signs the JWT
-            # with SSO_JWT_SECRET and includes `iss=SSO_ISSUER`,
-            # which Commander validates. Env var names confirmed
-            # via the image's custom-environment-variables.json.
-            SSO_ENABLED: 'true'
-            SSO_JWT_SECRET: '${REDIS_COMMANDER_SSO_SECRET}'
-            SSO_ISSUER: '${REDIS_COMMANDER_SSO_ISSUER:-orbital-admin}'
+            # No HTTP_USER / HTTP_PASSWORD / SSO — auth is disabled
+            # so the SPA skips its login form entirely. All access
+            # is gated by the Laravel proxy route instead.
         networks:
             - sail
         depends_on:
@@ -99,8 +152,9 @@ services:
 
     pgadmin:
         image: 'dpage/pgadmin4:latest'
+        entrypoint: ['/opt/entrypoint-tls.sh']
         ports:
-            - '${FORWARD_PGADMIN_PORT:-5050}:80'
+            - '${FORWARD_PGADMIN_PORT:-5050}:443'
         environment:
             # Server mode replaces the old "desktop" single-user
             # profile with a proper multi-user install. Users come
@@ -121,6 +175,14 @@ services:
             # rejects reserved TLDs by default.
             PGADMIN_CONFIG_CHECK_EMAIL_DELIVERABILITY: 'False'
             PGADMIN_CONFIG_ALLOW_SPECIAL_EMAIL_DOMAINS: "['test', 'local', 'example', 'invalid']"
+            # pgAdmin serves its own TLS using the shared cert
+            # volume rather than going through the Laravel reverse
+            # proxy. Flask's session-based OAuth2 flow breaks
+            # through a proxy because the Set-Cookie path and
+            # redirect chain lose session state across the
+            # authorize round-trip. Direct HTTPS avoids that.
+            PGADMIN_ENABLE_TLS: 'True'
+            PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION: 'False'
             # OAuth2 SSO against the Laravel OIDC provider. pgAdmin
             # discovers the token/authorize/userinfo endpoints from
             # the /.well-known/openid-configuration URL so we only
@@ -134,8 +196,7 @@ services:
                     "OAUTH2_CLIENT_ID": "${PGADMIN_OAUTH2_CLIENT_ID}",
                     "OAUTH2_CLIENT_SECRET": "${PGADMIN_OAUTH2_CLIENT_SECRET}",
                     "OAUTH2_TOKEN_URL": "http://orbital.test/oauth/token",
-                    "OAUTH2_AUTHORIZATION_URL": "http://orbital.test/oauth/authorize",
-                    "OAUTH2_SERVER_METADATA_URL": "http://orbital.test/.well-known/openid-configuration",
+                    "OAUTH2_AUTHORIZATION_URL": "https://orbital.test/oauth/authorize",
                     "OAUTH2_USERINFO_ENDPOINT": "http://orbital.test/oauth/userinfo",
                     "OAUTH2_SCOPE": "openid email profile",
                     "OAUTH2_ICON": "fa-solid fa-key",
@@ -144,6 +205,14 @@ services:
         volumes:
             - 'sail-pgadmin:/var/lib/pgadmin'
             - './docker/pgadmin/servers.json:/pgadmin4/servers.json:ro'
+            - './docker/pgadmin/entrypoint-tls.sh:/opt/entrypoint-tls.sh:ro'
+            - 'tls-certs:/etc/tls:ro'
+        tmpfs:
+            # Writable scratch space for the TLS entrypoint to copy
+            # cert files with the names pgAdmin expects. Using tmpfs
+            # instead of a named volume because the content is
+            # ephemeral (refreshed from tls-certs on every boot).
+            - /certs
         networks:
             - sail
         depends_on:
@@ -244,9 +313,23 @@ services:
 
     mailpit:
         image: 'axllent/mailpit:latest'
+        # Always running as a debug mail trap. In production,
+        # MAIL_HOST points at the real SMTP relay — Mailpit only
+        # captures mail when you explicitly flip MAIL_HOST=mailpit
+        # for debugging. Ports are loopback-bound because the web
+        # UI has no auth; admin access goes through Laravel's
+        # /admin/mailpit/* proxy route which adds session gating.
+        # SMTP port 1025 stays loopback too — the app container
+        # reaches it via `mailpit:1025` on the sail network.
+        #
+        # --webroot tells Mailpit to serve all URLs (API, assets,
+        # WebSocket) under /admin/mailpit/ so they natively match
+        # the proxy route prefix. No URL rewriting needed in the
+        # Laravel proxy — Mailpit generates correct paths itself.
+        command: ['--webroot', '/admin/mailpit']
         ports:
-            - '${FORWARD_MAILPIT_PORT:-1025}:1025'
-            - '${FORWARD_MAILPIT_DASHBOARD_PORT:-8025}:8025'
+            - '127.0.0.1:${FORWARD_MAILPIT_PORT:-1025}:1025'
+            - '127.0.0.1:${FORWARD_MAILPIT_DASHBOARD_PORT:-8025}:8025'
         networks:
             - sail
 
@@ -340,6 +423,11 @@ services:
             # Laravel app container (DisclosureRenderer) and played
             # back via dialplan Playback(...) at call time.
             - 'asterisk-prompts:/var/spool/asterisk/prompts'
+            # Shared TLS cert volume — Asterisk's entrypoint
+            # symlinks /etc/tls/fullchain.pem → /etc/asterisk/keys/
+            # when a managed cert exists, falling back to self-signed
+            # generation when it doesn't.
+            - 'tls-certs:/etc/tls:ro'
         networks:
             # Asterisk needs the `sail` network to reach pgsql for its
             # ARA realtime queries, plus `telephony` for the LiveKit /
@@ -690,4 +778,8 @@ volumes:
     sail-seaweedfs:
         driver: local
     sail-ollama:
+        driver: local
+    tls-certs:
+        driver: local
+    acme-data:
         driver: local

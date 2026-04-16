@@ -173,76 +173,61 @@ class AdminPanelProvider extends PanelProvider
                     ->sort(10)
                     ->visible(fn () => self::userCanAccessTool('tooling.grafana')),
                 NavigationItem::make('Prometheus')
-                    ->url(fn () => 'http://'.self::canonicalHost().':9090', shouldOpenInNewTab: true)
+                    ->url(fn () => route('admin.prometheus.forward'), shouldOpenInNewTab: true)
                     ->icon('heroicon-o-fire')
                     ->group('Control Panels')
                     ->sort(11)
-                    ->visible(fn () => auth()->user()?->isSuperAdmin() ?? false),
+                    ->visible(fn () => self::userCanAccessTool('tooling.prometheus')),
                 NavigationItem::make('SeaweedFS Filer')
-                    // Points at Laravel's reverse-proxy route,
-                    // NOT the raw filer host port. SeaweedFS's
-                    // filer web UI has NO auth in the community
-                    // build and accepts write operations, so the
-                    // entire trust boundary is the Laravel route
-                    // at /admin/seaweedfs/filer/ gated by
-                    // `tool:tooling.seaweedfs`. The 9001 host
-                    // port is also loopback-bound as a defense-
-                    // in-depth measure.
                     ->url(fn () => route('admin.seaweedfs.filer'), shouldOpenInNewTab: true)
                     ->icon('heroicon-o-archive-box')
                     ->group('Control Panels')
                     ->sort(12)
                     ->visible(fn () => self::userCanAccessTool('tooling.seaweedfs')),
                 NavigationItem::make('SeaweedFS Master')
-                    // Master admin / cluster status. Same trust
-                    // model as the filer above — proxied through
-                    // Laravel with tool permission gating.
                     ->url(fn () => route('admin.seaweedfs.master'), shouldOpenInNewTab: true)
                     ->icon('heroicon-o-server-stack')
                     ->group('Control Panels')
-                    ->sort(17)
+                    ->sort(13)
                     ->visible(fn () => self::userCanAccessTool('tooling.seaweedfs')),
                 NavigationItem::make('pgAdmin')
-                    ->url(fn () => 'http://'.self::canonicalHost().':5050', shouldOpenInNewTab: true)
+                    // Direct HTTPS — pgAdmin serves its own TLS
+                    // from the shared cert volume. It's the one
+                    // control panel NOT proxied through Laravel
+                    // because Flask's OAuth2 session flow breaks
+                    // through a reverse proxy.
+                    ->url(fn () => 'https://'.self::canonicalHost().':5050', shouldOpenInNewTab: true)
                     ->icon('heroicon-o-circle-stack')
                     ->group('Control Panels')
-                    ->sort(13)
-                    ->visible(fn () => auth()->user()?->isSuperAdmin() ?? false),
+                    ->sort(14)
+                    ->visible(fn () => self::userCanAccessTool('tooling.pgadmin')),
                 NavigationItem::make('Redis Commander')
-                    // Points at Laravel's SSO entry route, NOT
-                    // the raw Commander host port. The entry
-                    // route signs a single-use JWT, then 302s
-                    // into Commander's /sso?access_token flow.
-                    // Visible to anyone with tooling.redis_commander
-                    // (super-admin still passes via userCanAccessTool).
-                    ->url(fn () => route('admin.sso.redis-commander'), shouldOpenInNewTab: true)
+                    // Proxied through Laravel with Basic auth
+                    // injection (same pattern as Icecast). Replaced
+                    // the earlier JWT SSO redirect which broke under
+                    // HTTPS (mixed-content redirect to HTTP port).
+                    ->url(fn () => route('admin.redis-commander.forward'), shouldOpenInNewTab: true)
                     ->icon('heroicon-o-bolt')
                     ->group('Control Panels')
-                    ->sort(14)
+                    ->sort(15)
                     ->visible(fn () => self::userCanAccessTool('tooling.redis_commander')),
-                // Mailpit is a dev-only outbound-mail capture UI —
-                // it sinks SMTP into a web inbox so you can see what
-                // would have been sent. In production the SMTP relay
-                // is a real provider (Postal / SES / Postmark) with
-                // no browsable inbox, so this entry is hidden outside
-                // the local environment.
                 NavigationItem::make('Mailpit')
-                    ->url(fn () => 'http://'.self::canonicalHost().':8025', shouldOpenInNewTab: true)
+                    // Debug mail trap — always running but only in
+                    // the mail path when MAIL_HOST=mailpit. In prod,
+                    // MAIL_HOST points at the real relay and Mailpit
+                    // sits idle until an operator flips it for
+                    // debugging. Proxied through Laravel for TLS +
+                    // session auth since Mailpit has no built-in auth.
+                    ->url(fn () => route('admin.mailpit.forward'), shouldOpenInNewTab: true)
                     ->icon('heroicon-o-envelope-open')
                     ->group('Control Panels')
-                    ->sort(15)
-                    ->visible(fn () => app()->environment('local') && (auth()->user()?->isSuperAdmin() ?? false)),
+                    ->sort(16)
+                    ->visible(fn () => self::userCanAccessTool('tooling.mailpit')),
                 NavigationItem::make('Icecast')
-                    // Points at Laravel's reverse-proxy route, NOT
-                    // the raw Icecast host port. The proxy injects
-                    // HTTP Basic Auth with the admin credentials
-                    // from .env on every forwarded request, so
-                    // clicking the nav item drops you straight into
-                    // the Icecast admin UI without a browser prompt.
                     ->url(fn () => route('admin.icecast.forward'), shouldOpenInNewTab: true)
                     ->icon('heroicon-o-musical-note')
                     ->group('Control Panels')
-                    ->sort(16)
+                    ->sort(17)
                     ->visible(fn () => self::userCanAccessTool('tooling.icecast')),
             ])
             ->middleware([

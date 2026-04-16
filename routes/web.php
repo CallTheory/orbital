@@ -2,6 +2,10 @@
 
 use App\Http\Controllers\Admin\Sso\GrafanaProxyController;
 use App\Http\Controllers\Admin\Sso\IcecastProxyController;
+use App\Http\Controllers\Admin\Sso\MailpitProxyController;
+use App\Http\Controllers\Admin\Sso\PgAdminProxyController;
+use App\Http\Controllers\Admin\Sso\PrometheusProxyController;
+use App\Http\Controllers\Admin\Sso\RedisCommanderProxyController;
 use App\Http\Controllers\Admin\Sso\RedisCommanderSsoController;
 use App\Http\Controllers\Admin\Sso\SeaweedFsProxyController;
 use App\Http\Controllers\ChatController;
@@ -93,9 +97,16 @@ Route::get('/chat/{tenant}/{persona}', [ChatController::class, 'show'])
 // ──────────────────────────────────────────────────────────────────
 
 Route::middleware(['auth'])->prefix('admin')->group(function () {
+    // Legacy JWT SSO route — kept for backward compat but the
+    // nav now points at the proxy route below instead.
     Route::get('sso/redis-commander', RedisCommanderSsoController::class)
         ->middleware('tool:tooling.redis_commander')
         ->name('admin.sso.redis-commander');
+
+    Route::any('redis-commander/{path?}', [RedisCommanderProxyController::class, 'forward'])
+        ->where('path', '.*')
+        ->middleware('tool:tooling.redis_commander')
+        ->name('admin.redis-commander.forward');
 
     Route::any('grafana/{path?}', [GrafanaProxyController::class, 'forward'])
         ->where('path', '.*')
@@ -116,6 +127,21 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
         ->where('path', '.*')
         ->middleware('tool:tooling.seaweedfs')
         ->name('admin.seaweedfs.master');
+
+    Route::any('pgadmin/{path?}', [PgAdminProxyController::class, 'forward'])
+        ->where('path', '.*')
+        ->middleware('tool:tooling.pgadmin')
+        ->name('admin.pgadmin.forward');
+
+    Route::any('prometheus/{path?}', [PrometheusProxyController::class, 'forward'])
+        ->where('path', '.*')
+        ->middleware('tool:tooling.prometheus')
+        ->name('admin.prometheus.forward');
+
+    Route::any('mailpit/{path?}', [MailpitProxyController::class, 'forward'])
+        ->where('path', '.*')
+        ->middleware('tool:tooling.mailpit')
+        ->name('admin.mailpit.forward');
 });
 
 // ──────────────────────────────────────────────────────────────────

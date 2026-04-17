@@ -8,26 +8,15 @@ use App\Models\AvailabilityReason;
 use Illuminate\Database\Seeder;
 
 /**
- * Starter vocabulary for operator availability reasons. The
- * platform operator can edit or extend this list from
- * Features → Availability Reasons at any time — this just
- * gets new installs to a reasonable default without requiring
- * admin setup before the first operator can say they're on break.
+ * Starter vocabulary for operator availability reasons.
  *
- * The `available` row is the one special case: admins can rename
- * it ("On the floor", "Taking calls", etc.), re-color it, edit
- * the description, but they cannot delete it or flip its
- * `blocks_new_work` / `is_active` flags from the admin UI.
- * Without it, the system has no "accepting work" state at all
- * and every operator is permanently off the floor. The model
- * rejects deletion on the backend as a safety net for any path
- * (tinker, bulk action, etc.) that might try.
+ * `blocks_voice` and `blocks_non_voice` control which channels
+ * stop routing when an operator selects this status:
+ *   - Voice = phone calls (Asterisk queue membership paused)
+ *   - Non-voice = email, SMS, chat (inbox hides unclaimed threads)
  *
- * Every OTHER starter reason has `blocks_new_work = true` since
- * they're all "I'm not taking work right now" states. Admins can
- * add softer reasons (e.g. "Back in 5 — still send me urgent
- * stuff") and set blocks_new_work to false if they want routing
- * to keep firing.
+ * The `available` row is protected from deletion and must have
+ * both channels unblocked.
  */
 class AvailabilityReasonSeeder extends Seeder
 {
@@ -35,22 +24,39 @@ class AvailabilityReasonSeeder extends Seeder
     {
         $reasons = [
             [
-                // The built-in "I'm taking work" row. Slug is the
-                // AvailabilityReason::AVAILABLE constant; protected
-                // from deletion by the model's deleting hook.
                 'slug' => AvailabilityReason::AVAILABLE,
                 'label' => 'Available',
-                'description' => 'On the floor and accepting new calls and email.',
+                'description' => 'On the floor and accepting all work.',
                 'dot_color' => '#22c55e',
-                'blocks_new_work' => false,
+                'blocks_voice' => false,
+                'blocks_non_voice' => false,
                 'sort_order' => 0,
+            ],
+            [
+                'slug' => 'voice_only',
+                'label' => 'Voice Only',
+                'description' => 'Taking phone calls but not email, SMS, or chat.',
+                'dot_color' => '#8b5cf6',
+                'blocks_voice' => false,
+                'blocks_non_voice' => true,
+                'sort_order' => 5,
+            ],
+            [
+                'slug' => 'non_voice_only',
+                'label' => 'Non-Voice Only',
+                'description' => 'Working email, SMS, and chat but not taking phone calls.',
+                'dot_color' => '#06b6d4',
+                'blocks_voice' => true,
+                'blocks_non_voice' => false,
+                'sort_order' => 6,
             ],
             [
                 'slug' => 'in_meeting',
                 'label' => 'In meeting',
                 'description' => 'With a supervisor or teammate.',
                 'dot_color' => '#f59e0b',
-                'blocks_new_work' => true,
+                'blocks_voice' => true,
+                'blocks_non_voice' => true,
                 'sort_order' => 10,
             ],
             [
@@ -58,7 +64,8 @@ class AvailabilityReasonSeeder extends Seeder
                 'label' => 'Training',
                 'description' => 'In training or learning the ropes.',
                 'dot_color' => '#3b82f6',
-                'blocks_new_work' => true,
+                'blocks_voice' => true,
+                'blocks_non_voice' => true,
                 'sort_order' => 20,
             ],
             [
@@ -66,7 +73,8 @@ class AvailabilityReasonSeeder extends Seeder
                 'label' => 'Unavailable',
                 'description' => 'Not taking new work right now.',
                 'dot_color' => '#6b7280',
-                'blocks_new_work' => true,
+                'blocks_voice' => true,
+                'blocks_non_voice' => true,
                 'sort_order' => 100,
             ],
         ];

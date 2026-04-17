@@ -22,12 +22,12 @@ use Illuminate\Database\Eloquent\Model;
  * nothing in the system can accept work, so it's protected on
  * both the UI layer and the backend as a safety net.
  *
- * `blocks_new_work` is the one field routing actually reads:
- * true means calls + emails stop being distributed to the
- * operator while this state is active; false means they still
- * get routed new work despite the visible label. Most reasons
- * are "don't ring me" states so it defaults to true; soft states
- * ("Back in 5 — still send me urgent stuff") can flip it off.
+ * `blocks_voice` and `blocks_non_voice` control which channels
+ * stop routing when this state is active. Voice = phone calls
+ * via Asterisk queues. Non-voice = email, SMS, chat. An operator
+ * on "Non-Voice Only" has blocks_voice=true, blocks_non_voice=false
+ * so they can work email but won't get phone calls. Most reasons
+ * block both channels by default.
  *
  * `dot_color` is a free-form hex value picked via the admin's
  * color picker. The AvailabilitySelector renders it as an
@@ -59,6 +59,7 @@ class AvailabilityReason extends Model
             if ($reason->slug === self::AVAILABLE) {
                 return false;
             }
+
             return true;
         });
     }
@@ -68,7 +69,8 @@ class AvailabilityReason extends Model
         'label',
         'description',
         'dot_color',
-        'blocks_new_work',
+        'blocks_voice',
+        'blocks_non_voice',
         'sort_order',
         'is_active',
     ];
@@ -76,9 +78,18 @@ class AvailabilityReason extends Model
     protected function casts(): array
     {
         return [
-            'blocks_new_work' => 'boolean',
+            'blocks_voice' => 'boolean',
+            'blocks_non_voice' => 'boolean',
             'is_active' => 'boolean',
             'sort_order' => 'integer',
         ];
+    }
+
+    /**
+     * Convenience: does this reason block all work?
+     */
+    public function blocksAllWork(): bool
+    {
+        return $this->blocks_voice && $this->blocks_non_voice;
     }
 }

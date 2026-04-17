@@ -92,6 +92,7 @@ class SipPhone {
                 sessionDescriptionHandlerOptions: {
                     constraints: { audio: true, video: false },
                 },
+                sessionDescriptionHandlerModifiers: [this._forceCodec('PCMU')],
             });
         }
     }
@@ -122,6 +123,8 @@ class SipPhone {
             sessionDescriptionHandlerOptions: {
                 constraints: { audio: true, video: false },
             },
+            sessionDescriptionHandlerModifiersReInvite: [this._forceCodec('PCMU')],
+            sessionDescriptionHandlerModifiers: [this._forceCodec('PCMU')],
         });
 
         inviter.stateChange.addListener((state) => {
@@ -284,6 +287,57 @@ class SipPhone {
             this.remoteAudio.remove();
             this.remoteAudio = null;
         }
+    }
+
+    /**
+     * SDP modifier that strips all audio codecs except the specified one.
+     * Forces PCMU (G.711 ulaw) so Asterisk can bridge without an opus transcoder.
+     */
+    _forceCodec(codecName) {
+        return (description) => {
+            const sdp = description.sdp;
+            if (!sdp) return description;
+
+            const lines = sdp.split('\r\n');
+            const result = [];
+            let inAudio = false;
+            let audioPayloads = [];
+            let keepPayloads = new Set();
+            const codecPattern = new RegExp(`a=rtpmap:(\\d+)\\s+${codecName}/`, 'i');
+            const telephoneEvent = /a=rtpmap:(\d+)\s+telephone-event\//i;
+
+            // First pass: find payload numbers to keep
+            for (const line of lines) {
+                const codecMatch = line.match(codecPattern);
+                if (codecMatch) keepPayloads.add(codecMatch[1]);
+                const teMatch = line.match(telephoneEvent);
+                if (teMatch) keepPayloads.add(teMatch[1]);
+            }
+
+            // Second pass: filter SDP
+            for (const line of lines) {
+                if (line.startsWith('m=audio')) {
+                    inAudio = true;
+                    const parts = line.split(' ');
+                    // m=audio PORT PROTO PT1 PT2 ...
+                    const filtered = parts.slice(0, 3).concat(
+                        parts.slice(3).filter(pt => keepPayloads.has(pt))
+                    );
+                    result.push(filtered.join(' '));
+                    continue;
+                }
+                if (line.startsWith('m=') && !line.startsWith('m=audio')) {
+                    inAudio = false;
+                }
+                if (inAudio) {
+                    const ptMatch = line.match(/^a=(?:rtpmap|fmtp|rtcp-fb):(\d+)/);
+                    if (ptMatch && !keepPayloads.has(ptMatch[1])) continue;
+                }
+                result.push(line);
+            }
+
+            return { ...description, sdp: result.join('\r\n') };
+        };
     }
 
     _setState(state, message = '') {

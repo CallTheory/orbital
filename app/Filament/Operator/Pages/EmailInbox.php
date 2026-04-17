@@ -60,7 +60,7 @@ class EmailInbox extends Page implements HasTable
     public function getSubheading(): ?string
     {
         $user = auth()->user();
-        if ($user && ! $user->isAvailableForWork()) {
+        if ($user && ! $user->isAvailableForNonVoice()) {
             return 'You are currently unavailable. Switch to available to see and work on threads.';
         }
 

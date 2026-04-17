@@ -482,6 +482,8 @@ services:
             ANTHROPIC_API_KEY: '${ANTHROPIC_API_KEY}'
             OPENAI_API_KEY: '${OPENAI_API_KEY}'
             ELEVENLABS_API_KEY: '${ELEVENLABS_API_KEY}'
+            ELEVEN_API_KEY: '${ELEVENLABS_API_KEY}'
+            OPENROUTER_API_KEY: '${OPENROUTER_API_KEY}'
             ORBITAL_API_URL: 'http://orbital.test/api'
             ORBITAL_API_TOKEN: '${AGENT_WORKER_TOKEN}'
         networks:

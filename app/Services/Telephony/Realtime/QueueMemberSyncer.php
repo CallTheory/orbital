@@ -199,7 +199,7 @@ class QueueMemberSyncer
                 // Asterisk still rings available members first
                 // and only falls back to paused members if
                 // nobody else answers.
-                'paused' => $operator->isAvailableForWork() ? 0 : 1,
+                'paused' => $operator->isAvailableForVoice() ? 0 : 1,
             ];
         }
 
@@ -233,7 +233,7 @@ class QueueMemberSyncer
             $paused = 0;
             if ($row->member_type === User::class) {
                 $memberUser = User::find($row->member_id);
-                if ($memberUser && ! $memberUser->isAvailableForWork()) {
+                if ($memberUser && ! $memberUser->isAvailableForVoice()) {
                     $paused = 1;
                 }
             }
@@ -264,6 +264,7 @@ class QueueMemberSyncer
             if ($user === null) {
                 return null;
             }
+
             return Extension::query()
                 ->where('assignable_type', User::class)
                 ->where('assignable_id', $user->id)

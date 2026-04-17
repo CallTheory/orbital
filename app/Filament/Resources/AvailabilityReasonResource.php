@@ -7,8 +7,13 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\AvailabilityReasonResource\Pages;
 use App\Models\AvailabilityReason;
 use BackedEnum;
+use Filament\Actions\BulkActionGroup;
+use Filament\Actions\DeleteBulkAction;
+use Filament\Actions\EditAction;
 use Filament\Forms;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Group;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -60,38 +65,46 @@ class AvailabilityReasonResource extends Resource
     public static function form(Schema $schema): Schema
     {
         return $schema
+            ->columns(2)
             ->components([
-                Forms\Components\TextInput::make('label')
-                    ->required()
-                    ->maxLength(255)
-                    ->placeholder('On break'),
-                Forms\Components\Textarea::make('description')
-                    ->rows(2)
-                    ->maxLength(500)
-                    ->placeholder('Short explanation shown as a tooltip.'),
-                Forms\Components\ColorPicker::make('dot_color')
-                    ->label('Pill dot color')
-                    ->default('#f59e0b')
-                    ->required()
-                    ->helperText('Free-form color picker. The availability selector renders this as the dot next to the operator\'s status label.'),
-                Forms\Components\Toggle::make('blocks_new_work')
-                    ->label('Block new work')
-                    ->default(true)
-                    ->disabled(fn (?Model $record): bool => self::isBuiltInAvailable($record))
-                    ->helperText(fn (?Model $record): string => self::isBuiltInAvailable($record)
-                        ? 'Locked: the built-in Available row is the one state that must never block work — without it no operator can receive anything.'
-                        : 'When ON (typical), operators on this status stop receiving new calls and email. Turn OFF for soft statuses where operators should still get new work despite the label.'),
-                // sort_order is intentionally not in the form — it's
-                // controlled from the list page's drag-to-reorder
-                // handles so admins can see the whole list while they
-                // rearrange it, instead of editing one row's number
-                // at a time and hoping the others still make sense.
-                Forms\Components\Toggle::make('is_active')
-                    ->default(true)
-                    ->disabled(fn (?Model $record): bool => self::isBuiltInAvailable($record))
-                    ->helperText(fn (?Model $record): string => self::isBuiltInAvailable($record)
-                        ? 'Locked: the built-in Available row is always active. Deactivating it would strand every operator.'
-                        : 'Inactive reasons are hidden from the selector but existing assignments stay intact.'),
+                Group::make([
+                    Forms\Components\TextInput::make('label')
+                        ->required()
+                        ->maxLength(255)
+                        ->placeholder('On break'),
+                    Forms\Components\ColorPicker::make('dot_color')
+                        ->label('Pill dot color')
+                        ->default('#f59e0b')
+                        ->required()
+                        ->helperText('The availability selector renders this as the dot next to the status label.'),
+                    Forms\Components\Textarea::make('description')
+                        ->rows(2)
+                        ->maxLength(500)
+                        ->placeholder('Short explanation shown as a tooltip.'),
+                    Forms\Components\Toggle::make('is_active')
+                        ->default(true)
+                        ->disabled(fn (?Model $record): bool => self::isBuiltInAvailable($record))
+                        ->helperText(fn (?Model $record): string => self::isBuiltInAvailable($record)
+                            ? 'Locked: the built-in Available row is always active.'
+                            : 'Hidden from the selector when inactive.'),
+                ]),
+                Section::make('Channel blocking')
+                    ->description('Which channels are paused when an operator selects this status.')
+                    ->compact()
+                    ->schema([
+                        Forms\Components\Toggle::make('blocks_voice')
+                            ->label('Block voice (calls)')
+                            ->default(true)
+                            ->disabled(fn (?Model $record): bool => self::isBuiltInAvailable($record))
+                            ->helperText('Operators will not receive phone calls.'),
+                        Forms\Components\Toggle::make('blocks_non_voice')
+                            ->label('Block non-voice (email, SMS, chat)')
+                            ->default(true)
+                            ->disabled(fn (?Model $record): bool => self::isBuiltInAvailable($record))
+                            ->helperText(fn (?Model $record): string => self::isBuiltInAvailable($record)
+                                ? 'Locked: the built-in Available row must never block work.'
+                                : 'Operators will not see unclaimed threads.'),
+                    ]),
             ]);
     }
 
@@ -106,6 +119,7 @@ class AvailabilityReasonResource extends Resource
     public static function mutateFormDataBeforeCreate(array $data): array
     {
         $data['slug'] = $data['slug'] ?? Str::slug($data['label'] ?? '', '_');
+
         return $data;
     }
 
@@ -136,8 +150,12 @@ class AvailabilityReasonResource extends Resource
                     ->limit(60)
                     ->placeholder('—')
                     ->toggleable(),
-                Tables\Columns\IconColumn::make('blocks_new_work')
-                    ->label('Blocks work')
+                Tables\Columns\IconColumn::make('blocks_voice')
+                    ->label('Blocks voice')
+                    ->boolean()
+                    ->alignCenter(),
+                Tables\Columns\IconColumn::make('blocks_non_voice')
+                    ->label('Blocks non-voice')
                     ->boolean()
                     ->alignCenter(),
                 Tables\Columns\IconColumn::make('is_active')
@@ -151,10 +169,10 @@ class AvailabilityReasonResource extends Resource
             // `sort_order` ASC picks it up on the next render.
             ->reorderable('sort_order')
             ->actions([
-                \Filament\Actions\EditAction::make(),
+                EditAction::make(),
             ])
             ->bulkActions([
-                \Filament\Actions\BulkActionGroup::make([
+                BulkActionGroup::make([
                     // No special handling here — the model's
                     // `deleting` hook returns false for the
                     // Available row, which Eloquent treats as
@@ -162,7 +180,7 @@ class AvailabilityReasonResource extends Resource
                     // delete. The admin's other selections still
                     // go through and the Available row quietly
                     // survives.
-                    \Filament\Actions\DeleteBulkAction::make(),
+                    DeleteBulkAction::make(),
                 ]),
             ]);
     }

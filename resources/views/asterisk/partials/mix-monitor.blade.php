@@ -59,7 +59,7 @@
 @endphp
 @if($shouldRecord)
  same => n,NoOp(Recording enabled via {{ $policy->source }}; mix + rx + tx)
- same => n,MkDir({{ $dir }})
+ same => n,System(mkdir -p {{ $dir }})
  same => n,MixMonitor({{ $mixFile }},{{ $beep }}r({{ $rxFile }})t({{ $txFile }}))
 @if($disclosurePath)
  same => n,NoOp(Playing recording disclosure to caller)

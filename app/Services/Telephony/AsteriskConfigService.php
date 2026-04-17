@@ -113,6 +113,41 @@ class AsteriskConfigService
         ])->render();
     }
 
+    /**
+     * Render the [internal] context — dialling context for platform
+     * staff softphones. Contains all extensions across all tenants
+     * so an operator can dial any AI agent or coworker extension
+     * without knowing the tenant context.
+     */
+    public function generateInternalContext(): string
+    {
+        $extensions = Extension::withoutGlobalScopes()
+            ->where('is_active', true)
+            ->with('assignable')
+            ->get();
+
+        $recording = app(CallRecordingService::class);
+        foreach ($extensions as $ext) {
+            $ext->setAttribute('recording_policy', $recording->resolveForExtension($ext));
+        }
+
+        $queues = CallQueue::withoutGlobalScopes()
+            ->with('overflowAgent.extensions')
+            ->get();
+
+        $rules = \App\Models\RoutingRule::withoutGlobalScopes()
+            ->where('is_active', true)
+            ->with('team')
+            ->orderBy('priority')
+            ->get();
+
+        return View::make('asterisk.extensions', [
+            'extensions' => $extensions,
+            'queues' => $queues,
+            'rules' => $rules,
+        ])->render();
+    }
+
     // ── Per-tenant write paths ──────────────────────────────────────
 
     /**
@@ -193,6 +228,11 @@ class AsteriskConfigService
         File::put(
             $this->configPath.'/from-trunk.conf',
             $this->generateFromTrunkDispatcher(),
+        );
+
+        File::put(
+            $this->configPath.'/extensions_generated.conf',
+            $this->generateInternalContext(),
         );
 
         File::put(

@@ -19,8 +19,9 @@
 ; DO NOT EDIT — regenerated when tenants are created/deleted
 ;===============================================================================
 
-#include "from-trunk.conf"
+#include "generated/from-trunk.conf"
+#include "generated/extensions_generated.conf"
 
 @foreach($teamIds as $teamId)
-#include "tenants/{{ $teamId }}-dialplan.conf"
+#include "generated/tenants/{{ $teamId }}-dialplan.conf"
 @endforeach

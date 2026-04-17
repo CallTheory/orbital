@@ -91,29 +91,56 @@ class User extends Authenticatable implements FilamentUser
     }
 
     /**
-     * True when this user should receive new work right now.
-     * Used by the Asterisk queue-member sync to pause routing
-     * and by the email inbox to hide new unclaimed threads.
-     *
-     * Every state — including the built-in `available` row — lives
-     * in `availability_reasons`, so the logic is one lookup: the
-     * row's `blocks_new_work` flag is authoritative. A null or
-     * unknown status (brand-new user, migrated data, wiped row)
-     * falls through to the AVAILABILITY_AVAILABLE sentinel early
-     * return as a safety net so we never accidentally strand an
-     * operator whose status we can't find.
+     * True when this user should receive new work on any channel.
+     * Convenience wrapper — returns true when at least one channel
+     * is unblocked. Used by the availability selector UI to decide
+     * the badge color (green vs gray).
      */
     public function isAvailableForWork(): bool
     {
+        return $this->isAvailableForVoice() || $this->isAvailableForNonVoice();
+    }
+
+    /**
+     * True when this user should receive voice work (phone calls).
+     * Read by QueueMemberSyncer to pause/unpause Asterisk queue
+     * membership.
+     */
+    public function isAvailableForVoice(): bool
+    {
+        return ! $this->currentReasonBlocks('blocks_voice');
+    }
+
+    /**
+     * True when this user should receive non-voice work (email,
+     * SMS, chat). Read by the operator email inbox to show/hide
+     * unclaimed threads.
+     */
+    public function isAvailableForNonVoice(): bool
+    {
+        return ! $this->currentReasonBlocks('blocks_non_voice');
+    }
+
+    /**
+     * Check if the operator's current availability reason blocks
+     * the given channel. Returns false (not blocked) for null,
+     * empty, or unknown statuses as a safety net.
+     */
+    private function currentReasonBlocks(string $field): bool
+    {
         if (empty($this->availability_status) || $this->availability_status === self::AVAILABILITY_AVAILABLE) {
-            return true;
+            return false;
         }
 
         $reason = AvailabilityReason::query()
             ->where('slug', $this->availability_status)
             ->first();
 
-        return $reason !== null && ! $reason->blocks_new_work;
+        if (! $reason) {
+            return false;
+        }
+
+        return (bool) $reason->{$field};
     }
 
     /**

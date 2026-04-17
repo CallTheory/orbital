@@ -36,13 +36,16 @@ class ListAvailabilityReasons extends ListRecords
 
         $hasAcceptingRow = AvailabilityReason::query()
             ->where('is_active', true)
-            ->where('blocks_new_work', false)
+            ->where(function ($q) {
+                $q->where('blocks_voice', false)
+                    ->orWhere('blocks_non_voice', false);
+            })
             ->exists();
 
         if ($hasAcceptingRow) {
             return $description;
         }
 
-        return $description.' ⚠ No active "accepting work" reasons exist — operators can\'t receive new calls or email until at least one active reason has "Block new work" turned off.';
+        return $description.' ⚠ No active reasons allow any work — operators can\'t receive calls or email until at least one active reason has a channel unblocked.';
     }
 }

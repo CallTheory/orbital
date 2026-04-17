@@ -39,7 +39,21 @@ export default function softphone() {
 
             if (!window.SipPhone || !this.sipConfig.wsUrl) return;
 
+            // Persist the SipPhone instance on window so it survives
+            // SPA navigation (wire:navigate). If a phone already exists
+            // from a previous page, reuse it — don't re-register.
+            if (window._orbitalSipPhone) {
+                this.phone = window._orbitalSipPhone;
+                this.state = this.phone.state || 'idle';
+                this.phone.onStateChange = (state, msg) => {
+                    this.state = state;
+                    this.message = msg;
+                };
+                return;
+            }
+
             this.phone = new window.SipPhone();
+            window._orbitalSipPhone = this.phone;
             this.phone.onStateChange = (state, msg) => {
                 this.state = state;
                 this.message = msg;

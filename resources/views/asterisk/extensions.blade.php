@@ -33,11 +33,6 @@ exten => *60,1,NoOp(Speaking clock)
 ; ── AI Agent Extensions (via LiveKit) ──
 @foreach($extensions->where('type', 'ai_agent') as $ext)
 exten => {{ $ext->number }},1,NoOp(AI Agent: {{ $ext->label ?? $ext->number }})
- same => n,Set(RINGTIME=${{RAND(0,4)}})
- same => n,Ringing()
- same => n,Wait(${{RINGTIME}})
- same => n,Answer()
-@include('asterisk.partials.mix-monitor', ['ext' => $ext])
  same => n,Dial(PJSIP/{{ $ext->number }}@livekit,120,tTkK)
  same => n,Hangup()
 @endforeach
@@ -47,7 +42,7 @@ exten => {{ $ext->number }},1,NoOp(AI Agent: {{ $ext->label ?? $ext->number }})
 exten => {{ $ext->number }},1,NoOp(Dialing {{ $ext->label ?? 'extension' }} {{ $ext->number }})
 @include('asterisk.partials.mix-monitor', ['ext' => $ext])
  same => n,Dial(PJSIP/{{ $ext->number }},18,tTkK)
- same => n,GotoIf($["${{DIALSTATUS}}" = "BUSY"]?busy:unavail)
+ same => n,GotoIf($["${DIALSTATUS}" = "BUSY"]?busy:unavail)
  same => n(busy),VoiceMail({{ $ext->number }}{{ '@default' }},b)
  same => n,Hangup()
  same => n(unavail),VoiceMail({{ $ext->number }}{{ '@default' }},u)
@@ -100,5 +95,5 @@ exten => _X.,1,NoOp(Routing: {{ $rule->name }})
 ;───────────────────────────────────────────────────────────────────────────────
 [from-livekit]
 
-exten => _X.,1,NoOp(From LiveKit: ${{EXTEN}})
- same => n,Goto(internal,${{EXTEN}},1)
+exten => _X.,1,NoOp(From LiveKit: ${EXTEN})
+ same => n,Goto(internal,${EXTEN},1)

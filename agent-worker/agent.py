@@ -147,6 +147,13 @@ async def entrypoint(ctx: JobContext) -> None:
     )
 
     await session.start(agent, room=ctx.room)
+
+    # Brief pause so the SIP bridge audio path is fully established
+    # before the greeting plays — without this the first few hundred
+    # milliseconds of TTS get swallowed while RTP is still negotiating.
+    import asyncio
+    await asyncio.sleep(0.8)
+
     await session.say(greeting)
 
 
@@ -154,7 +161,7 @@ def _create_llm(provider: str, model: str):
     """Create LLM instance based on provider configuration."""
     if provider == "anthropic":
         from livekit.plugins import anthropic
-        return anthropic.LLM(model=model)
+        return anthropic.LLM(model=model, _strict_tool_schema=False)
     elif provider in ("openai", "openrouter", "local"):
         from livekit.plugins import openai
         kwargs = {"model": model}

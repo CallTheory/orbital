@@ -167,6 +167,11 @@ COPY logger.conf     /etc/asterisk/logger.conf
 # tells pjsip/queues to source their objects from the realtime
 # backend, and the queue_log family writes events directly to the
 # `queue_log` table for stats roll-up.
+# LiveKit SIP bridge endpoint — static trunk pointing at
+# the livekit-sip container so Dial(PJSIP/ext@livekit)
+# routes AI agent calls through the SIP bridge.
+COPY pjsip_livekit.conf /etc/asterisk/pjsip_livekit.conf
+
 COPY res_odbc.conf   /etc/asterisk/res_odbc.conf
 COPY extconfig.conf  /etc/asterisk/extconfig.conf
 COPY sorcery.conf    /etc/asterisk/sorcery.conf

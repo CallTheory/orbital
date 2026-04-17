@@ -1,6 +1,6 @@
 <x-filament-panels::page>
     @php
-        $isUnavailable = ! auth()->user()?->isAvailableForWork();
+        $isUnavailable = ! auth()->user()?->isAvailableForNonVoice();
     @endphp
 
     <div @class(['fi-inbox-shimmer' => $isUnavailable])>

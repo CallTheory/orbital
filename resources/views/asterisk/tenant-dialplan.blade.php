@@ -28,11 +28,6 @@
 ; ── Extensions ──
 @foreach($extensions->where('type', 'ai_agent') as $ext)
 exten => {{ $ext->number }},1,NoOp(AI Agent: {{ $ext->label ?? $ext->number }})
- same => n,Set(RINGTIME=${RAND(0,4)})
- same => n,Ringing()
- same => n,Wait(${RINGTIME})
- same => n,Answer()
-@include('asterisk.partials.mix-monitor', ['ext' => $ext])
  same => n,Dial(PJSIP/{{ $ext->number }}@livekit,120,tTkK)
  same => n,Hangup()
 

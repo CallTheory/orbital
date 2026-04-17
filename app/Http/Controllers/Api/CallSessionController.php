@@ -174,9 +174,12 @@ class CallSessionController extends Controller
             return;
         }
 
-        // Idempotent: don't create duplicate messages for the same session
+        // Idempotent: don't create duplicate messages for the same
+        // caller_name + reason combo in this session.
         $exists = Message::where('team_id', $state->team_id)
-            ->whereJsonContains('notes', $state->session_key)
+            ->where('caller_name', $name)
+            ->where('reason', $reason)
+            ->where('notes', 'like', "%{$state->session_key}%")
             ->exists();
 
         if ($exists) {

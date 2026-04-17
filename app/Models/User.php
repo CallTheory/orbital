@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Services\Avatars\LocalAvatarGenerator;
 use Database\Factories\UserFactory;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
@@ -74,7 +77,7 @@ class User extends Authenticatable implements FilamentUser
      */
     protected function defaultProfilePhotoUrl(): string
     {
-        return app(\App\Services\Avatars\LocalAvatarGenerator::class)
+        return app(LocalAvatarGenerator::class)
             ->dataUrlFor($this->name ?? '?');
     }
 
@@ -106,7 +109,7 @@ class User extends Authenticatable implements FilamentUser
             return true;
         }
 
-        $reason = \App\Models\AvailabilityReason::query()
+        $reason = AvailabilityReason::query()
             ->where('slug', $this->availability_status)
             ->first();
 
@@ -175,6 +178,7 @@ class User extends Authenticatable implements FilamentUser
         $registrar->setPermissionsTeamId(null);
         try {
             $this->unsetRelation('roles');
+
             return $this->roles->isNotEmpty();
         } finally {
             $registrar->setPermissionsTeamId($originalTeamId);
@@ -223,7 +227,7 @@ class User extends Authenticatable implements FilamentUser
         };
     }
 
-    public function extensions(): \Illuminate\Database\Eloquent\Relations\MorphMany
+    public function extensions(): MorphMany
     {
         return $this->morphMany(Extension::class, 'assignable');
     }
@@ -232,9 +236,33 @@ class User extends Authenticatable implements FilamentUser
      * Agent group memberships — polymorphic. A staff user can belong to
      * one or more platform agent groups (queues ring those groups).
      */
-    public function agentGroupMemberships(): \Illuminate\Database\Eloquent\Relations\MorphMany
+    public function agentGroupMemberships(): MorphMany
     {
         return $this->morphMany(AgentGroupMember::class, 'member');
+    }
+
+    /**
+     * IDs of email queues this operator can work, based on their
+     * AgentGroup memberships. Used by the inbox query to scope
+     * which unclaimed threads are visible.
+     *
+     * @return array<int, int>
+     */
+    public function emailQueueIds(): array
+    {
+        $groupIds = $this->agentGroupMemberships()
+            ->pluck('agent_group_id')
+            ->all();
+
+        if (empty($groupIds)) {
+            return [];
+        }
+
+        return EmailQueue::query()
+            ->whereIn('agent_group_id', $groupIds)
+            ->where('is_active', true)
+            ->pluck('id')
+            ->all();
     }
 
     /**
@@ -243,7 +271,7 @@ class User extends Authenticatable implements FilamentUser
      * pool. Pivot carries `level` (1–5) and an optional `notes`
      * field for operator-side context like certification dates.
      */
-    public function skills(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    public function skills(): BelongsToMany
     {
         return $this->belongsToMany(Skill::class, 'skill_user')
             ->withPivot(['level', 'notes'])

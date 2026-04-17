@@ -24,10 +24,12 @@ class ThreadForward extends Mailable
         public string $toAddress,
         public string $fromAddress,
         public ?string $fromName,
-        public string $subject,
+        string $subject,
         public string $bodyText,
         public ?string $bodyHtml,
-    ) {}
+    ) {
+        $this->subject = $subject;
+    }
 
     public function envelope(): Envelope
     {

@@ -6,33 +6,24 @@ namespace App\Filament\Pages;
 
 use App\Models\EmailMessage;
 use BackedEnum;
-use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Filament\Support\Enums\FontWeight;
 use Filament\Tables;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Storage;
+use Livewire\Attributes\On;
 use UnitEnum;
 
 /**
  * Admin-only page that lists inbound email messages the router
- * couldn't place on any tenant — either the recipient
- * account_number didn't resolve to a real team, or no
- * EmailRoutingRule matched after the tenant was resolved, or the
- * parse failed outright.
- *
- * Useful for debugging:
- *   - a tenant just onboarded and nobody's set up their rules yet
- *   - a typo in a rule pattern
- *   - Haraka accepting something our router doesn't understand
- *
- * Super-admin gated because it surfaces raw inbound mail that
- * hasn't been filtered by tenant permissions yet.
+ * couldn't place on any tenant. Click a row to view, forward,
+ * assign to a tenant, or discard.
  */
 class UnroutedMail extends Page implements HasTable
 {
@@ -44,13 +35,13 @@ class UnroutedMail extends Page implements HasTable
 
     protected static ?int $navigationSort = 30;
 
-    protected static ?string $navigationLabel = 'Unrouted Mail';
+    protected static ?string $navigationLabel = 'Failed Inbound Mail';
 
-    protected static ?string $title = 'Unrouted Mail';
+    protected static ?string $title = 'Failed Inbound Mail';
 
-    protected ?string $subheading = 'Inbound email messages not matching a tenant rule.';
+    protected ?string $subheading = 'Messages that were accepted but failed during processing.';
 
-    protected static ?string $slug = 'mail/unrouted';
+    protected static ?string $slug = 'mail/failed';
 
     protected string $view = 'filament.pages.unrouted-mail';
 
@@ -59,68 +50,65 @@ class UnroutedMail extends Page implements HasTable
         return auth()->user()?->isSuperAdmin() ?? false;
     }
 
+    public static function getNavigationBadge(): ?string
+    {
+        $count = EmailMessage::where('routing_status', 'failed')->count();
+
+        return $count > 0 ? (string) $count : null;
+    }
+
+    public static function getNavigationBadgeColor(): ?string
+    {
+        return 'danger';
+    }
+
+    /**
+     * When a new failed message arrives (broadcast via Reverb),
+     * refresh the sidebar badge and the table so the admin sees
+     * it immediately without a page reload.
+     */
+    #[On('echo:admin-alerts,.inbound-mail-failed')]
+    public function onInboundMailFailed(): void
+    {
+        $this->dispatch('refresh-sidebar');
+        $this->resetTable();
+    }
+
     public function table(Table $table): Table
     {
+        $tz = auth()->user()?->displayTimezone() ?? config('app.timezone');
+
         return $table
             ->query(
                 EmailMessage::query()
-                    ->whereIn('routing_status', ['unrouted', 'failed'])
+                    ->where('routing_status', 'failed')
                     ->latest('received_at'),
             )
             ->columns([
                 Tables\Columns\TextColumn::make('received_at')
                     ->label('Received')
-                    ->dateTime('M j, g:i a')
-                    ->timezone(fn () => auth()->user()?->displayTimezone() ?? config('app.timezone'))
-                    ->sortable(),
-                Tables\Columns\TextColumn::make('routing_status')
-                    ->badge()
-                    ->color(fn (string $state) => match ($state) {
-                        'failed' => 'danger',
-                        'unrouted' => 'warning',
-                        default => 'gray',
-                    }),
+                    ->dateTime('M j, g:i a T')
+                    ->timezone($tz)
+                    ->sortable()
+                    ->color('gray')
+                    ->url(fn (EmailMessage $record) => url("/admin/mail/failed/{$record->id}")),
                 Tables\Columns\TextColumn::make('from_address')
                     ->label('From')
+                    ->weight(FontWeight::SemiBold)
                     ->searchable()
-                    ->placeholder('—'),
+                    ->placeholder('—')
+                    ->description(fn (EmailMessage $record) => $record->subject ?: null)
+                    ->url(fn (EmailMessage $record) => url("/admin/mail/failed/{$record->id}")),
                 Tables\Columns\TextColumn::make('envelope_to')
                     ->label('Delivered to')
                     ->getStateUsing(fn (EmailMessage $record) => implode(', ', $record->metadata['envelope_to'] ?? []))
-                    ->wrap(),
-                Tables\Columns\TextColumn::make('subject')
-                    ->searchable()
-                    ->limit(60)
-                    ->placeholder('—'),
+                    ->limit(40),
                 Tables\Columns\TextColumn::make('last_error')
                     ->label('Error')
                     ->getStateUsing(fn (EmailMessage $record) => $record->metadata['last_error'] ?? null)
                     ->placeholder('—')
-                    ->toggleable(isToggledHiddenByDefault: true)
-                    ->limit(80),
-            ])
-            ->actions([
-                Action::make('view_raw')
-                    ->label('Raw MIME')
-                    ->icon('heroicon-m-document-text')
-                    ->color('gray')
-                    ->modalHeading(fn (EmailMessage $record) => "Raw message #{$record->id}")
-                    ->modalContent(fn (EmailMessage $record) => view('filament.pages.partials.raw-mail-viewer', [
-                        'raw' => Storage::disk('s3')->get($record->raw_storage_path),
-                    ]))
-                    ->modalSubmitAction(false)
-                    ->modalCancelActionLabel('Close'),
-                Action::make('delete')
-                    ->label('Discard')
-                    ->icon('heroicon-m-trash')
-                    ->color('danger')
-                    ->requiresConfirmation()
-                    ->modalDescription('This deletes the DB row and the raw MIME blob in MinIO. Use for junk that you\'re sure you don\'t need.')
-                    ->action(function (EmailMessage $record) {
-                        Storage::disk('s3')->delete($record->raw_storage_path);
-                        $record->delete();
-                        Notification::make()->title('Discarded')->success()->send();
-                    }),
+                    ->limit(80)
+                    ->wrap(),
             ])
             ->bulkActions([
                 BulkActionGroup::make([
@@ -137,6 +125,7 @@ class UnroutedMail extends Page implements HasTable
                                 $r->delete();
                                 $count++;
                             }
+                            $this->dispatch('refresh-sidebar');
                             Notification::make()->title("Discarded {$count} messages")->success()->send();
                         }),
                 ]),

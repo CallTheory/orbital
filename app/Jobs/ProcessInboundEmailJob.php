@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Events\InboundMailFailed;
 use App\Models\EmailAttachment;
 use App\Models\EmailMessage;
+use App\Models\EmailRoutingRule;
 use App\Models\EmailThread;
 use App\Services\Mail\InboundRouter;
 use App\Services\Mail\ThreadResolver;
@@ -58,6 +60,7 @@ class ProcessInboundEmailJob implements ShouldQueue
             Log::warning('inbound mail stub missing by the time job ran', [
                 'id' => $this->emailMessageId,
             ]);
+
             return;
         }
 
@@ -96,6 +99,7 @@ class ProcessInboundEmailJob implements ShouldQueue
                     // thread so the resolver's tenant-scoped
                     // lookups find the right scope.
                     $message->team_id = $routed['team_id'];
+
                     return $resolver->resolve($message, $routed['team_id']);
                 });
 
@@ -106,7 +110,7 @@ class ProcessInboundEmailJob implements ShouldQueue
                 // already in, so human re-assignments stick.
                 if (
                     $thread->email_queue_id === null
-                    && $routed['destination_type'] === \App\Models\EmailRoutingRule::DESTINATION_QUEUE
+                    && $routed['destination_type'] === EmailRoutingRule::DESTINATION_QUEUE
                     && $routed['destination_id'] !== null
                 ) {
                     $thread->email_queue_id = $routed['destination_id'];
@@ -118,7 +122,7 @@ class ProcessInboundEmailJob implements ShouldQueue
                 // already claimed.
                 if (
                     $thread->assigned_operator_id === null
-                    && $routed['destination_type'] === \App\Models\EmailRoutingRule::DESTINATION_OPERATOR
+                    && $routed['destination_type'] === EmailRoutingRule::DESTINATION_OPERATOR
                     && $routed['destination_id'] !== null
                 ) {
                     $thread->assigned_operator_id = $routed['destination_id'];
@@ -126,7 +130,7 @@ class ProcessInboundEmailJob implements ShouldQueue
                 }
                 if (
                     $thread->assigned_agent_persona_id === null
-                    && $routed['destination_type'] === \App\Models\EmailRoutingRule::DESTINATION_AGENT_PERSONA
+                    && $routed['destination_type'] === EmailRoutingRule::DESTINATION_AGENT_PERSONA
                     && $routed['destination_id'] !== null
                 ) {
                     $thread->assigned_agent_persona_id = $routed['destination_id'];
@@ -201,6 +205,9 @@ class ProcessInboundEmailJob implements ShouldQueue
                 'error' => $e->getMessage(),
             ]);
 
+            $failedCount = EmailMessage::where('routing_status', 'failed')->count();
+            event(new InboundMailFailed($message->id, $failedCount));
+
             throw $e;
         }
     }
@@ -267,6 +274,7 @@ class ProcessInboundEmailJob implements ShouldQueue
             return null;
         }
         $parts = preg_split('/\s+/', trim($raw)) ?: [];
+
         return array_values(array_filter(array_map(
             fn ($p) => $this->stripBrackets($p),
             $parts,
@@ -278,7 +286,6 @@ class ProcessInboundEmailJob implements ShouldQueue
      * `AddressPart` objects into a plain array of strings suitable
      * for storing in a JSON column.
      *
-     * @param  iterable  $addresses
      * @return array<int, array{address: string, name: string|null}>
      */
     private function normalizeAddressList(iterable $addresses): array
@@ -287,6 +294,7 @@ class ProcessInboundEmailJob implements ShouldQueue
         foreach ($addresses as $a) {
             if (is_string($a)) {
                 $out[] = ['address' => $a, 'name' => null];
+
                 continue;
             }
             if (is_object($a)) {
@@ -297,6 +305,7 @@ class ProcessInboundEmailJob implements ShouldQueue
                 }
             }
         }
+
         return $out;
     }
 
@@ -309,6 +318,7 @@ class ProcessInboundEmailJob implements ShouldQueue
         if ($raw === null) {
             return null;
         }
+
         return trim($raw, " \t\r\n<>");
     }
 }

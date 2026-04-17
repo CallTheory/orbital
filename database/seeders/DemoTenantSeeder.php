@@ -4,15 +4,19 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
-use App\Models\AgentPersona;
-use App\Models\CallQueue;
 use App\Models\AgentGroup;
 use App\Models\AgentGroupMember;
+use App\Models\AgentPersona;
+use App\Models\CallQueue;
+use App\Models\EmailQueue;
+use App\Models\EmailRoutingRule;
 use App\Models\Extension;
 use App\Models\RoutingRule;
 use App\Models\SipTrunk;
 use App\Models\Team;
+use App\Models\TenantDid;
 use App\Models\User;
+use App\Services\Telephony\PlatformExtensionAllocator;
 use App\Services\Tenancy\TenantProvisioner;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -40,6 +44,7 @@ class DemoTenantSeeder extends Seeder
     {
         if (Team::where('name', 'Demo Customer')->exists()) {
             $this->command?->info('Demo customer tenant already exists, skipping.');
+
             return;
         }
 
@@ -83,7 +88,7 @@ class DemoTenantSeeder extends Seeder
         // Auto-allocate softphone extensions for the staff users.
         // The allocator stores the Extension and surfaces credentials on
         // the user's edit page in the Staff resource.
-        $allocator = app(\App\Services\Telephony\PlatformExtensionAllocator::class);
+        $allocator = app(PlatformExtensionAllocator::class);
         $allocator->ensureWebrtcExtensionFor($operatorUser);
         $allocator->ensureWebrtcExtensionFor($supervisorUser);
 
@@ -133,7 +138,7 @@ class DemoTenantSeeder extends Seeder
         // Two-trunk failover pattern: primary + backup.
         // ────────────────────────────────────────────────────────────
         $sharedTrunk = SipTrunk::where('name', 'Platform Shared Trunk')->first();
-        \App\Models\TenantDid::create([
+        TenantDid::create([
             'team_id' => $team->id,
             'sip_trunk_id' => $sharedTrunk?->id,
             'number' => '+15551234567',
@@ -141,7 +146,7 @@ class DemoTenantSeeder extends Seeder
             'priority' => 0,
             'is_active' => true,
         ]);
-        \App\Models\TenantDid::create([
+        TenantDid::create([
             'team_id' => $team->id,
             'sip_trunk_id' => $sharedTrunk?->id,
             'number' => '+15559876543',
@@ -244,6 +249,139 @@ class DemoTenantSeeder extends Seeder
             'priority' => 0,
             'is_active' => true,
         ]);
+
+        // ────────────────────────────────────────────────────────────
+        // Demo Customer email queue + catch-all routing rule
+        // ────────────────────────────────────────────────────────────
+        $emailQueue = EmailQueue::create([
+            'team_id' => $team->id,
+            'name' => 'General Inbox',
+            'description' => 'Default email queue — all inbound email for this tenant lands here.',
+            'strategy' => EmailQueue::STRATEGY_MANUAL,
+            'agent_group_id' => $allOperators->id,
+            'is_active' => true,
+        ]);
+
+        EmailRoutingRule::create([
+            'team_id' => $team->id,
+            'name' => 'Default catch-all',
+            'match_type' => EmailRoutingRule::MATCH_DEFAULT,
+            'destination_type' => EmailRoutingRule::DESTINATION_QUEUE,
+            'destination_id' => $emailQueue->id,
+            'priority' => 100,
+            'is_active' => true,
+        ]);
+
+        // ────────────────────────────────────────────────────────────
+        // Add the super-admin (user 1) to the all-operators group so
+        // they can see queued email threads during development.
+        // ────────────────────────────────────────────────────────────
+        $admin = User::find(1);
+        if ($admin) {
+            AgentGroupMember::firstOrCreate(
+                [
+                    'agent_group_id' => $allOperators->id,
+                    'member_type' => $admin->getMorphClass(),
+                    'member_id' => $admin->id,
+                ],
+                ['priority' => 0, 'penalty' => 0],
+            );
+        }
+
+        // ────────────────────────────────────────────────────────────
+        // Acme Corp — second tenant with advanced email routing
+        //
+        // Demonstrates multi-queue routing: VIP, urgent, and default
+        // queues with function suffix, subject regex, and catch-all
+        // rules at different priorities.
+        // ────────────────────────────────────────────────────────────
+        if (! Team::where('name', 'Acme Corp')->exists()) {
+            $acmeContact = User::firstOrCreate(
+                ['email' => 'contact@acmecorp.test'],
+                [
+                    'name' => 'Acme Corp Contact',
+                    'password' => Hash::make('password'),
+                    'email_verified_at' => now(),
+                ],
+            );
+
+            $acmeTeam = Team::forceCreate([
+                'user_id' => $acmeContact->id,
+                'name' => 'Acme Corp',
+                'account_number' => 100002,
+                'personal_team' => false,
+                'timezone' => 'America/Chicago',
+                'max_users' => 5,
+                'max_concurrent_calls' => 5,
+            ]);
+
+            $acmeContact->current_team_id = $acmeTeam->id;
+            $acmeContact->save();
+            app(TenantProvisioner::class)->provision($acmeTeam, $acmeContact);
+
+            // Three email queues with different operator groups
+            $acmeVipQueue = EmailQueue::create([
+                'team_id' => $acmeTeam->id,
+                'name' => 'VIP',
+                'description' => 'High-priority clients — fast response expected.',
+                'strategy' => EmailQueue::STRATEGY_MANUAL,
+                'agent_group_id' => $allOperators->id,
+                'is_active' => true,
+            ]);
+
+            $acmeUrgentQueue = EmailQueue::create([
+                'team_id' => $acmeTeam->id,
+                'name' => 'Urgent',
+                'description' => 'Emails flagged by subject keywords.',
+                'strategy' => EmailQueue::STRATEGY_MANUAL,
+                'agent_group_id' => $allOperators->id,
+                'is_active' => true,
+            ]);
+
+            $acmeDefaultQueue = EmailQueue::create([
+                'team_id' => $acmeTeam->id,
+                'name' => 'General',
+                'description' => 'Everything else.',
+                'strategy' => EmailQueue::STRATEGY_MANUAL,
+                'agent_group_id' => $allOperators->id,
+                'is_active' => true,
+            ]);
+
+            // Function suffix: 100002.vip@... → VIP queue
+            EmailRoutingRule::create([
+                'team_id' => $acmeTeam->id,
+                'name' => 'VIP function suffix',
+                'match_type' => EmailRoutingRule::MATCH_FUNCTION,
+                'match_pattern' => 'vip',
+                'destination_type' => EmailRoutingRule::DESTINATION_QUEUE,
+                'destination_id' => $acmeVipQueue->id,
+                'priority' => 10,
+                'is_active' => true,
+            ]);
+
+            // Subject regex: urgent/critical/emergency → Urgent queue
+            EmailRoutingRule::create([
+                'team_id' => $acmeTeam->id,
+                'name' => 'Urgent subject keywords',
+                'match_type' => EmailRoutingRule::MATCH_SUBJECT_PATTERN,
+                'match_pattern' => '(urgent|critical|emergency)',
+                'destination_type' => EmailRoutingRule::DESTINATION_QUEUE,
+                'destination_id' => $acmeUrgentQueue->id,
+                'priority' => 20,
+                'is_active' => true,
+            ]);
+
+            // Default catch-all → General queue
+            EmailRoutingRule::create([
+                'team_id' => $acmeTeam->id,
+                'name' => 'Default catch-all',
+                'match_type' => EmailRoutingRule::MATCH_DEFAULT,
+                'destination_type' => EmailRoutingRule::DESTINATION_QUEUE,
+                'destination_id' => $acmeDefaultQueue->id,
+                'priority' => 100,
+                'is_active' => true,
+            ]);
+        }
 
         // Make sure every Extension/SipTrunk/CallQueue we just
         // created has matching ARA rows. The observer fires

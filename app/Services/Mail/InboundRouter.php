@@ -59,6 +59,7 @@ class InboundRouter
         $envelope = $this->envelopeRecipients($message);
         if (empty($envelope)) {
             Log::warning('inbound router: no envelope recipients', ['id' => $message->id]);
+
             return $this->unrouted();
         }
 
@@ -95,6 +96,25 @@ class InboundRouter
     }
 
     /**
+     * Route a message into a specific tenant's rules — used by the
+     * admin "Assign to Tenant" action when manually routing an
+     * unrouted message. Skips tenant resolution (the admin already
+     * chose the tenant) and goes straight to rule matching.
+     *
+     * @return array{destination_type: ?string, destination_id: ?int, matched_rule_id: ?int}
+     */
+    public function routeForTeam(EmailMessage $message, Team $team): array
+    {
+        $rule = $this->matchRule($team->id, null, $message);
+
+        return [
+            'destination_type' => $rule?->destination_type,
+            'destination_id' => $rule?->destination_id,
+            'matched_rule_id' => $rule?->id,
+        ];
+    }
+
+    /**
      * Extract the list of envelope recipient addresses from the
      * message's metadata. Falls back to parsed `to_addresses` if
      * the envelope wasn't stamped (shouldn't happen in production
@@ -114,6 +134,7 @@ class InboundRouter
         // Fallback: the parsed To: header, normalized to an
         // array of address strings by ProcessInboundEmailJob.
         $parsed = $message->to_addresses ?? [];
+
         return array_values(array_filter(array_map(
             fn ($r) => is_array($r) ? ($r['address'] ?? null) : (is_string($r) ? $r : null),
             $parsed,
@@ -139,6 +160,7 @@ class InboundRouter
                 return $rule;
             }
         }
+
         return null;
     }
 
@@ -162,6 +184,7 @@ class InboundRouter
                 // guarantees it runs last for its priority tier.
                 return true;
         }
+
         return false;
     }
 
@@ -183,6 +206,7 @@ class InboundRouter
             $pattern = '/'.str_replace('/', '\/', $pattern).'/i';
         }
         $result = @preg_match($pattern, $subject);
+
         return $result === 1;
     }
 

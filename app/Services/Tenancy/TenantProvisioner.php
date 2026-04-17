@@ -6,9 +6,10 @@ namespace App\Services\Tenancy;
 
 use App\Models\ContactFieldDefinition;
 use App\Models\DirectoryFieldDefinition;
+use App\Models\EmailQueue;
+use App\Models\EmailRoutingRule;
 use App\Models\Team;
 use App\Models\User;
-use Database\Seeders\PermissionCatalogSeeder;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
@@ -60,6 +61,7 @@ class TenantProvisioner
             $this->createTenantUserRole($team);
             $this->seedDefaultContactFields($team);
             $this->seedDefaultDirectoryFields($team);
+            $this->seedDefaultEmailQueue($team);
 
             if ($initialTenantUser) {
                 $this->assignTenantUser($team, $initialTenantUser);
@@ -168,6 +170,35 @@ class TenantProvisioner
                 $row + ['team_id' => $team->id, 'is_active' => true],
             );
         }
+    }
+
+    /**
+     * Create a "General Inbox" email queue and a default catch-all
+     * routing rule so inbound email for this tenant has somewhere
+     * to land immediately. The queue is created with no agent group
+     * (open to all operators). Admins can narrow it later.
+     */
+    protected function seedDefaultEmailQueue(Team $team): void
+    {
+        $queue = EmailQueue::query()->updateOrCreate(
+            ['team_id' => $team->id, 'name' => 'General Inbox'],
+            [
+                'description' => 'Default email queue — all inbound email for this tenant lands here.',
+                'strategy' => EmailQueue::STRATEGY_MANUAL,
+                'is_active' => true,
+            ],
+        );
+
+        EmailRoutingRule::query()->updateOrCreate(
+            ['team_id' => $team->id, 'name' => 'Default catch-all'],
+            [
+                'match_type' => EmailRoutingRule::MATCH_DEFAULT,
+                'destination_type' => EmailRoutingRule::DESTINATION_QUEUE,
+                'destination_id' => $queue->id,
+                'priority' => 100,
+                'is_active' => true,
+            ],
+        );
     }
 
     /**

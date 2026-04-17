@@ -31,8 +31,11 @@ class EmailQueue extends Model
     use HasFactory;
 
     public const STRATEGY_ROUND_ROBIN = 'round_robin';
+
     public const STRATEGY_LONGEST_IDLE = 'longest_idle';
+
     public const STRATEGY_MANUAL = 'manual';
+
     public const STRATEGY_AI_FIRST = 'ai_first';
 
     protected $fillable = [
@@ -41,6 +44,7 @@ class EmailQueue extends Model
         'description',
         'strategy',
         'overflow_agent_persona_id',
+        'agent_group_id',
         'is_active',
     ];
 
@@ -54,6 +58,16 @@ class EmailQueue extends Model
     public function overflowAgent(): BelongsTo
     {
         return $this->belongsTo(AgentPersona::class, 'overflow_agent_persona_id');
+    }
+
+    /**
+     * The operator group that works this queue. When set, only
+     * group members see unclaimed threads in this queue. Null
+     * means "open" — all operators can see it.
+     */
+    public function agentGroup(): BelongsTo
+    {
+        return $this->belongsTo(AgentGroup::class);
     }
 
     public function threads(): HasMany

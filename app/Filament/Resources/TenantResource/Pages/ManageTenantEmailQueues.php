@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Filament\Resources\TenantResource\Pages;
 
 use App\Filament\Resources\TenantResource;
+use App\Models\AgentGroup;
 use App\Models\AgentPersona;
 use App\Models\EmailQueue;
 use BackedEnum;
@@ -72,6 +73,16 @@ class ManageTenantEmailQueues extends ManageRelatedRecords
                     ->required()
                     ->helperText('Phase 3 ships with "manual" wired up; auto-assignment strategies land in a polish pass.'),
 
+                Forms\Components\Select::make('agent_group_id')
+                    ->label('Operator group')
+                    ->options(fn () => AgentGroup::query()
+                        ->where('is_active', true)
+                        ->orderBy('name')
+                        ->pluck('name', 'id'))
+                    ->searchable()
+                    ->placeholder('Open — all operators')
+                    ->helperText('Only operators in this group will see threads in this queue. Leave empty for all operators.'),
+
                 Forms\Components\Select::make('overflow_agent_persona_id')
                     ->label('Overflow AI persona')
                     ->options(fn () => AgentPersona::query()
@@ -101,6 +112,9 @@ class ManageTenantEmailQueues extends ManageRelatedRecords
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('strategy')
                     ->badge(),
+                Tables\Columns\TextColumn::make('agentGroup.name')
+                    ->label('Operator group')
+                    ->placeholder('Open — all'),
                 Tables\Columns\TextColumn::make('overflowAgent.name')
                     ->label('Overflow AI')
                     ->placeholder('None'),

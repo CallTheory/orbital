@@ -13,9 +13,11 @@ use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
 use Filament\Resources\Pages\ManageRelatedRecords;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Admin-side page for managing a tenant's inbound email routing
@@ -74,20 +76,20 @@ class ManageTenantEmailRules extends ManageRelatedRecords
                     ->helperText('Function rules fire first when the recipient has a .function suffix. Default rules fire last.'),
 
                 Forms\Components\TextInput::make('match_pattern')
-                    ->label(fn (Forms\Get $get) => match ($get('match_type')) {
+                    ->label(fn (Get $get) => match ($get('match_type')) {
                         EmailRoutingRule::MATCH_FUNCTION => 'Function suffix',
                         EmailRoutingRule::MATCH_FROM_PATTERN => 'From regex',
                         EmailRoutingRule::MATCH_SUBJECT_PATTERN => 'Subject regex',
                         default => 'Match pattern',
                     })
-                    ->placeholder(fn (Forms\Get $get) => match ($get('match_type')) {
+                    ->placeholder(fn (Get $get) => match ($get('match_type')) {
                         EmailRoutingRule::MATCH_FUNCTION => 'alarms',
                         EmailRoutingRule::MATCH_FROM_PATTERN => '@important-vendor\.com$',
                         EmailRoutingRule::MATCH_SUBJECT_PATTERN => '(urgent|critical|priority)',
                         default => '(not used for default rules)',
                     })
-                    ->visible(fn (Forms\Get $get) => $get('match_type') !== EmailRoutingRule::MATCH_DEFAULT)
-                    ->helperText(fn (Forms\Get $get) => match ($get('match_type')) {
+                    ->visible(fn (Get $get) => $get('match_type') !== EmailRoutingRule::MATCH_DEFAULT)
+                    ->helperText(fn (Get $get) => match ($get('match_type')) {
                         EmailRoutingRule::MATCH_FUNCTION => 'Plain string. Matches messages sent to {account}.{function}@...',
                         EmailRoutingRule::MATCH_FROM_PATTERN,
                         EmailRoutingRule::MATCH_SUBJECT_PATTERN => 'PCRE pattern. Case-insensitive. Delimiters optional.',
@@ -108,9 +110,10 @@ class ManageTenantEmailRules extends ManageRelatedRecords
 
                 Forms\Components\Select::make('destination_id')
                     ->label('Target')
-                    ->options(function (Forms\Get $get) {
+                    ->options(function (Get $get) {
                         $type = $get('destination_type');
                         $teamId = $this->getOwnerRecord()->id;
+
                         return match ($type) {
                             EmailRoutingRule::DESTINATION_QUEUE => EmailQueue::query()
                                 ->where('team_id', $teamId)
@@ -119,7 +122,7 @@ class ManageTenantEmailRules extends ManageRelatedRecords
                                 ->pluck('name', 'id'),
                             EmailRoutingRule::DESTINATION_OPERATOR => User::query()
                                 ->whereExists(fn ($q) => $q
-                                    ->select(\Illuminate\Support\Facades\DB::raw(1))
+                                    ->select(DB::raw(1))
                                     ->from('model_has_roles')
                                     ->join('roles', 'roles.id', '=', 'model_has_roles.role_id')
                                     ->whereColumn('model_has_roles.model_id', 'users.id')
@@ -134,11 +137,11 @@ class ManageTenantEmailRules extends ManageRelatedRecords
                         };
                     })
                     ->searchable()
-                    ->placeholder(fn (Forms\Get $get) => match ($get('destination_type')) {
+                    ->placeholder(fn (Get $get) => match ($get('destination_type')) {
                         EmailRoutingRule::DESTINATION_DISCARD => 'No target needed',
                         default => 'Select…',
                     })
-                    ->disabled(fn (Forms\Get $get) => $get('destination_type') === EmailRoutingRule::DESTINATION_DISCARD),
+                    ->disabled(fn (Get $get) => $get('destination_type') === EmailRoutingRule::DESTINATION_DISCARD),
 
                 Forms\Components\TextInput::make('priority')
                     ->numeric()

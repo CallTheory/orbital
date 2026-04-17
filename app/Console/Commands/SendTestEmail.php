@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Events\InboundMailFailed;
+use App\Models\EmailMessage;
 use App\Models\Team;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Sends test emails directly to Haraka's SMTP port so they flow
@@ -28,9 +31,10 @@ class SendTestEmail extends Command
         {--subject= : Subject line (auto-generated if omitted)}
         {--body= : Plain-text body (auto-generated if omitted)}
         {--html : Send an HTML-formatted email instead of plain text}
+        {--simulate-failure : Create a failed message record instead of sending through Haraka}
         {--count=1 : Number of emails to send}';
 
-    protected $description = 'Send a test email through Haraka to exercise the inbound pipeline.';
+    protected $description = 'Send a test email through Haraka, or simulate a failed inbound message.';
 
     public function handle(): int
     {
@@ -53,29 +57,41 @@ class SendTestEmail extends Command
         $fromName = $this->option('from-name');
         $count = max(1, (int) $this->option('count'));
         $html = (bool) $this->option('html');
+        $simulateFailure = (bool) $this->option('simulate-failure');
 
         for ($i = 1; $i <= $count; $i++) {
             $seq = $count > 1 ? " #{$i}" : '';
-            $subject = $this->option('subject') ?: ($html
-                ? "HTML test email{$seq} — ".now()->format('M j g:i:s a')
-                : "Plain text test email{$seq} — ".now()->format('M j g:i:s a'));
+            $subject = $this->option('subject') ?: ($simulateFailure
+                ? "Malformed message{$seq} — ".now()->format('M j g:i:s a')
+                : ($html
+                    ? "HTML test email{$seq} — ".now()->format('M j g:i:s a')
+                    : "Plain text test email{$seq} — ".now()->format('M j g:i:s a')));
 
-            $body = $this->option('body') ?: ($html
-                ? $this->sampleHtmlBody($subject)
-                : $this->samplePlainBody($subject));
+            if ($simulateFailure) {
+                $this->simulateFailure($from, $fromName, $to, $subject);
+                $this->info("Simulated failure: {$subject}");
+            } else {
+                $body = $this->option('body') ?: ($html
+                    ? $this->sampleHtmlBody($subject)
+                    : $this->samplePlainBody($subject));
 
-            $mime = $this->buildMime($from, $fromName, $to, $subject, $body, $html);
+                $mime = $this->buildMime($from, $fromName, $to, $subject, $body, $html);
 
-            $this->sendSmtp($from, $to, $mime);
-            $this->info("Sent: {$subject}");
+                $this->sendSmtp($from, $to, $mime);
+                $this->info("Sent: {$subject}");
+            }
 
             if ($i < $count) {
-                usleep(200_000); // 200ms between messages
+                usleep(200_000);
             }
         }
 
         $this->newLine();
-        $this->info('Done. Check the operator Email Inbox for the new thread(s).');
+        if ($simulateFailure) {
+            $this->info('Done. Check Admin > Monitor > Failed Inbound Mail.');
+        } else {
+            $this->info('Done. Check the operator Email Inbox for the new thread(s).');
+        }
 
         return self::SUCCESS;
     }
@@ -243,6 +259,72 @@ class SendTestEmail extends Command
         </body>
         </html>
         HTML;
+    }
+
+    /**
+     * Create a failed message record directly in the DB with a
+     * deliberately malformed raw MIME blob in S3. Simulates a
+     * parse failure on a valid tenant for demo/testing purposes.
+     */
+    private function simulateFailure(string $from, string $fromName, string $to, string $subject): void
+    {
+        $errors = [
+            'MIME parse error: unexpected end of multipart boundary at offset 2847',
+            'Content-Transfer-Encoding "quoted-overflowable" is not supported',
+            'Malformed RFC822 header: missing colon separator on line 14',
+            'Base64 decode failed: invalid character at position 1203',
+            'Nested multipart depth exceeded maximum of 10',
+        ];
+
+        $error = $errors[array_rand($errors)];
+
+        // Build a deliberately truncated MIME message.
+        $rawMime = "From: {$fromName} <{$from}>\r\n"
+            ."To: {$to}\r\n"
+            ."Subject: {$subject}\r\n"
+            .'Date: '.now()->format('r')."\r\n"
+            ."MIME-Version: 1.0\r\n"
+            .'Content-Type: multipart/mixed; boundary="broken-boundary-'.bin2hex(random_bytes(4))."\"\r\n"
+            ."\r\n"
+            ."--broken-boundary\r\n"
+            ."Content-Type: text/plain; charset=UTF-8\r\n"
+            ."\r\n"
+            ."This message was intentionally malformed to simulate a parse failure.\r\n"
+            ."\r\n"
+            .'-- truncated at '.now()->format('r')." --\r\n";
+
+        // Parse the account number from the "to" address to find the tenant.
+        $localPart = explode('@', $to)[0] ?? '';
+        $accountNumber = preg_replace('/\D/', '', explode('.', $localPart)[0]);
+        $team = $accountNumber
+            ? Team::where('account_number', (int) $accountNumber)->first()
+            : null;
+
+        $storagePath = 'inbound/failed-sim-'.now()->timestamp.'-'.bin2hex(random_bytes(4));
+        Storage::disk('s3')->put($storagePath, $rawMime);
+
+        EmailMessage::create([
+            'team_id' => $team?->id,
+            'thread_id' => null,
+            'direction' => 'inbound',
+            'raw_storage_path' => $storagePath,
+            'from_address' => $from,
+            'from_name' => $fromName,
+            'to_addresses' => [['address' => $to]],
+            'cc_addresses' => [],
+            'subject' => $subject,
+            'body_text' => null,
+            'body_html' => null,
+            'received_at' => now(),
+            'routing_status' => 'failed',
+            'metadata' => [
+                'envelope_to' => [$to],
+                'last_error' => $error,
+            ],
+        ]);
+
+        $failedCount = EmailMessage::where('routing_status', 'failed')->count();
+        event(new InboundMailFailed(0, $failedCount));
     }
 
     private function now(): string

@@ -5,13 +5,14 @@ declare(strict_types=1);
 namespace App\Filament\Operator\Pages;
 
 use App\Models\ConversationActivity;
+use App\Models\EmailQueue;
 use App\Models\EmailThread;
 use BackedEnum;
-use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Filament\Support\Enums\FontWeight;
 use Filament\Tables;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
@@ -19,6 +20,7 @@ use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
+use Livewire\Attributes\On;
 use UnitEnum;
 
 /**
@@ -57,6 +59,11 @@ class EmailInbox extends Page implements HasTable
 
     public function getSubheading(): ?string
     {
+        $user = auth()->user();
+        if ($user && ! $user->isAvailableForWork()) {
+            return 'You are currently unavailable. Switch to available to see and work on threads.';
+        }
+
         return 'Threads assigned to you, plus unclaimed threads in queues you work.';
     }
 
@@ -77,12 +84,10 @@ class EmailInbox extends Page implements HasTable
             return null;
         }
 
-        $isAvailable = $user->isAvailableForWork();
-
         $count = Cache::remember(
             "operator:{$user->id}:email_inbox_badge",
             15,
-            function () use ($user, $isAvailable) {
+            function () use ($user) {
                 $openStatuses = [
                     EmailThread::STATUS_NEW,
                     EmailThread::STATUS_IN_PROGRESS,
@@ -91,14 +96,7 @@ class EmailInbox extends Page implements HasTable
 
                 return EmailThread::query()
                     ->whereIn('status', $openStatuses)
-                    ->where(function ($q) use ($user, $isAvailable) {
-                        // Always count threads assigned to this operator.
-                        $q->where('assigned_operator_id', $user->id);
-                        // When available, also count unclaimed threads.
-                        if ($isAvailable) {
-                            $q->orWhereNull('assigned_operator_id');
-                        }
-                    })
+                    ->where(fn ($q) => self::scopeVisibleThreads($q, $user))
                     ->count();
             },
         );
@@ -108,7 +106,22 @@ class EmailInbox extends Page implements HasTable
 
     public static function getNavigationBadgeColor(): ?string
     {
-        return 'primary';
+        $user = auth()->user();
+
+        return $user?->isAvailableForWork() ? 'primary' : 'gray';
+    }
+
+    /**
+     * When the operator toggles availability via the topbar
+     * selector, refresh the table (which re-evaluates the
+     * isAvailable gate on unclaimed threads) and the sidebar
+     * badge (which flips color between primary and gray).
+     */
+    #[On('availability-updated')]
+    public function onAvailabilityUpdated(): void
+    {
+        $this->bustBadgeCache();
+        $this->resetTable();
     }
 
     /**
@@ -122,21 +135,48 @@ class EmailInbox extends Page implements HasTable
         $this->dispatch('refresh-sidebar');
     }
 
+    /**
+     * Scope a query to threads visible to this operator:
+     *   - Threads assigned to them (always)
+     *   - Unrouted threads with no queue (everyone sees)
+     *   - Threads in "open" queues with no agent group (everyone sees)
+     *   - Threads in queues the operator belongs to via AgentGroup
+     */
+    private static function scopeVisibleThreads($query, $user): void
+    {
+        $userId = $user->id;
+        $myQueueIds = $user->emailQueueIds();
+
+        // IDs of "open" queues (no agent group restriction).
+        $openQueueIds = EmailQueue::query()
+            ->whereNull('agent_group_id')
+            ->where('is_active', true)
+            ->pluck('id')
+            ->all();
+
+        $visibleQueueIds = array_values(array_unique(array_merge($myQueueIds, $openQueueIds)));
+
+        $query->where('assigned_operator_id', $userId)
+            ->orWhere(function ($q) use ($visibleQueueIds) {
+                $q->whereNull('assigned_operator_id')
+                    ->where(function ($inner) use ($visibleQueueIds) {
+                        $inner->whereNull('email_queue_id');
+                        if (! empty($visibleQueueIds)) {
+                            $inner->orWhereIn('email_queue_id', $visibleQueueIds);
+                        }
+                    });
+            });
+    }
+
     public function table(Table $table): Table
     {
         $user = auth()->user();
         $userId = $user?->id;
-        $isAvailable = $user?->isAvailableForWork() ?? false;
 
         return $table
             ->query(
                 EmailThread::query()
-                    ->where(function ($q) use ($userId, $isAvailable) {
-                        $q->where('assigned_operator_id', $userId);
-                        if ($isAvailable) {
-                            $q->orWhereNull('assigned_operator_id');
-                        }
-                    })
+                    ->where(fn ($q) => self::scopeVisibleThreads($q, $user))
                     ->with(['team', 'assignedOperator', 'emailQueue', 'messages'])
                     ->latest('last_message_at'),
             )
@@ -164,9 +204,11 @@ class EmailInbox extends Page implements HasTable
                     ->dateTime('M j, g:i a T')
                     ->timezone(fn () => auth()->user()?->displayTimezone() ?? config('app.timezone'))
                     ->sortable()
+                    ->color('gray')
                     ->url(fn (EmailThread $record) => url("/operator/email-thread/{$record->id}")),
                 Tables\Columns\TextColumn::make('subject_root')
                     ->label('Subject')
+                    ->weight(FontWeight::SemiBold)
                     ->wrap()
                     ->searchable(query: function ($query, string $search) {
                         $like = '%'.$search.'%';
@@ -183,17 +225,15 @@ class EmailInbox extends Page implements HasTable
                 Tables\Columns\TextColumn::make('team.name')
                     ->label('Tenant')
                     ->sortable()
-                    ->searchable(),
-                Tables\Columns\TextColumn::make('delivered_to')
-                    ->label('Delivered to')
-                    ->getStateUsing(function (EmailThread $record) {
+                    ->searchable()
+                    ->description(function (EmailThread $record) {
                         $first = $record->messages->first(fn ($m) => $m->direction === 'inbound');
+                        if (! $first) {
+                            return null;
+                        }
 
-                        return $first
-                            ? implode(', ', $first->metadata['envelope_to'] ?? $first->to_addresses ?? [])
-                            : '—';
-                    })
-                    ->limit(40),
+                        return implode(', ', $first->metadata['envelope_to'] ?? $first->to_addresses ?? []);
+                    }),
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->color(fn (string $state) => match ($state) {
@@ -208,25 +248,32 @@ class EmailInbox extends Page implements HasTable
                     ->placeholder('—'),
                 Tables\Columns\TextColumn::make('assignedOperator.name')
                     ->label('Claimed by')
-                    ->placeholder('— unclaimed —'),
-            ])
-            ->actions([
-                Action::make('claim')
-                    ->label('Claim')
-                    ->icon('heroicon-m-hand-raised')
-                    ->color('primary')
-                    ->visible(fn (EmailThread $record) => $record->assigned_operator_id === null)
+                    ->getStateUsing(fn (EmailThread $record) => $record->assigned_operator_id
+                        ? $record->assignedOperator?->name
+                        : 'Claim')
+                    ->badge()
+                    ->color(fn (EmailThread $record) => $record->assigned_operator_id ? 'gray' : 'success')
+                    ->icon(fn (EmailThread $record) => $record->assigned_operator_id ? null : 'heroicon-m-hand-raised')
                     ->action(function (EmailThread $record) {
-                        $record->forceFill([
-                            'assigned_operator_id' => auth()->id(),
-                            'status' => EmailThread::STATUS_IN_PROGRESS,
-                        ])->save();
-                        ConversationActivity::log($record, 'claimed', user: auth()->user());
-                        $this->bustBadgeCache();
-                        Notification::make()
-                            ->title('Thread claimed')
-                            ->success()
-                            ->send();
+                        if ($record->assigned_operator_id === null) {
+                            // Claim
+                            $record->forceFill([
+                                'assigned_operator_id' => auth()->id(),
+                                'status' => EmailThread::STATUS_IN_PROGRESS,
+                            ])->save();
+                            ConversationActivity::log($record, 'claimed', user: auth()->user());
+                            $this->bustBadgeCache();
+                            Notification::make()->title('Thread claimed')->success()->send();
+                        } elseif ($record->assigned_operator_id === auth()->id()) {
+                            // Unclaim — own thread only
+                            $record->forceFill([
+                                'assigned_operator_id' => null,
+                                'status' => EmailThread::STATUS_NEW,
+                            ])->save();
+                            ConversationActivity::log($record, 'unclaimed', user: auth()->user());
+                            $this->bustBadgeCache();
+                            Notification::make()->title('Thread unclaimed')->success()->send();
+                        }
                     }),
             ])
             ->bulkActions([

@@ -53,6 +53,7 @@ class OperatorPanelProvider extends PanelProvider
             ->id('operator')
             ->path('operator')
             ->spa()
+            ->maxContentWidth(\Filament\Support\Enums\Width::Full)
             ->profile(page: EditProfile::class, isSimple: false)
             ->brandName('Orbital')
             ->brandLogo(fn () => new HtmlString(

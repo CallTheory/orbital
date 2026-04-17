@@ -31,7 +31,7 @@ class Dashboard extends BaseDashboard
 {
     protected static string|UnitEnum|null $navigationGroup = 'Monitor';
 
-    protected static ?string $navigationLabel = 'Status';
+    protected static ?string $navigationLabel = 'System Status';
 
     protected static ?string $title = 'System status';
 

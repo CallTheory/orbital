@@ -108,7 +108,7 @@ class EmailInbox extends Page implements HasTable
     {
         $user = auth()->user();
 
-        return $user?->isAvailableForWork() ? 'primary' : 'gray';
+        return $user?->isAvailableForNonVoice() ? 'primary' : 'gray';
     }
 
     /**

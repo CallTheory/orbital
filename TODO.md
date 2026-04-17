@@ -125,6 +125,20 @@ the work.
       mailboxes (different from running our own MX). Separate
       feature, different shape.
 
+### Operator activity tracking
+
+- [ ] **Operator history events.** Track every meaningful operator
+      action as a timestamped event — fetching/closing accounts,
+      dialing numbers, answering/ending calls, claiming/unclaiming
+      threads, changing availability status, logging in/out. Gives
+      supervisors a timeline of what each operator did and when,
+      useful for QA review, training, and accountability. Could
+      reuse the `ConversationActivity` polymorphic pattern or build
+      a dedicated `operator_events` table. Should be lightweight
+      (fire-and-forget inserts, no blocking) and queryable by
+      operator + date range. Admin/supervisor UI to browse the
+      timeline per operator.
+
 ### Other
 
 - [ ] **Horizon metrics + alerting.** Once the observability stack

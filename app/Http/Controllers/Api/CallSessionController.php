@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AgentPersona;
 use App\Models\CallSessionState;
 use App\Models\Extension;
+use App\Models\Message;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -67,6 +68,9 @@ class CallSessionController extends Controller
         $state = $this->upsert($sessionKey, $data['extension'] ?? null);
         $state->captureField($data['key'], $data['value']);
 
+        // Auto-persist message if all required fields are now present.
+        $this->maybePersistMessage($state->fresh());
+
         return response()->json(['data' => $this->serialize($state->fresh())]);
     }
 
@@ -86,6 +90,10 @@ class CallSessionController extends Controller
         $state = $this->upsert($sessionKey, $request->input('extension'));
         $state->active_step = ($state->active_step ?? 0) + 1;
         $state->save();
+
+        // Check if the session has captured message fields and
+        // persist as a Message record if all required fields are present.
+        $this->maybePersistMessage($state);
 
         return response()->json(['data' => $this->serialize($state)]);
     }
@@ -125,12 +133,72 @@ class CallSessionController extends Controller
         if ($ext->assignable instanceof AgentPersona) {
             $context['agent_persona_id'] = $ext->assignable->id;
         }
+
         return $context;
+    }
+
+    /**
+     * If the session has caller_name, caller_phone, and reason captured,
+     * persist them as a Message record linked to the tenant. Idempotent —
+     * checks for an existing message with this session key in metadata
+     * to prevent duplicates on retry.
+     */
+    protected function maybePersistMessage(CallSessionState $state): void
+    {
+        $fields = $state->fields ?? [];
+
+        // The LLM may use different key names than our intake goal
+        // defines. Try the canonical keys first, then common variants.
+        $name = $fields['caller_name']
+            ?? $fields['name']
+            ?? $fields['recipient']
+            ?? $fields['customer_name']
+            ?? $fields['caller']
+            ?? null;
+
+        $phone = $fields['caller_phone']
+            ?? $fields['phone']
+            ?? $fields['callback_number']
+            ?? $fields['phone_number']
+            ?? $fields['number']
+            ?? null;
+
+        $reason = $fields['reason']
+            ?? $fields['message']
+            ?? $fields['reason_for_call']
+            ?? $fields['notes']
+            ?? $fields['details']
+            ?? null;
+
+        if (! $name || ! $reason || ! $state->team_id) {
+            return;
+        }
+
+        // Idempotent: don't create duplicate messages for the same session
+        $exists = Message::where('team_id', $state->team_id)
+            ->whereJsonContains('notes', $state->session_key)
+            ->exists();
+
+        if ($exists) {
+            return;
+        }
+
+        Message::create([
+            'team_id' => $state->team_id,
+            'agent_persona_id' => $state->agent_persona_id,
+            'caller_name' => $name,
+            'caller_phone' => $phone,
+            'reason' => $reason,
+            'status' => Message::STATUS_NEW,
+            'urgency' => Message::URGENCY_NORMAL,
+            'notes' => "Auto-captured from AI call session: {$state->session_key}",
+        ]);
     }
 
     protected function isWorker(Request $request): bool
     {
         $token = (string) config('services.agent_worker.token');
+
         return $token !== '' && hash_equals($token, (string) $request->bearerToken());
     }
 

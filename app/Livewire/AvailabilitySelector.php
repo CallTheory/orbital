@@ -92,6 +92,8 @@ class AvailabilitySelector extends Component
         // availability-aware surfaces refresh in the same tick
         // without waiting for the next poll.
         $this->dispatch('availability-updated', status: $value);
+        \Illuminate\Support\Facades\Cache::forget('operator:'.auth()->id().':email_inbox_badge');
+        $this->dispatch('refresh-sidebar');
     }
 
     public function render()

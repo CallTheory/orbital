@@ -11,11 +11,17 @@ use App\Models\CallQueue;
 use App\Models\EmailQueue;
 use App\Models\EmailRoutingRule;
 use App\Models\Extension;
+use App\Models\IntakeFlow;
+use App\Models\IntakeFlowStep;
+use App\Models\IntakeGoal;
+use App\Models\KnowledgeChunk;
+use App\Models\KnowledgeStore;
 use App\Models\RoutingRule;
 use App\Models\SipTrunk;
 use App\Models\Team;
 use App\Models\TenantDid;
 use App\Models\User;
+use App\Services\Knowledge\OllamaEmbedder;
 use App\Services\Telephony\PlatformExtensionAllocator;
 use App\Services\Tenancy\TenantProvisioner;
 use Illuminate\Database\Seeder;
@@ -163,11 +169,20 @@ class DemoTenantSeeder extends Seeder
             'name' => 'Ava the Receptionist',
             'role' => 'AI front desk',
             'description' => 'Greets callers and routes them to the right person.',
-            'system_prompt' => 'You are Ava, Demo Customer\'s AI receptionist. Greet callers warmly, find out why they are calling, and either answer basic questions or route them to a human operator.',
-            'greeting' => 'Thanks for calling Demo Customer, this is Ava — how can I help?',
+            'system_prompt' => implode("\n", [
+                'You are Ava, Demo Customer\'s AI receptionist.',
+                '',
+                'RULES:',
+                '- NEVER make up names, phone numbers, employee names, or any information that is not in your knowledge base.',
+                '- If you cannot answer a question from your knowledge base, say so honestly and offer to take a message.',
+                '- When taking a message, you MUST collect: the caller\'s full name, their phone number, and the reason they are calling.',
+                '- Keep responses brief — two sentences max per turn.',
+                '- Be warm, professional, and efficient.',
+            ]),
+            'greeting' => 'Thanks for calling Demo Customer, this is Ava — how can I help you today?',
             'outbound_greeting' => 'Hi, this is Ava from Demo Customer, do you have a moment?',
-            'personality' => 'Warm, efficient, brief. Two sentences max per turn.',
-            'voice_id' => 'TX3LPaxmHKxFdv7VOQHJ',
+            'personality' => 'Warm, efficient, brief. Two sentences max per turn. Never fabricate information.',
+            'voice_id' => '21m00Tcm4TlvDq8ikWAM',
             'llm_provider' => 'anthropic',
             'llm_model' => 'claude-sonnet-4-20250514',
             'stt_provider' => 'elevenlabs',
@@ -271,6 +286,129 @@ class DemoTenantSeeder extends Seeder
             'priority' => 100,
             'is_active' => true,
         ]);
+
+        // ────────────────────────────────────────────────────────────
+        // Knowledge store — FAQ for Demo Customer
+        // ────────────────────────────────────────────────────────────
+        $faqStore = KnowledgeStore::firstOrCreate(
+            ['team_id' => $team->id, 'name' => 'Demo Customer FAQ'],
+            [
+                'description' => 'Frequently asked questions about Demo Customer services.',
+                'embedding_model' => 'ollama:nomic-embed-text',
+                'embedding_dims' => 768,
+                'ingest_status' => 'idle',
+                'is_active' => true,
+            ],
+        );
+
+        $faqs = [
+            'Demo Customer is open Monday through Friday, 8:00 AM to 6:00 PM Eastern Time. We are closed on weekends and major holidays.',
+            'Demo Customer is located at 123 Main Street, Suite 200, Anytown, USA 12345. Free parking is available in the rear lot.',
+            'Demo Customer offers consulting services, project management, and technical support for small to medium businesses.',
+            'For billing questions, you can reach the billing department during regular business hours. We accept all major credit cards, checks, and ACH transfers. Invoices are sent on the 1st of each month with net-30 payment terms.',
+            'To schedule an appointment, please call during business hours and our receptionist will find a time that works for you. Same-day appointments are available when possible.',
+            'Our team includes specialists in IT consulting, business strategy, and customer support. We do not provide legal, medical, or financial advice.',
+            'For urgent after-hours issues, please leave a detailed voicemail and we will return your call first thing the next business day.',
+            'Demo Customer has been serving the community since 2010. We pride ourselves on responsive service and building lasting relationships with our clients.',
+        ];
+
+        if ($faqStore->chunks()->count() === 0) {
+            try {
+                $embedder = app(OllamaEmbedder::class);
+                foreach ($faqs as $i => $faq) {
+                    $embedding = $embedder->embed($faq);
+                    KnowledgeChunk::create([
+                        'store_id' => $faqStore->id,
+                        'source_type' => 'text',
+                        'source_ref' => 'faq-seed',
+                        'chunk_index' => $i,
+                        'content' => $faq,
+                        'embedding' => json_encode($embedding),
+                        'metadata' => ['seeded' => true],
+                    ]);
+                }
+                $faqStore->update(['chunk_count' => count($faqs)]);
+                $this->command?->info('  Embedded '.count($faqs).' FAQ chunks via Ollama');
+            } catch (\Throwable $e) {
+                $this->command?->warn('  Skipped FAQ embeddings (Ollama unavailable): '.$e->getMessage());
+                // Still create chunks without embeddings
+                foreach ($faqs as $i => $faq) {
+                    KnowledgeChunk::create([
+                        'store_id' => $faqStore->id,
+                        'source_type' => 'text',
+                        'source_ref' => 'faq-seed',
+                        'chunk_index' => $i,
+                        'content' => $faq,
+                        'metadata' => ['seeded' => true],
+                    ]);
+                }
+                $faqStore->update(['chunk_count' => count($faqs)]);
+            }
+        }
+
+        // ────────────────────────────────────────────────────────────
+        // Intake flow — Answer Questions + Take a Message
+        // ────────────────────────────────────────────────────────────
+        $answerGoal = IntakeGoal::firstOrCreate(
+            ['team_id' => $team->id, 'key' => 'answer_questions'],
+            [
+                'name' => 'Answer Questions',
+                'description' => 'Answer caller questions using the FAQ knowledge base. Search before answering.',
+                'category' => 'service',
+                'talking_points' => [
+                    'Check the knowledge base before answering any factual question.',
+                    'If the answer is not in the knowledge base, say you don\'t have that information.',
+                    'Offer to take a message if you cannot help directly.',
+                ],
+                'data_fields' => [],
+                'completion' => 'Caller\'s question has been answered or they want to leave a message.',
+                'knowledge_store_ids' => [$faqStore->id],
+                'is_active' => true,
+            ],
+        );
+
+        $messageGoal = IntakeGoal::firstOrCreate(
+            ['team_id' => $team->id, 'key' => 'take_message'],
+            [
+                'name' => 'Take a Message',
+                'description' => 'Collect the caller\'s name, phone number, and reason for calling.',
+                'category' => 'intake',
+                'talking_points' => [
+                    'Ask for the caller\'s full name.',
+                    'Ask for a callback phone number.',
+                    'Ask what the message is regarding.',
+                    'Read the message back to confirm before ending.',
+                ],
+                'data_fields' => [
+                    ['key' => 'caller_name', 'type' => 'text', 'label' => 'Caller Name', 'required' => true, 'hint' => 'Full name of the person calling'],
+                    ['key' => 'caller_phone', 'type' => 'phone', 'label' => 'Callback Number', 'required' => true, 'hint' => 'Phone number to reach them at'],
+                    ['key' => 'reason', 'type' => 'textarea', 'label' => 'Reason for Call', 'required' => true, 'hint' => 'What they are calling about'],
+                ],
+                'completion' => 'All three fields (name, phone, reason) have been collected and confirmed with the caller.',
+                'is_active' => true,
+            ],
+        );
+
+        $flow = IntakeFlow::firstOrCreate(
+            ['team_id' => $team->id, 'name' => 'Demo Customer Default'],
+            ['is_active' => true],
+        );
+
+        if ($flow->steps()->count() === 0) {
+            IntakeFlowStep::create([
+                'flow_id' => $flow->id,
+                'intake_goal_id' => $answerGoal->id,
+                'position' => 0,
+            ]);
+            IntakeFlowStep::create([
+                'flow_id' => $flow->id,
+                'intake_goal_id' => $messageGoal->id,
+                'position' => 1,
+            ]);
+        }
+
+        // Link the flow to Ava's persona
+        $receptionist->update(['default_flow_id' => $flow->id]);
 
         // ────────────────────────────────────────────────────────────
         // Add the super-admin (user 1) to the all-operators group so

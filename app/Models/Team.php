@@ -124,6 +124,11 @@ class Team extends JetstreamTeam
         return $this->hasMany(CallLog::class);
     }
 
+    public function messages(): HasMany
+    {
+        return $this->hasMany(Message::class);
+    }
+
     public function operatingHours(): HasMany
     {
         return $this->hasMany(OperatingHour::class);

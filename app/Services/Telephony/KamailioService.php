@@ -23,10 +23,23 @@ use Illuminate\Support\Facades\Log;
  * to "unreachable" rather than crashing.
  *
  * Dispatcher state vocabulary:
- *   active  → RPC state "a"  — accepts new calls + probing
- *   drain   → RPC state "ip" — inactive + probing; stops new
- *             calls, existing dialogs finish naturally
- *   disable → RPC state "dx" — fully disabled, no probing
+ *   active  → RPC state "ap" — accepts new calls, probing on
+ *   drain   → RPC state "dp" — operator-disabled, probing on.
+ *             Stops new calls, existing dialogs finish naturally,
+ *             and the node STAYS disabled until an operator
+ *             activates it again — which is what we want for
+ *             planned maintenance.
+ *   disable → RPC state "dx" — fully disabled, no probing either.
+ *
+ * Why `dp` for drain and not `ip`:
+ *   Kamailio's `i` (inactive) state gets auto-cleared on the next
+ *   successful SIP OPTIONS probe when `ds_probing_mode=1`. That
+ *   flips the backend back to active ~30 seconds after a drain,
+ *   which defeats the point of draining for maintenance. The `d`
+ *   (disabled) state is operator-set and sticky: probing keeps
+ *   running so we can watch the node come back up, but the
+ *   disabled flag doesn't auto-clear. Operator must explicitly
+ *   activate to bring it back into rotation.
  */
 class KamailioService
 {
@@ -119,7 +132,10 @@ class KamailioService
     {
         $rpcState = match ($state) {
             'active' => 'ap',
-            'drain' => 'ip',
+            // `dp` not `ip`: see class docblock for why. `ip` gets
+            // auto-cleared by the next successful OPTIONS probe;
+            // `dp` stays put until an operator manually activates.
+            'drain' => 'dp',
             'disable' => 'dx',
             default => throw new \InvalidArgumentException("Unknown state: {$state}"),
         };
@@ -219,16 +235,36 @@ class KamailioService
     private function parseState(array $dest): string
     {
         // Some versions report FLAGS as a string like "AP" (active + probing),
-        // others as an integer bitmask. Normalize.
+        // others as an integer bitmask. Normalize to uppercase.
+        //
+        // FLAGS letters we care about:
+        //   A = active       D = disabled (operator-set, sticky)
+        //   I = inactive     T = trying (auto-retrying, temporary)
+        //   P = probing on   X = probing off
+        //
+        // Our state labels:
+        //   active   — normal rotation (AP)
+        //   draining — operator took it out; stays out until
+        //              explicitly reactivated (DP)
+        //   disabled — fully off, probing off too (DX)
         $flags = strtoupper((string) ($dest['FLAGS'] ?? ''));
 
-        if (str_contains($flags, 'AX') || str_contains($flags, 'DX')) {
-            return 'disabled';
-        }
-        if (str_contains($flags, 'IP') || str_contains($flags, 'I')) {
+        // Operator-set inactive states — both Drain (`dp` RPC) and
+        // Disable (`dx` RPC) land at FLAGS "DX" in Kamailio 5.5.2
+        // (the `p` hint gets collapsed on display). We treat any
+        // `D`-prefixed flag as "draining" because that's the
+        // operator-intent label — the node is not taking calls and
+        // will stay that way until Activate is clicked.
+        if (str_starts_with($flags, 'D')) {
             return 'draining';
         }
-        if (str_contains($flags, 'AP') || str_contains($flags, 'A')) {
+        // Legacy `ip` drain that still auto-reverts on the next
+        // successful probe. Shouldn't happen after the `dp` switch
+        // but we keep the mapping so we never surface as "unknown".
+        if (str_contains($flags, 'IP') || str_starts_with($flags, 'I')) {
+            return 'draining';
+        }
+        if (str_starts_with($flags, 'A')) {
             return 'active';
         }
 

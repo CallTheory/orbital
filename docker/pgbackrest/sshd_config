@@ -1,0 +1,25 @@
+# SSHd config for the pgbackrest-repo host.
+# Only `pgbackrest` user may log in, only via key, no shell needed
+# beyond what pgbackrest spawns.
+
+Port 22
+Protocol 2
+HostKey /etc/ssh/ssh_host_rsa_key
+HostKey /etc/ssh/ssh_host_ecdsa_key
+HostKey /etc/ssh/ssh_host_ed25519_key
+
+PermitRootLogin no
+PasswordAuthentication no
+ChallengeResponseAuthentication no
+PubkeyAuthentication yes
+AuthorizedKeysFile .ssh/authorized_keys
+
+AllowUsers pgbackrest
+
+UsePAM yes
+X11Forwarding no
+AllowTcpForwarding no
+PrintMotd no
+PidFile /tmp/sshd.pid
+
+Subsystem sftp internal-sftp

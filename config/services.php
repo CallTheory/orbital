@@ -132,6 +132,14 @@ return [
     'prometheus' => [
         'internal_url' => env('PROMETHEUS_INTERNAL_URL', 'http://prometheus:9090'),
     ],
+    'haproxy' => [
+        // Internal stats endpoint on one of the HAProxy pair.
+        // Either node serves identical state since they're stateless
+        // and independently health-check the same backends, so we
+        // deliberately pin to -1 for a stable browser experience
+        // rather than load-balancing through DNS round-robin.
+        'stats_url' => env('HAPROXY_STATS_URL', 'http://haproxy-1:8404'),
+    ],
     'mailpit' => [
         'internal_url' => env('MAILPIT_INTERNAL_URL', 'http://mailpit:8025'),
     ],

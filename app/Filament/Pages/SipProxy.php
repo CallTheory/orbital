@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Filament\Pages;
 
+use App\Services\Telephony\AsteriskClusterActivity;
+use App\Services\Telephony\AsteriskDrainService;
 use App\Services\Telephony\KamailioService;
 use BackedEnum;
 use Filament\Actions\Action;
@@ -55,6 +57,19 @@ class SipProxy extends Page
 
     public int $activeDialogs = 0;
 
+    /**
+     * Per-Asterisk activity map, keyed by short hostname.
+     * Drives the "Drained and safe to restart" vs "Still has
+     * traffic" labeling on each backend card.
+     *
+     *   channels       — live channels on THIS node (AMI)
+     *   registrations  — dynamic REGISTERs where reg_server =
+     *                    this node's systemname (ps_contacts)
+     *
+     * @var array<string, array{channels: int, registrations: int, reachable: bool}>
+     */
+    public array $activity = [];
+
     public static function canAccess(): bool
     {
         if (! config('telephony.kamailio.enabled')) {
@@ -87,67 +102,129 @@ class SipProxy extends Page
 
         $this->dispatchers = $service->listDispatchers();
         $this->activeDialogs = $service->getActiveDialogCount();
+
+        // Per-Asterisk activity: channels + contacts. A drained
+        // backend is only SAFE to restart when both reach zero —
+        // channels = live calls terminating there, contacts = live
+        // softphone/hardware registrations. AMI query is cheap
+        // (two commands over a short-lived socket per node) so
+        // the 5s poll doesn't stress the Asterisks.
+        $this->activity = app(AsteriskClusterActivity::class)->all();
     }
 
     /**
-     * Current state of the first (and in Phase 0, only) backend.
-     * Used by the blade template to show/hide contextual actions.
+     * Activate a drained or disabled backend. The view invokes
+     * this action with `->arguments(['address' => ..., 'setId' => ...])`
+     * so Filament/Livewire can round-trip the target through the
+     * click handler. A per-row closure won't work — Filament can't
+     * serialize closures for the action lifecycle, so we register
+     * one static action per kind and pass the row data as arguments.
      */
-    public function getCurrentBackendState(): string
+    public function activateBackendAction(): Action
     {
-        return $this->dispatchers[0]['state'] ?? 'unknown';
+        return Action::make('activateBackend')
+            ->label('Activate')
+            ->icon('heroicon-o-play')
+            ->color('success')
+            ->action(function (array $arguments): void {
+                $result = app(AsteriskDrainService::class)->activate(
+                    (string) $arguments['backend'],
+                );
+                $ok = $result['kamailio'] && $result['haproxy'];
+                Notification::make()
+                    ->title($ok
+                        ? "Activated {$arguments['backend']}"
+                        : "Partially activated {$arguments['backend']}")
+                    ->body($ok
+                        ? 'Kamailio dispatcher + HAProxy WSS both online.'
+                        : $this->summarize($result))
+                    ->{$ok ? 'success' : 'warning'}()
+                    ->send();
+                $this->refreshState();
+            });
     }
 
-    protected function getHeaderActions(): array
+    public function drainBackendAction(): Action
     {
-        return [
-            Action::make('activate')
-                ->label('Activate')
-                ->icon('heroicon-o-play')
-                ->color('success')
-                ->visible(fn (): bool => in_array($this->getCurrentBackendState(), ['draining', 'disabled'], true))
-                ->action(function () {
-                    $service = app(KamailioService::class);
-                    $ok = $service->setBackendState(1, 'asterisk:5060', 'active');
-                    Notification::make()
-                        ->title($ok ? 'Backend activated' : 'Failed to activate backend')
-                        ->{$ok ? 'success' : 'danger'}()
-                        ->send();
-                    $this->refreshState();
-                }),
+        return Action::make('drainBackend')
+            ->label('Drain')
+            ->icon('heroicon-o-pause')
+            ->color('warning')
+            ->requiresConfirmation()
+            ->modalHeading(fn (array $arguments): string =>
+                "Drain {$arguments['backend']}")
+            ->modalDescription(
+                'Stops NEW traffic to this Asterisk on both paths: '.
+                'inbound SIP trunk calls (Kamailio) and operator '.
+                'softphone WSS connections (HAProxy). Existing calls '.
+                'and sessions continue until their dialogs end '.
+                'naturally. Operators currently on this node will '.
+                'be notified to finish their call, go unavailable, '.
+                'and log out/in to migrate. The backend stays drained '.
+                'until you click Activate.',
+            )
+            ->action(function (array $arguments): void {
+                $result = app(AsteriskDrainService::class)->drain(
+                    (string) $arguments['backend'],
+                );
+                $ok = $result['kamailio'] && $result['haproxy'];
+                Notification::make()
+                    ->title($ok
+                        ? "Draining {$arguments['backend']}"
+                        : "Partial drain of {$arguments['backend']}")
+                    ->body($ok
+                        ? 'SIP trunks + operator WSS both pulled '.
+                          'from rotation. Wait for active traffic '.
+                          'to reach zero before restarting.'
+                        : $this->summarize($result))
+                    ->{$ok ? 'warning' : 'danger'}()
+                    ->send();
+                $this->refreshState();
+            });
+    }
 
-            Action::make('drain')
-                ->label('Drain')
-                ->icon('heroicon-o-pause')
-                ->color('warning')
-                ->visible(fn (): bool => $this->getCurrentBackendState() === 'active')
-                ->action(function () {
-                    $service = app(KamailioService::class);
-                    $ok = $service->setBackendState(1, 'asterisk:5060', 'drain');
-                    Notification::make()
-                        ->title($ok ? 'Draining — no new calls' : 'Failed to start drain')
-                        ->body($ok ? 'Existing calls will complete naturally. Watch the Active Calls counter reach zero before restarting Asterisk.' : '')
-                        ->{$ok ? 'warning' : 'danger'}()
-                        ->send();
-                    $this->refreshState();
-                }),
+    public function disableBackendAction(): Action
+    {
+        return Action::make('disableBackend')
+            ->label('Disable')
+            ->icon('heroicon-o-x-circle')
+            ->color('danger')
+            ->requiresConfirmation()
+            ->modalHeading(fn (array $arguments): string =>
+                "Hard-disable {$arguments['backend']}")
+            ->modalDescription(
+                'Immediately stops ALL traffic to this backend AND '.
+                'stops Kamailio probing. Use Drain instead for planned '.
+                'maintenance — Disable leaves you with no visibility '.
+                'into whether the node is still alive.',
+            )
+            ->action(function (array $arguments): void {
+                $result = app(AsteriskDrainService::class)->disable(
+                    (string) $arguments['backend'],
+                );
+                $ok = $result['kamailio'] && $result['haproxy'];
+                Notification::make()
+                    ->title($ok
+                        ? "Disabled {$arguments['backend']}"
+                        : "Partial disable of {$arguments['backend']}")
+                    ->body($ok ? null : $this->summarize($result))
+                    ->{$ok ? 'danger' : 'warning'}()
+                    ->send();
+                $this->refreshState();
+            });
+    }
 
-            Action::make('disable')
-                ->label('Disable')
-                ->icon('heroicon-o-x-circle')
-                ->color('danger')
-                ->requiresConfirmation()
-                ->modalHeading('Disable backend')
-                ->modalDescription('This immediately stops sending ALL calls to this backend — including new calls. Existing calls may be affected if Asterisk is restarted while they\'re in progress. Use Drain instead for a graceful shutdown.')
-                ->action(function () {
-                    $service = app(KamailioService::class);
-                    $ok = $service->setBackendState(1, 'asterisk:5060', 'disable');
-                    Notification::make()
-                        ->title($ok ? 'Backend disabled' : 'Failed to disable backend')
-                        ->{$ok ? 'danger' : 'danger'}()
-                        ->send();
-                    $this->refreshState();
-                }),
-        ];
+    /**
+     * Turn the {kamailio: bool, haproxy: bool} tuple into a
+     * human line for notification bodies on partial failures.
+     *
+     * @param  array{kamailio: bool, haproxy: bool}  $r
+     */
+    protected function summarize(array $r): string
+    {
+        $parts = [];
+        $parts[] = 'Kamailio: ' . ($r['kamailio'] ? 'ok' : 'FAILED');
+        $parts[] = 'HAProxy: ' . ($r['haproxy'] ? 'ok' : 'FAILED');
+        return implode(' · ', $parts);
     }
 }

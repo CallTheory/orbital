@@ -1,0 +1,122 @@
+# Orbital HA app tier — Phase D.
+#
+# Second instances of every stateless app-tier service so nginx-tls
+# can load-balance across a pair. Pairs with compose/ha-data.yml
+# (which provides the clustered data backends) and the main
+# docker-compose.yml (which has the first instance of each
+# service).
+#
+# Usage:
+#   docker compose -f docker-compose.yml \
+#                  -f compose/ha-data.yml \
+#                  -f compose/ha-app.yml up -d
+#
+# All services below share .env with their -1 counterparts, so they
+# pick up DB_HOST=haproxy, REDIS_HOST=haproxy, and AWS_ENDPOINT=
+# http://haproxy:8333 automatically.
+
+services:
+    # Second Laravel app instance. Stateless — sessions in Valkey,
+    # cache/queue in Valkey, uploads in SeaweedFS S3. Load-balanced
+    # by nginx-tls via the `orbital_app` upstream.
+    orbital.test-2:
+        build:
+            context: ./docker/8.4
+            dockerfile: Dockerfile
+            args:
+                WWWGROUP: '${WWWGROUP}'
+        extra_hosts:
+            - 'host.docker.internal:host-gateway'
+        # No host ports — nginx-tls fronts HTTP and we don't need a
+        # second Vite HMR listener.
+        environment:
+            WWWUSER: '${WWWUSER}'
+            LARAVEL_SAIL: 1
+            XDEBUG_MODE: '${SAIL_XDEBUG_MODE:-off}'
+            XDEBUG_CONFIG: '${SAIL_XDEBUG_CONFIG:-client_host=host.docker.internal}'
+            IGNITION_LOCAL_SITES_PATH: '${PWD}'
+        volumes:
+            - '.:/var/www/html'
+            - 'asterisk-recordings:/var/spool/asterisk/monitor'
+            - 'asterisk-prompts:/var/spool/asterisk/prompts'
+            - 'tls-certs:/etc/tls:ro'
+        networks:
+            - sail
+            - telephony
+        restart: unless-stopped
+
+    # Second Reverb instance. With REVERB_SCALING_ENABLED=true,
+    # events fan out across nodes via Valkey pub/sub — any node can
+    # deliver any broadcast. nginx-tls uses ip_hash stickiness so a
+    # single browser session stays pinned for WS-reconnect efficiency.
+    reverb-2:
+        build:
+            context: ./docker/8.4
+            dockerfile: Dockerfile
+            args:
+                WWWGROUP: '${WWWGROUP}'
+        command: ['php', '/var/www/html/artisan', 'reverb:start', '--host=0.0.0.0', '--port=8080']
+        environment:
+            WWWUSER: '${WWWUSER}'
+            LARAVEL_SAIL: 1
+        volumes:
+            - '.:/var/www/html'
+        networks:
+            - sail
+            - telephony
+        restart: unless-stopped
+
+    # Second agent worker. Stateless — the LiveKit server routes
+    # dispatches across all connected workers, so two instances just
+    # double capacity with no coordination logic.
+    agent-worker-2:
+        build:
+            context: ./docker/agent-worker
+            dockerfile: Dockerfile
+        volumes:
+            - './agent-worker:/app'
+        environment:
+            LIVEKIT_URL: '${LIVEKIT_URL:-ws://livekit:7880}'
+            LIVEKIT_API_KEY: '${LIVEKIT_API_KEY}'
+            LIVEKIT_API_SECRET: '${LIVEKIT_API_SECRET}'
+            ANTHROPIC_API_KEY: '${ANTHROPIC_API_KEY}'
+            OPENAI_API_KEY: '${OPENAI_API_KEY}'
+            ELEVENLABS_API_KEY: '${ELEVENLABS_API_KEY}'
+            ELEVEN_API_KEY: '${ELEVENLABS_API_KEY}'
+            OPENROUTER_API_KEY: '${OPENROUTER_API_KEY}'
+            ORBITAL_API_URL: 'http://orbital.test/api'
+            ORBITAL_API_TOKEN: '${AGENT_WORKER_TOKEN}'
+        networks:
+            - sail
+            - telephony
+        restart: unless-stopped
+
+    # Second Haraka. First instance keeps the 2525 host-port binding
+    # (primary MX in dev); in production an HAProxy SMTP frontend
+    # would balance across both. No host port here.
+    haraka-2:
+        build:
+            context: ./docker/haraka
+            dockerfile: Dockerfile
+        environment:
+            ORBITAL_WEBHOOK_URL: 'http://orbital.test/api/mail/inbound'
+            ORBITAL_WEBHOOK_TOKEN: '${INBOUND_MAIL_TOKEN}'
+        networks:
+            - sail
+        restart: unless-stopped
+
+    # Second Ollama. Each node has its own model cache volume — any
+    # `ollama pull` needs to happen per-node. The cache is deliberately
+    # not shared so a cold node can warm up independently without
+    # corrupting an actively-serving node's store.
+    ollama-2:
+        image: 'ollama/ollama:latest'
+        volumes:
+            - 'sail-ollama-2:/root/.ollama'
+        networks:
+            - sail
+        restart: unless-stopped
+
+volumes:
+    sail-ollama-2:
+        driver: local

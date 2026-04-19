@@ -12,3 +12,8 @@ Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
 // Define the channel explicitly anyway so it shows up in route:list
 // and anyone grepping for its name finds a canonical definition.
 Broadcast::channel('system-health', fn () => true);
+
+// Per-user operator drain channel — carries the "your Asterisk is
+// draining, finish your call and refresh" nudge. Authenticated user
+// must match the ID in the channel name.
+Broadcast::channel('operator.drain.{id}', fn ($user, $id) => (int) $user->id === (int) $id);

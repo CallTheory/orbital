@@ -24,3 +24,13 @@ window.Echo = new Echo({
     forceTLS: (import.meta.env.VITE_REVERB_SCHEME ?? 'https') === 'https',
     enabledTransports: ['ws', 'wss'],
 });
+
+// Filament's notifications Livewire component subscribes to the
+// user's private broadcast channel on an `EchoLoaded` event. Because
+// this file is an ES module (deferred), it can finish executing
+// AFTER the Livewire @script tag has already run and missed the
+// `if (window.Echo)` check. Without this dispatch, the toast stack
+// never subscribes on pages where module load loses the race.
+// Observed on the operator panel: database-notification drawer
+// worked, but broadcast toasts silently failed.
+window.dispatchEvent(new CustomEvent('EchoLoaded'));

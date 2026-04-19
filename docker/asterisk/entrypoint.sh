@@ -62,6 +62,20 @@ if [ -f /etc/odbc.ini.tmpl ]; then
     echo "[orbital-asterisk] ODBC DSN materialized for ${DB_HOST}:${DB_PORT}/${DB_DATABASE}"
 fi
 
+# ── systemname ─────────────────────────────────────────────────
+# Asterisk writes ps_contacts.reg_server from this value on every
+# dynamic registration. With two Asterisks sharing the ARA tables,
+# reg_server is the ONLY per-node signal that tells us which
+# Asterisk holds the actual WSS/SIP socket for a given softphone
+# contact. We prefer an explicit ASTERISK_NODE_NAME env (set per
+# service in compose) and fall back to HOSTNAME.
+NODE_NAME="${ASTERISK_NODE_NAME:-${HOSTNAME:-asterisk}}"
+if grep -q '^;systemname = my_system_name' /etc/asterisk/asterisk.conf 2>/dev/null; then
+    sed -i "s/^;systemname = my_system_name.*/systemname = ${NODE_NAME}/" \
+        /etc/asterisk/asterisk.conf
+    echo "[orbital-asterisk] systemname = ${NODE_NAME}"
+fi
+
 # ── 3. Wait for Postgres ────────────────────────────────────────
 WAIT_DEADLINE=$((`date +%s` + 30))
 while ! nc -z "$DB_HOST" "$DB_PORT" 2>/dev/null; do

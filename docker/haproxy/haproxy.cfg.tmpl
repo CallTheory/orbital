@@ -1,0 +1,217 @@
+#-----------------------------------------------------------
+# Orbital internal HAProxy (rendered by entrypoint via envsubst).
+# Backend hostnames are docker-compose service names; HAProxy
+# re-resolves them via docker's embedded DNS on every health
+# check so container recreates don't require an HAProxy reload.
+#-----------------------------------------------------------
+
+global
+    log stdout format raw local0 info
+    maxconn 4096
+    stats socket /run/haproxy/admin.sock mode 660 level admin
+    # DNS service discovery — resolves backend server names via
+    # Docker's embedded resolver at 127.0.0.11 so we pick up new
+    # container IPs after a recreate without a hard reload.
+
+defaults
+    log global
+    timeout connect 5s
+    timeout client 30s
+    timeout server 30s
+    timeout check 3s
+    option  dontlognull
+
+resolvers docker
+    nameserver dns1 127.0.0.11:53
+    resolve_retries 3
+    timeout resolve 1s
+    timeout retry 1s
+    hold valid 10s
+    hold obsolete 10s
+
+#-----------------------------------------------------------
+# pgsql-rw — routes writes to the current Patroni Leader.
+# Patroni's REST endpoint returns HTTP 200 on /primary only
+# when the local node is the leader; replicas return 503.
+# HAProxy flips its backend selection accordingly.
+#-----------------------------------------------------------
+frontend pgsql_rw_fe
+    mode tcp
+    bind *:5432
+    default_backend pgsql_rw_be
+
+backend pgsql_rw_be
+    mode tcp
+    option httpchk GET /primary HTTP/1.0
+    http-check expect status 200
+    # Whichever Patroni node is currently Leader wins; the other
+    # two fail the health check and get pulled from rotation.
+    server patroni-1 patroni-1:5432 check port 8008 inter 2s rise 2 fall 2 resolvers docker
+    server patroni-2 patroni-2:5432 check port 8008 inter 2s rise 2 fall 2 resolvers docker
+    server patroni-3 patroni-3:5432 check port 8008 inter 2s rise 2 fall 2 resolvers docker
+
+#-----------------------------------------------------------
+# pgsql-ro — routes read-only queries to replicas.
+# /replica returns 200 only on hot standby nodes, not leader.
+# Round-robin across whichever replicas are up.
+#-----------------------------------------------------------
+frontend pgsql_ro_fe
+    mode tcp
+    bind *:5433
+    default_backend pgsql_ro_be
+
+backend pgsql_ro_be
+    mode tcp
+    option httpchk GET /replica HTTP/1.0
+    http-check expect status 200
+    balance roundrobin
+    server patroni-1 patroni-1:5432 check port 8008 inter 2s rise 2 fall 2 resolvers docker
+    server patroni-2 patroni-2:5432 check port 8008 inter 2s rise 2 fall 2 resolvers docker
+    server patroni-3 patroni-3:5432 check port 8008 inter 2s rise 2 fall 2 resolvers docker
+
+#-----------------------------------------------------------
+# valkey — routes to whichever Valkey node Sentinel has
+# elected as primary. HAProxy doesn't query Sentinel directly;
+# it checks each Valkey node's ROLE — only the primary
+# responds with "role:master". That's sufficient because
+# Sentinel updates the `replicaof` state on all nodes at
+# promotion time.
+#-----------------------------------------------------------
+frontend valkey_fe
+    mode tcp
+    bind *:6379
+    default_backend valkey_be
+
+backend valkey_be
+    mode tcp
+    # Auth first, then query replication role. Only one node at
+    # a time reports `role:master`; others report role:slave.
+    option tcp-check
+    tcp-check send AUTH\ ${REDIS_PASSWORD}\r\n
+    tcp-check expect string +OK
+    tcp-check send info\ replication\r\n
+    tcp-check expect string role:master
+    tcp-check send QUIT\r\n
+    tcp-check expect string +OK
+    server valkey-1 valkey-1:6379 check inter 2s rise 2 fall 2 resolvers docker
+    server valkey-2 valkey-2:6379 check inter 2s rise 2 fall 2 resolvers docker
+    server valkey-3 valkey-3:6379 check inter 2s rise 2 fall 2 resolvers docker
+
+#-----------------------------------------------------------
+# asterisk-wss — operator softphone WebSocket (WSS/port 8089).
+# TCP passthrough: Asterisk terminates its own TLS on 8089 with
+# a self-signed cert; we just forward bytes. Both asterisks are
+# backends; drain marks the chosen one `disabled` via the stats
+# socket so new softphone registrations skip it cleanly.
+#-----------------------------------------------------------
+frontend asterisk_wss_fe
+    mode tcp
+    bind *:8089
+    # WebSocket connections live for the duration of a softphone
+    # session — often hours. The global defaults `timeout client
+    # 30s / server 30s` would close them during any idle spell,
+    # dropping the operator's registration mid-call. Override with
+    # long client/server and an even longer tunnel timeout (which
+    # applies AFTER the HTTP Upgrade handshake, in TCP mode
+    # HAProxy treats the whole connection as a tunnel).
+    timeout client 1h
+    default_backend asterisk_wss_be
+
+backend asterisk_wss_be
+    mode tcp
+    timeout server 1h
+    timeout tunnel 1h
+    # Balance by source IP so a single browser session sticks to
+    # one Asterisk across reconnects. The SIP dialog state for
+    # that user is pinned to whichever node they first reached.
+    balance source
+    # Probe the TLS handshake so "backend restarted" shows up
+    # within a few seconds; check-ssl with verify none because
+    # Asterisk uses a self-signed cert internally.
+    option tcp-check
+    server asterisk-1 asterisk-1:8089 check check-ssl verify none inter 5s rise 2 fall 2 resolvers docker
+    server asterisk-2 asterisk-2:8089 check check-ssl verify none inter 5s rise 2 fall 2 resolvers docker
+
+#-----------------------------------------------------------
+# seaweed-s3 — routes S3 API traffic to the filer(s).
+# Only filer-1 is registered today; once filer-2's bootstrap
+# hang is resolved (task #18) add it as a second server with
+# identical settings.
+#-----------------------------------------------------------
+frontend seaweed_s3_fe
+    mode http
+    bind *:8333
+    default_backend seaweed_s3_be
+
+backend seaweed_s3_be
+    mode http
+    option httpchk GET /healthz
+    http-check expect status 200
+    balance roundrobin
+    # Health check hits filer HTTP port 8888; traffic goes to 8333.
+    server seaweed-filer-1 seaweed-filer-1:8333 check port 8888 inter 5s rise 2 fall 2 resolvers docker
+
+#-----------------------------------------------------------
+# Grafana — shared-Postgres-state stateless pair. Cookie-based
+# sticky balancing keeps a single browser session on one node
+# (Grafana sessions live in Postgres too, so stickiness is purely
+# a latency optimization). Health check hits /api/health.
+#-----------------------------------------------------------
+frontend grafana_fe
+    mode http
+    bind *:3000
+    default_backend grafana_be
+
+backend grafana_be
+    mode http
+    option httpchk GET /api/health
+    http-check expect status 200
+    balance roundrobin
+    server grafana   grafana:3000   check inter 5s rise 2 fall 2 resolvers docker
+    server grafana-2 grafana-2:3000 check inter 5s rise 2 fall 2 resolvers docker
+
+#-----------------------------------------------------------
+# Prometheus — paired mode (each node scrapes all targets
+# independently). Grafana queries either — minor query-time drift
+# between replicas is acceptable for dashboarding.
+#-----------------------------------------------------------
+frontend prometheus_fe
+    mode http
+    bind *:9090
+    default_backend prometheus_be
+
+backend prometheus_be
+    mode http
+    option httpchk GET /-/healthy
+    http-check expect status 200
+    balance roundrobin
+    server prometheus   prometheus:9090   check inter 5s rise 2 fall 2 resolvers docker
+    server prometheus-2 prometheus-2:9090 check inter 5s rise 2 fall 2 resolvers docker
+
+#-----------------------------------------------------------
+# Loki — both nodes share the `loki-chunks` S3 bucket in
+# SeaweedFS, so either can answer any query.
+#-----------------------------------------------------------
+frontend loki_fe
+    mode http
+    bind *:3100
+    default_backend loki_be
+
+backend loki_be
+    mode http
+    option httpchk GET /ready
+    http-check expect status 200
+    balance roundrobin
+    server loki   loki:3100   check inter 5s rise 2 fall 2 resolvers docker
+    server loki-2 loki-2:3100 check inter 5s rise 2 fall 2 resolvers docker
+
+#-----------------------------------------------------------
+# Stats page — http://haproxy-{1,2}:8404/stats
+#-----------------------------------------------------------
+frontend stats_fe
+    mode http
+    bind *:8404
+    stats enable
+    stats uri /stats
+    stats refresh 10s
+    stats admin if TRUE

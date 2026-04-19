@@ -1,0 +1,126 @@
+# Patroni configuration (templated — envsubst fills ${...} at boot).
+#
+# Every node in the cluster runs Patroni with this same template.
+# What differs per node:
+#   - PATRONI_NAME        — unique node name (e.g. patroni-1)
+#   - PATRONI_TAGS_NOFAILOVER — "true" on the async reporting replica
+#     so it never gets promoted to leader
+#   - PATRONI_TAGS_NOSYNC — "true" on the async reporting replica so
+#     it never joins the synchronous replication set
+#
+# What's identical across all nodes:
+#   - scope:       cluster identifier (etcd key prefix)
+#   - etcd3.hosts: the 3 etcd endpoints
+#   - user/pw/repl credentials
+#   - pg params (wal_level, shared_preload_libraries=vector, etc.)
+
+scope: ${PATRONI_SCOPE}
+name: ${PATRONI_NAME}
+namespace: /orbital/
+
+restapi:
+    listen: 0.0.0.0:8008
+    connect_address: ${PATRONI_NAME}:8008
+    # HAProxy / operator scripts hit GET /primary or /replica here;
+    # Patroni replies 200 or 503 based on the local node's current
+    # role. That's the backbone of every routing decision.
+    authentication:
+        username: ${PATRONI_REST_USER}
+        password: ${PATRONI_REST_PASSWORD}
+
+etcd3:
+    hosts: ${PATRONI_ETCD3_HOSTS}
+
+# DCS-level defaults written into etcd on first bootstrap. Changes
+# made here AFTER bootstrap do nothing — use `patronictl edit-config`
+# or a one-shot `etcdctl put` to update the live cluster settings.
+bootstrap:
+    dcs:
+        ttl: 30
+        loop_wait: 10
+        retry_timeout: 10
+        maximum_lag_on_failover: 1048576
+        # Sync replication: one replica must be caught up or writes
+        # block. Matches the "3 nodes + pgBackRest" topology from the
+        # HA plan: leader + sync replica + async reporting replica.
+        synchronous_mode: true
+        synchronous_mode_strict: false
+        synchronous_node_count: 1
+        postgresql:
+            use_pg_rewind: true
+            use_slots: true
+            parameters:
+                wal_level: replica
+                hot_standby: "on"
+                max_connections: 200
+                max_wal_senders: 10
+                max_replication_slots: 10
+                wal_keep_size: 1GB
+                # pgvector is part of the base image; load it on
+                # every node so vector ops keep working after failover.
+                shared_preload_libraries: 'vector'
+                # pgBackRest integration: every WAL segment is shipped
+                # to the pgbackrest-repo host. archive_mode=on is
+                # required even on replicas so a promotion doesn't
+                # leave a gap in the archive timeline.
+                archive_mode: 'on'
+                archive_command: 'pgbackrest --stanza=${BACKUP_STANZA} archive-push %p'
+                archive_timeout: 60
+                # Checksums catch silent disk corruption; enabled
+                # at initdb time (see initdb section below).
+    initdb:
+        - encoding: UTF8
+        - data-checksums
+        - locale: en_US.UTF-8
+    pg_hba:
+        - local   all             all                                     trust
+        - host    all             all             127.0.0.1/32            md5
+        - host    all             all             0.0.0.0/0               md5
+        - host    replication     replicator      0.0.0.0/0               md5
+    post_init: /etc/patroni/post-init.sh
+    users:
+        admin:
+            password: ${PATRONI_REST_PASSWORD}
+            options:
+                - createrole
+                - createdb
+
+postgresql:
+    listen: 0.0.0.0:5432
+    connect_address: ${PATRONI_NAME}:5432
+    data_dir: ${PGDATA}
+    bin_dir: /usr/lib/postgresql/17/bin
+    pgpass: /var/lib/postgresql/.pgpass
+    authentication:
+        replication:
+            username: replicator
+            password: ${PATRONI_REPLICATION_PASSWORD}
+        superuser:
+            username: postgres
+            password: ${POSTGRES_PASSWORD}
+        rewind:
+            username: postgres
+            password: ${POSTGRES_PASSWORD}
+    parameters:
+        unix_socket_directories: '/var/run/postgresql'
+    # Replica bootstrap: stream from current leader via a wrapper
+    # around pg_basebackup that force-chmods the data dir to 0700
+    # on completion. Direct `- basebackup` would work functionally
+    # but PostgreSQL rejects 0755 data dirs and Patroni's default
+    # mkdir umask is environment-dependent (seen 0755 in this
+    # image). The wrapper is deterministic.
+    #
+    # Once the pgbackrest stanza has its first full backup, add
+    # `pgbackrest` at the top of this list so it's tried first and
+    # offloads the leader during large-cluster clones.
+    create_replica_methods:
+        - basebackup_chmod
+    basebackup_chmod:
+        command: /etc/patroni/basebackup-chmod.sh
+        keep_data: false
+
+tags:
+    nofailover: ${PATRONI_TAGS_NOFAILOVER}
+    noloadbalance: false
+    nosync: ${PATRONI_TAGS_NOSYNC}
+    clonefrom: false

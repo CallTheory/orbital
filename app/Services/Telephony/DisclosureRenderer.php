@@ -30,6 +30,12 @@ class DisclosureRenderer
      * Absolute directory where rendered disclosure files live. Both the
      * app container and the asterisk container mount this path via the
      * shared `asterisk-prompts` named volume (see docker-compose.yml).
+     *
+     * In HA deployments the same path is backed by a SeaweedFS FUSE
+     * mount instead of a docker named volume, so every Laravel and
+     * Asterisk node sees a unified namespace. Keep this path POSIX-
+     * friendly: no file locks, no atomic renames across directories,
+     * no sparse-file tricks — FUSE-over-network may not support them.
      */
     public const BASE_DIR = '/var/spool/asterisk/prompts/disclosures';
 

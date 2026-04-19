@@ -72,6 +72,13 @@ class OperatorPanelProvider extends PanelProvider
             ])
             // Offline-first avatar provider — see AdminPanelProvider.
             ->defaultAvatarProvider(LocalAvatarProvider::class)
+            // Database notifications + 5s polling — matches the
+            // admin panel. An operator who's the target of a
+            // drain notice (or any other Filament notification
+            // we sendToDatabase) gets a toast within 5 seconds
+            // and a badge on the bell icon.
+            ->databaseNotifications()
+            ->databaseNotificationsPolling('5s')
             ->navigationGroups([
                 'Workspace',
                 'Inbox',
@@ -249,6 +256,17 @@ class OperatorPanelProvider extends PanelProvider
                 PanelsRenderHook::USER_MENU_BEFORE,
                 fn (): string => auth()->user()?->hasAnyPlatformRole()
                     ? Blade::render('@livewire(\App\Livewire\AvailabilitySelector::class)')
+                    : '',
+            )
+            // Per-user drain listener: subscribes to the private
+            // `operator.drain.{userId}` channel and pops a Filament
+            // toast when the user's Asterisk node is draining. Lives
+            // on the operator panel only — admins don't run softphones
+            // so the nudge doesn't apply to them.
+            ->renderHook(
+                PanelsRenderHook::BODY_END,
+                fn (): string => auth()->check()
+                    ? Blade::render('@livewire(\App\Livewire\AsteriskDrainNotice::class)')
                     : '',
             )
             // Persistent softphone on every operator page — same pattern

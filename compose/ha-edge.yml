@@ -1,0 +1,32 @@
+# Orbital HA edge tier — Phase G.
+#
+# Second nginx-tls instance. Same image (upstreams and cert paths
+# come from docker/nginx/tls.conf), so both nodes serve traffic
+# identically. Internal-only in dev (nginx-tls-1 keeps host
+# 80/443); production gets keepalived + VRRP floating public VIP
+# between the two nodes.
+#
+# Usage:
+#   docker compose -f docker-compose.yml \
+#                  -f compose/ha-data.yml \
+#                  -f compose/ha-app.yml \
+#                  -f compose/ha-telephony.yml \
+#                  -f compose/ha-edge.yml up -d
+
+services:
+    nginx-tls-2:
+        build:
+            context: ./docker/nginx
+            dockerfile: Dockerfile
+        volumes:
+            # Shared cert volume so both nodes serve the same
+            # ACME-managed certificate. When acme.sh renews, it
+            # writes to this volume and the deploy hook signals
+            # both nginx containers to reload.
+            - 'tls-certs:/etc/nginx/certs'
+        networks:
+            - sail
+        restart: unless-stopped
+        depends_on:
+            orbital.test:
+                condition: service_started

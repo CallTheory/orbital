@@ -1,0 +1,53 @@
+# Valkey Sentinel config (rendered by entrypoint via envsubst).
+#
+# Sentinel rewrites this file at runtime — after failover it
+# appends the current known primary, replica list, and other
+# sentinels. The file therefore lives on a persistent volume per
+# sentinel so recoveries don't rediscover from scratch.
+
+bind 0.0.0.0 -::*
+protected-mode no
+port 26379
+dir /var/lib/sentinel
+
+sentinel announce-ip ${SENTINEL_NODE_NAME}
+sentinel announce-port 26379
+
+# `orbital` is the master group name used by clients when talking
+# to sentinel (predis/phpredis `sentinels` + `service` config in
+# Laravel's database.php). quorum = 2: at least 2 of 3 sentinels
+# must agree before a failover starts.
+sentinel monitor orbital ${VALKEY_INITIAL_PRIMARY} 6379 2
+
+# Primary is considered down after 5s of no response (ping / pub).
+# Short enough for fast failover, long enough that a brief GC pause
+# doesn't trigger a flap.
+sentinel down-after-milliseconds orbital 5000
+
+# One replica at a time reconnects to the new primary during
+# failover so we don't swamp it with three RESYNCs.
+sentinel parallel-syncs orbital 1
+
+# Total time allowed for a single failover attempt (including
+# replica reconfiguration). If exceeded, Sentinel retries.
+sentinel failover-timeout orbital 10000
+
+# Auth credentials for Sentinel to talk to the data plane.
+sentinel auth-pass orbital ${REDIS_PASSWORD}
+
+# Sentinel control channel is deliberately unauthenticated so
+# non-Laravel clients (SeaweedFS filer's go-redis sentinel driver,
+# which didn't pick up the `sentinelPassword` toml field) can
+# discover the primary. Access is gated by the docker network
+# boundary — only services on the `sail` network can reach the
+# sentinel ports. Data-plane auth against the valkey node itself
+# still enforces REDIS_PASSWORD, so reads/writes remain protected.
+
+# Resolve master/replica host names via DNS each check — on docker
+# bridge networks the IPs shift on recreate; we care about the
+# stable container hostname.
+sentinel resolve-hostnames yes
+sentinel announce-hostnames yes
+
+loglevel notice
+logfile ""

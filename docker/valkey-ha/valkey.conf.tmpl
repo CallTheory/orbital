@@ -1,0 +1,55 @@
+# Valkey data node config (rendered by entrypoint via envsubst).
+#
+# Every node starts with this same file; whether it's primary or
+# replica is decided by the REPLICA_OF_DIRECTIVE substitution at
+# boot (see entrypoint.sh). Post-failover the directive is ignored
+# — Sentinel sends REPLICAOF commands via the live connection and
+# rewrites the runtime state on each node.
+
+bind 0.0.0.0 -::*
+protected-mode no
+port 6379
+
+# Auth
+requirepass ${REDIS_PASSWORD}
+# masterauth is used when this node is a replica — it's the password
+# this node uses to authenticate to its primary. Identical to
+# requirepass in our setup so one value rotates all three nodes.
+masterauth ${REDIS_PASSWORD}
+
+# --- Persistence ---
+# AOF for durability across restarts, RDB for periodic snapshots.
+# Data volume (/var/lib/valkey) is bind-mounted so state survives
+# container recreates and so Sentinel-promoted replicas can start
+# serving reads immediately after restart.
+dir /var/lib/valkey
+appendonly yes
+appendfilename "appendonly.aof"
+appendfsync everysec
+save 900 1
+save 300 10
+save 60 10000
+
+# --- Replication ---
+replica-read-only yes
+# Initial role: substituted by entrypoint. When this node is the
+# designated initial primary the directive is commented out; when
+# it's a replica the directive points at the initial primary.
+# Sentinel takes over role management after bootstrap.
+${REPLICA_OF_DIRECTIVE}
+
+# Replica announces itself to the primary / Sentinels by its
+# container-name hostname. Without this, Sentinel falls back to
+# whatever source IP the replica connects from, which in docker
+# bridge networks can be stale after a container recreate.
+replica-announce-ip ${VALKEY_NODE_NAME}
+replica-announce-port 6379
+
+# --- Performance knobs (modest defaults fine for our scale) ---
+maxmemory-policy noeviction
+tcp-keepalive 60
+timeout 0
+
+# --- Logging ---
+loglevel notice
+logfile ""

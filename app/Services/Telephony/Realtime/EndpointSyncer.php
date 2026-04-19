@@ -103,6 +103,15 @@ class EndpointSyncer
             'max_contacts' => $isWebrtc ? 5 : 1,
             'qualify_frequency' => 30,
             'remove_existing' => $isWebrtc ? 'no' : 'yes',
+            // support_path lets the Asterisk that receives a REGISTER
+            // store a Path header pointing at itself, so a sibling
+            // Asterisk looking up this contact in the shared ARA
+            // table knows to route any inbound INVITE back through
+            // the registering node's WSS session. Without this,
+            // only the node that handled the REGISTER can ring the
+            // endpoint — which breaks the drain model for idle
+            // operators on the drained node.
+            'support_path' => 'yes',
         ];
 
         DB::transaction(function () use ($endpointId, $endpointRow, $authRow, $aorRow) {

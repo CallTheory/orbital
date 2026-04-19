@@ -138,6 +138,11 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
         ->middleware('tool:tooling.prometheus')
         ->name('admin.prometheus.forward');
 
+    Route::any('haproxy-stats/{path?}', [\App\Http\Controllers\Admin\Sso\HAProxyStatsProxyController::class, 'forward'])
+        ->where('path', '.*')
+        ->middleware('tool:tooling.haproxy_stats')
+        ->name('admin.haproxy-stats.forward');
+
     Route::any('mailpit/{path?}', [MailpitProxyController::class, 'forward'])
         ->where('path', '.*')
         ->middleware('tool:tooling.mailpit')

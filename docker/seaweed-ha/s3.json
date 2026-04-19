@@ -1,0 +1,20 @@
+{
+  "identities": [
+    {
+      "name": "orbital",
+      "credentials": [
+        {
+          "accessKey": "orbital",
+          "secretKey": "${AWS_SECRET_ACCESS_KEY}"
+        }
+      ],
+      "actions": [
+        "Admin",
+        "Read",
+        "Write",
+        "List",
+        "Tagging"
+      ]
+    }
+  ]
+}

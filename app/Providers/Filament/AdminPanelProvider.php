@@ -65,6 +65,17 @@ class AdminPanelProvider extends PanelProvider
             // ui-avatars.com. Same shape across all three panels so
             // the fallback avatar is consistent everywhere.
             ->defaultAvatarProvider(LocalAvatarProvider::class)
+            // Filament database notifications + polling — the
+            // canonical way to get a persistent toast when
+            // something (like AsteriskDrainService) sends a
+            // notification to the current user. The bell icon
+            // in the topbar shows unread count; toasts pop
+            // automatically on new arrivals within the poll
+            // interval. 5s is tight enough that operators feel
+            // the drain heads-up as near-real-time without
+            // hammering the DB.
+            ->databaseNotifications()
+            ->databaseNotificationsPolling('5s')
             ->navigationGroups([
                 'Monitor',
                 'Platform',
@@ -180,6 +191,17 @@ class AdminPanelProvider extends PanelProvider
                     ->group('Control Panels')
                     ->sort(11)
                     ->visible(fn () => self::userCanAccessTool('tooling.prometheus')),
+                NavigationItem::make('HAProxy Stats')
+                    // Native HAProxy stats page — per-frontend and
+                    // per-server UP/DOWN, request rates, queue
+                    // depth. The Failover page surfaces a curated
+                    // view for the common actions; this is the
+                    // raw panel for deep debugging.
+                    ->url(fn () => route('admin.haproxy-stats.forward', ['path' => 'stats']), shouldOpenInNewTab: true)
+                    ->icon('heroicon-o-arrows-right-left')
+                    ->group('Control Panels')
+                    ->sort(11)
+                    ->visible(fn () => self::userCanAccessTool('tooling.haproxy_stats')),
                 NavigationItem::make('SeaweedFS Filer')
                     ->url(fn () => route('admin.seaweedfs.filer'), shouldOpenInNewTab: true)
                     ->icon('heroicon-o-archive-box')

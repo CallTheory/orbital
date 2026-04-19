@@ -390,10 +390,10 @@ services:
         networks:
             - telephony
         depends_on:
-            - asterisk
+            - asterisk-1
         restart: unless-stopped
 
-    asterisk:
+    asterisk-1:
         build:
             context: ./docker/asterisk
             dockerfile: Dockerfile
@@ -410,11 +410,15 @@ services:
             # ARA / ODBC connection — the entrypoint envsubst's these
             # into /etc/odbc.ini at boot. Same names as Laravel's .env
             # so the two containers see the same Postgres.
-            DB_HOST: pgsql
-            DB_PORT: '5432'
+            DB_HOST: '${DB_HOST:-pgsql}'
+            DB_PORT: '${DB_PORT:-5432}'
             DB_DATABASE: '${DB_DATABASE:-orbital}'
             DB_USERNAME: '${DB_USERNAME:-orbital}'
             DB_PASSWORD: '${DB_PASSWORD:-password}'
+            # Stamps ps_contacts.reg_server per-registration so the
+            # SIP Proxy page can show how many dynamic registrations
+            # THIS Asterisk actually holds vs its sibling.
+            ASTERISK_NODE_NAME: 'asterisk-1'
         volumes:
             - './docker/asterisk/config:/etc/asterisk/generated:ro'
             - 'asterisk-spool:/var/spool/asterisk'
@@ -422,6 +426,11 @@ services:
             # Disclosure-message TTS prompt files, written by the
             # Laravel app container (DisclosureRenderer) and played
             # back via dialplan Playback(...) at call time.
+            #
+            # HA note: in multi-node deployments this named volume is
+            # replaced by a SeaweedFS FUSE mount so every Laravel and
+            # Asterisk node sees the same files. The in-container path
+            # stays identical — only the backing store changes.
             - 'asterisk-prompts:/var/spool/asterisk/prompts'
             # Shared TLS cert volume — Asterisk's entrypoint
             # symlinks /etc/tls/fullchain.pem → /etc/asterisk/keys/
@@ -557,9 +566,18 @@ services:
         # first boot. Without this, the non-root loki user can't write to
         # /loki-data and the container crash-loops.
         user: '0'
-        command: '-config.file=/etc/loki/local-config.yaml'
+        # -config.expand-env lets the config reference ${AWS_SECRET_ACCESS_KEY}
+        # and pick up the S3 credentials at boot. Chunks/index live in the
+        # SeaweedFS S3 bucket `loki-chunks`; both Loki nodes share the bucket.
+        command: '-config.file=/etc/loki/local-config.yaml -config.expand-env=true'
         ports:
             - '3100:3100'
+        environment:
+            # Both vars in env so the AWS SDK default credential
+            # chain resolves consistently; the config file also
+            # references secret_access_key via -config.expand-env.
+            AWS_ACCESS_KEY_ID: 'orbital'
+            AWS_SECRET_ACCESS_KEY: '${AWS_SECRET_ACCESS_KEY}'
         volumes:
             - './docker/loki/loki-config.yaml:/etc/loki/local-config.yaml:ro'
             - 'sail-loki:/loki-data'
@@ -740,6 +758,16 @@ services:
             # through our Laravel proxy.
             GF_SERVER_ROOT_URL: '%(protocol)s://%(domain)s/admin/grafana/'
             GF_SERVER_SERVE_FROM_SUB_PATH: 'true'
+            # Persistent state (dashboards, users, datasources,
+            # alerts) lives in the clustered Postgres via HAProxy,
+            # so Grafana becomes stateless — any node can serve any
+            # request and kill-and-replace doesn't lose anything.
+            GF_DATABASE_TYPE: 'postgres'
+            GF_DATABASE_HOST: '${DB_HOST:-pgsql}:${DB_PORT:-5432}'
+            GF_DATABASE_NAME: 'grafana'
+            GF_DATABASE_USER: '${DB_USERNAME:-orbital}'
+            GF_DATABASE_PASSWORD: '${DB_PASSWORD:-password}'
+            GF_DATABASE_SSL_MODE: 'disable'
         volumes:
             - './docker/grafana/provisioning:/etc/grafana/provisioning:ro'
             - 'sail-grafana:/var/lib/grafana'

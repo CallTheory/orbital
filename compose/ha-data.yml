@@ -1,0 +1,585 @@
+# Orbital HA data tier — Postgres portion (Phase B).
+#
+# Stands up a 3-node Patroni cluster with 3-node etcd and a
+# dedicated pgBackRest repository host. Runs ALONGSIDE the main
+# docker-compose.yml on the same `sail` network but does not
+# replace the single-node `pgsql` service — the app keeps using
+# whatever DB_HOST points at in .env. This file exists so we can
+# exercise the Patroni topology end-to-end (failover, replication,
+# backups) in dev before Phase C wires HAProxy and cuts the app
+# over.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f compose/ha-data.yml up -d \
+#       etcd-1 etcd-2 etcd-3 pgbackrest-repo \
+#       patroni-1 patroni-2 patroni-3
+#
+#   # Inspect cluster state
+#   docker compose -f docker-compose.yml -f compose/ha-data.yml \
+#       exec patroni-1 patronictl -c /etc/patroni/patroni.yml list
+#
+#   # Create the pgbackrest stanza once the cluster is running
+#   docker compose -f docker-compose.yml -f compose/ha-data.yml \
+#       exec patroni-1 gosu postgres pgbackrest \
+#       --stanza=orbital --log-level-console=info stanza-create
+#
+#   # Take a full backup
+#   docker compose -f docker-compose.yml -f compose/ha-data.yml \
+#       exec patroni-1 gosu postgres pgbackrest \
+#       --stanza=orbital --type=full --log-level-console=info backup
+#
+#   # Failover drill: kill the leader, watch a replica get promoted
+#   docker compose -f docker-compose.yml -f compose/ha-data.yml \
+#       kill patroni-1
+#   # Then re-run patronictl list — patroni-2 should now be Leader.
+#
+#   # Valkey / Sentinel:
+#   docker compose -f docker-compose.yml -f compose/ha-data.yml up -d \
+#       valkey-1 valkey-2 valkey-3 sentinel-1 sentinel-2 sentinel-3
+#
+#   # Inspect Sentinel's view of the replica set:
+#   docker compose -f docker-compose.yml -f compose/ha-data.yml \
+#       exec sentinel-1 valkey-cli -p 26379 \
+#       -a "$SENTINEL_PASSWORD" sentinel master orbital
+#
+#   # Valkey failover drill: kill the current primary, watch
+#   # Sentinel promote a replica. NOTE: use `docker pause` in dev —
+#   # `docker kill` removes the container from Docker's embedded
+#   # DNS which trips Sentinel's TILT safety mode. `pause` keeps
+#   # DNS alive so Sentinel only sees the ping timeouts.
+#   docker pause orbital-valkey-1-1
+#
+#   # SeaweedFS distributed:
+#   docker compose -f docker-compose.yml -f compose/ha-data.yml up -d \
+#       seaweed-master-1 seaweed-master-2 seaweed-master-3 \
+#       seaweed-volume-1 seaweed-volume-2 \
+#       seaweed-filer-1 seaweed-filer-2
+#
+#   # Cluster status from a master:
+#   docker compose -f docker-compose.yml -f compose/ha-data.yml \
+#       exec seaweed-master-1 wget -qO- http://seaweed-master-1:9333/cluster/status
+#
+#   # S3 write via filer-1, read via filer-2:
+#   curl -X PUT -d "hello" http://<filer-1>:8333/orbital/smoke.txt
+#   curl http://<filer-2>:8333/orbital/smoke.txt
+#
+#   # HAProxy internal LB:
+#   docker compose -f docker-compose.yml -f compose/ha-data.yml up -d \
+#       haproxy-1 haproxy-2
+#
+#   # Stats UI:
+#   #   http://haproxy-1:8404/stats  (from inside sail network)
+#   #
+#   # App connection endpoints (apps point at these instead of
+#   # the single-node pgsql/valkey/seaweedfs hostnames):
+#   #   postgres write  → haproxy:5432
+#   #   postgres read   → haproxy:5433
+#   #   valkey primary  → haproxy:6379
+#   #   seaweed S3      → haproxy:8333
+
+services:
+    # ------------------------------------------------------------
+    # etcd — 3-node DCS for Patroni leader election.
+    # Raft quorum needs 3 nodes to survive one loss.
+    # ------------------------------------------------------------
+    etcd-1: &etcd-base
+        image: quay.io/coreos/etcd:v3.5.13
+        command:
+            - etcd
+            - --name=etcd-1
+            - --data-dir=/var/lib/etcd
+            - --listen-client-urls=http://0.0.0.0:2379
+            - --advertise-client-urls=http://etcd-1:2379
+            - --listen-peer-urls=http://0.0.0.0:2380
+            - --initial-advertise-peer-urls=http://etcd-1:2380
+            - --initial-cluster=etcd-1=http://etcd-1:2380,etcd-2=http://etcd-2:2380,etcd-3=http://etcd-3:2380
+            - --initial-cluster-token=orbital-etcd
+            - --initial-cluster-state=new
+        volumes:
+            - ha-etcd-1:/var/lib/etcd
+        networks:
+            - sail
+        restart: unless-stopped
+        healthcheck:
+            test: ["CMD", "etcdctl", "--endpoints=http://127.0.0.1:2379", "endpoint", "health"]
+            interval: 10s
+            timeout: 3s
+            retries: 5
+
+    etcd-2:
+        <<: *etcd-base
+        command:
+            - etcd
+            - --name=etcd-2
+            - --data-dir=/var/lib/etcd
+            - --listen-client-urls=http://0.0.0.0:2379
+            - --advertise-client-urls=http://etcd-2:2379
+            - --listen-peer-urls=http://0.0.0.0:2380
+            - --initial-advertise-peer-urls=http://etcd-2:2380
+            - --initial-cluster=etcd-1=http://etcd-1:2380,etcd-2=http://etcd-2:2380,etcd-3=http://etcd-3:2380
+            - --initial-cluster-token=orbital-etcd
+            - --initial-cluster-state=new
+        volumes:
+            - ha-etcd-2:/var/lib/etcd
+
+    etcd-3:
+        <<: *etcd-base
+        command:
+            - etcd
+            - --name=etcd-3
+            - --data-dir=/var/lib/etcd
+            - --listen-client-urls=http://0.0.0.0:2379
+            - --advertise-client-urls=http://etcd-3:2379
+            - --listen-peer-urls=http://0.0.0.0:2380
+            - --initial-advertise-peer-urls=http://etcd-3:2380
+            - --initial-cluster=etcd-1=http://etcd-1:2380,etcd-2=http://etcd-2:2380,etcd-3=http://etcd-3:2380
+            - --initial-cluster-token=orbital-etcd
+            - --initial-cluster-state=new
+        volumes:
+            - ha-etcd-3:/var/lib/etcd
+
+    # ------------------------------------------------------------
+    # pgBackRest repository — isolated backup host. Receives WAL
+    # and full/incremental backups from every Patroni node over
+    # SSH. Generates the shared SSH key pair on first boot into
+    # the `ha-pgbackrest-ssh` volume, which Patroni nodes mount
+    # read-only.
+    # ------------------------------------------------------------
+    pgbackrest-repo:
+        build:
+            context: ./docker/pgbackrest
+        environment:
+            BACKUP_STANZA: orbital
+            PATRONI_NODE_1: patroni-1
+            PATRONI_NODE_2: patroni-2
+            PATRONI_NODE_3: patroni-3
+            PGDATA: /var/lib/postgresql/data/pgdata
+        volumes:
+            - ha-pgbackrest-repo:/var/lib/pgbackrest
+            - ha-pgbackrest-ssh:/var/lib/pgbackrest-ssh
+            - ha-pgbackrest-sshd-keys:/etc/ssh/keys
+        networks:
+            - sail
+        restart: unless-stopped
+        healthcheck:
+            test: ["CMD", "pgrep", "sshd"]
+            interval: 10s
+            timeout: 3s
+            retries: 5
+
+    # ------------------------------------------------------------
+    # Patroni — 3 Postgres nodes. Anchors:
+    #   patroni-1 = initial leader (no tags)
+    #   patroni-2 = sync replica candidate (no tags)
+    #   patroni-3 = async replica for reporting (nofailover + nosync)
+    #
+    # On first boot, whichever node starts first wins the leader
+    # election; the tags above only bias behavior AFTER the cluster
+    # is stable. Promotion to leader is blocked for patroni-3 by
+    # PATRONI_TAGS_NOFAILOVER so reporting queries never accidentally
+    # land on a node that might flip into write mode.
+    # ------------------------------------------------------------
+    patroni-1: &patroni-base
+        build:
+            context: ./docker/patroni
+        depends_on:
+            etcd-1: { condition: service_healthy }
+            etcd-2: { condition: service_healthy }
+            etcd-3: { condition: service_healthy }
+            pgbackrest-repo: { condition: service_healthy }
+        environment:
+            PATRONI_NAME: patroni-1
+            PATRONI_SCOPE: orbital
+            PATRONI_ETCD3_HOSTS: etcd-1:2379,etcd-2:2379,etcd-3:2379
+            PATRONI_REST_USER: patroni
+            PATRONI_REST_PASSWORD: ${PATRONI_REST_PASSWORD:-patroni-rest-dev}
+            PATRONI_REPLICATION_PASSWORD: ${PATRONI_REPLICATION_PASSWORD:-replicator-dev}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres-dev}
+            DB_USERNAME: ${DB_USERNAME:-orbital}
+            DB_PASSWORD: ${DB_PASSWORD:-password}
+            DB_DATABASE: ${DB_DATABASE:-orbital}
+            PATRONI_TAGS_NOFAILOVER: "false"
+            PATRONI_TAGS_NOSYNC: "false"
+            BACKUP_STANZA: orbital
+            BACKUP_REPO_HOST: pgbackrest-repo
+            BACKUP_REPO_USER: pgbackrest
+        volumes:
+            - ha-patroni-1:/var/lib/postgresql/data
+            - ha-pgbackrest-ssh:/var/lib/pgbackrest-ssh:ro
+        networks:
+            - sail
+        restart: unless-stopped
+        healthcheck:
+            test: ["CMD-SHELL", "curl -fs http://127.0.0.1:8008/health || exit 1"]
+            interval: 10s
+            timeout: 3s
+            retries: 10
+            start_period: 60s
+
+    patroni-2:
+        <<: *patroni-base
+        environment:
+            PATRONI_NAME: patroni-2
+            PATRONI_SCOPE: orbital
+            PATRONI_ETCD3_HOSTS: etcd-1:2379,etcd-2:2379,etcd-3:2379
+            PATRONI_REST_USER: patroni
+            PATRONI_REST_PASSWORD: ${PATRONI_REST_PASSWORD:-patroni-rest-dev}
+            PATRONI_REPLICATION_PASSWORD: ${PATRONI_REPLICATION_PASSWORD:-replicator-dev}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres-dev}
+            DB_USERNAME: ${DB_USERNAME:-orbital}
+            DB_PASSWORD: ${DB_PASSWORD:-password}
+            DB_DATABASE: ${DB_DATABASE:-orbital}
+            PATRONI_TAGS_NOFAILOVER: "false"
+            PATRONI_TAGS_NOSYNC: "false"
+            BACKUP_STANZA: orbital
+            BACKUP_REPO_HOST: pgbackrest-repo
+            BACKUP_REPO_USER: pgbackrest
+        volumes:
+            - ha-patroni-2:/var/lib/postgresql/data
+            - ha-pgbackrest-ssh:/var/lib/pgbackrest-ssh:ro
+
+    patroni-3:
+        <<: *patroni-base
+        environment:
+            PATRONI_NAME: patroni-3
+            PATRONI_SCOPE: orbital
+            PATRONI_ETCD3_HOSTS: etcd-1:2379,etcd-2:2379,etcd-3:2379
+            PATRONI_REST_USER: patroni
+            PATRONI_REST_PASSWORD: ${PATRONI_REST_PASSWORD:-patroni-rest-dev}
+            PATRONI_REPLICATION_PASSWORD: ${PATRONI_REPLICATION_PASSWORD:-replicator-dev}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres-dev}
+            DB_USERNAME: ${DB_USERNAME:-orbital}
+            DB_PASSWORD: ${DB_PASSWORD:-password}
+            DB_DATABASE: ${DB_DATABASE:-orbital}
+            # Async reporting replica: never becomes leader, never
+            # joins sync replication. Reporting queries hit this
+            # node directly so analytical load stays off the hot
+            # pair.
+            PATRONI_TAGS_NOFAILOVER: "true"
+            PATRONI_TAGS_NOSYNC: "true"
+            BACKUP_STANZA: orbital
+            BACKUP_REPO_HOST: pgbackrest-repo
+            BACKUP_REPO_USER: pgbackrest
+        volumes:
+            - ha-patroni-3:/var/lib/postgresql/data
+            - ha-pgbackrest-ssh:/var/lib/pgbackrest-ssh:ro
+
+    # ------------------------------------------------------------
+    # Valkey — 3-node replication set with Sentinel for HA.
+    #   valkey-1 = initial primary (no tags, no replicaof)
+    #   valkey-2, valkey-3 = replicas of valkey-1 at first boot
+    # Sentinel takes over after bootstrap: it monitors the primary,
+    # promotes a replica on failure, and reconfigures the other
+    # replicas to follow the new primary.
+    # ------------------------------------------------------------
+    valkey-1: &valkey-base
+        build:
+            context: ./docker/valkey-ha
+        environment:
+            SERVICE: valkey
+            VALKEY_NODE_NAME: valkey-1
+            VALKEY_INITIAL_PRIMARY: valkey-1
+            REDIS_PASSWORD: ${REDIS_PASSWORD}
+        volumes:
+            - ha-valkey-1:/var/lib/valkey
+        networks:
+            - sail
+        restart: unless-stopped
+        healthcheck:
+            test: ["CMD-SHELL", "valkey-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+            interval: 10s
+            timeout: 3s
+            retries: 10
+            start_period: 30s
+
+    valkey-2:
+        <<: *valkey-base
+        environment:
+            SERVICE: valkey
+            VALKEY_NODE_NAME: valkey-2
+            VALKEY_INITIAL_PRIMARY: valkey-1
+            REDIS_PASSWORD: ${REDIS_PASSWORD}
+        volumes:
+            - ha-valkey-2:/var/lib/valkey
+
+    valkey-3:
+        <<: *valkey-base
+        environment:
+            SERVICE: valkey
+            VALKEY_NODE_NAME: valkey-3
+            VALKEY_INITIAL_PRIMARY: valkey-1
+            REDIS_PASSWORD: ${REDIS_PASSWORD}
+        volumes:
+            - ha-valkey-3:/var/lib/valkey
+
+    # ------------------------------------------------------------
+    # Sentinel — 3 instances for quorum (2-of-3 to promote).
+    # Co-located on the sail network; each runs in its own
+    # container alongside the corresponding valkey node.
+    # ------------------------------------------------------------
+    sentinel-1: &sentinel-base
+        build:
+            context: ./docker/valkey-ha
+        depends_on:
+            valkey-1: { condition: service_healthy }
+            valkey-2: { condition: service_healthy }
+            valkey-3: { condition: service_healthy }
+        environment:
+            SERVICE: sentinel
+            SENTINEL_NODE_NAME: sentinel-1
+            VALKEY_INITIAL_PRIMARY: valkey-1
+            REDIS_PASSWORD: ${REDIS_PASSWORD}
+            SENTINEL_PASSWORD: ${SENTINEL_PASSWORD:-sentinel-dev}
+        volumes:
+            - ha-sentinel-1:/var/lib/sentinel
+        networks:
+            - sail
+        restart: unless-stopped
+        healthcheck:
+            test: ["CMD-SHELL", "valkey-cli -p 26379 ping | grep -q PONG"]
+            interval: 10s
+            timeout: 3s
+            retries: 10
+            start_period: 30s
+
+    sentinel-2:
+        <<: *sentinel-base
+        environment:
+            SERVICE: sentinel
+            SENTINEL_NODE_NAME: sentinel-2
+            VALKEY_INITIAL_PRIMARY: valkey-1
+            REDIS_PASSWORD: ${REDIS_PASSWORD}
+            SENTINEL_PASSWORD: ${SENTINEL_PASSWORD:-sentinel-dev}
+        volumes:
+            - ha-sentinel-2:/var/lib/sentinel
+
+    sentinel-3:
+        <<: *sentinel-base
+        environment:
+            SERVICE: sentinel
+            SENTINEL_NODE_NAME: sentinel-3
+            VALKEY_INITIAL_PRIMARY: valkey-1
+            REDIS_PASSWORD: ${REDIS_PASSWORD}
+            SENTINEL_PASSWORD: ${SENTINEL_PASSWORD:-sentinel-dev}
+        volumes:
+            - ha-sentinel-3:/var/lib/sentinel
+
+    # ------------------------------------------------------------
+    # SeaweedFS — distributed object store. Three roles:
+    #
+    #   master (x3)  — Raft quorum for volume assignment, metadata
+    #                  about which volume lives on which volume
+    #                  server. Lightweight.
+    #   volume (x2)  — actual blob storage. `replication=001` means
+    #                  one extra copy (total 2), one-per-node, so
+    #                  the cluster survives losing any single
+    #                  volume server.
+    #   filer  (x2)  — metadata tree (paths → volume/blob IDs) and
+    #                  the S3 API gateway. Both filers share
+    #                  metadata via a Valkey Sentinel backend, so
+    #                  any S3 client can hit either node.
+    # ------------------------------------------------------------
+    seaweed-master-1: &seaweed-master-base
+        build:
+            context: ./docker/seaweed-ha
+        command:
+            - master
+            - -mdir=/data
+            - -ip=seaweed-master-1
+            - -peers=seaweed-master-1:9333,seaweed-master-2:9333,seaweed-master-3:9333
+            - -defaultReplication=001
+        volumes:
+            - ha-seaweed-master-1:/data
+        networks:
+            - sail
+        restart: unless-stopped
+        healthcheck:
+            test: ["CMD", "curl", "-fs", "http://127.0.0.1:9333/cluster/status"]
+            interval: 10s
+            timeout: 3s
+            retries: 10
+            start_period: 30s
+
+    seaweed-master-2:
+        <<: *seaweed-master-base
+        command:
+            - master
+            - -mdir=/data
+            - -ip=seaweed-master-2
+            - -peers=seaweed-master-1:9333,seaweed-master-2:9333,seaweed-master-3:9333
+            - -defaultReplication=001
+        volumes:
+            - ha-seaweed-master-2:/data
+
+    seaweed-master-3:
+        <<: *seaweed-master-base
+        command:
+            - master
+            - -mdir=/data
+            - -ip=seaweed-master-3
+            - -peers=seaweed-master-1:9333,seaweed-master-2:9333,seaweed-master-3:9333
+            - -defaultReplication=001
+        volumes:
+            - ha-seaweed-master-3:/data
+
+    seaweed-volume-1: &seaweed-volume-base
+        build:
+            context: ./docker/seaweed-ha
+        command:
+            - volume
+            - -dir=/data
+            - -ip=seaweed-volume-1
+            - -ip.bind=0.0.0.0
+            - -publicUrl=seaweed-volume-1:8080
+            - -mserver=seaweed-master-1:9333,seaweed-master-2:9333,seaweed-master-3:9333
+            - -max=50
+        depends_on:
+            seaweed-master-1: { condition: service_healthy }
+            seaweed-master-2: { condition: service_healthy }
+            seaweed-master-3: { condition: service_healthy }
+        volumes:
+            - ha-seaweed-volume-1:/data
+        networks:
+            - sail
+        restart: unless-stopped
+        healthcheck:
+            test: ["CMD", "curl", "-fs", "http://127.0.0.1:8080/status"]
+            interval: 10s
+            timeout: 3s
+            retries: 10
+            start_period: 30s
+
+    seaweed-volume-2:
+        <<: *seaweed-volume-base
+        command:
+            - volume
+            - -dir=/data
+            - -ip=seaweed-volume-2
+            - -ip.bind=0.0.0.0
+            - -publicUrl=seaweed-volume-2:8080
+            - -mserver=seaweed-master-1:9333,seaweed-master-2:9333,seaweed-master-3:9333
+            - -max=50
+        volumes:
+            - ha-seaweed-volume-2:/data
+
+    seaweed-filer-1: &seaweed-filer-base
+        build:
+            context: ./docker/seaweed-ha
+        command:
+            - filer
+            - -ip=seaweed-filer-1
+            - -ip.bind=0.0.0.0
+            - -master=seaweed-master-1:9333,seaweed-master-2:9333,seaweed-master-3:9333
+            - -s3
+            - -s3.config=/etc/seaweedfs/s3.json
+            - -defaultReplicaPlacement=001
+        environment:
+            REDIS_PASSWORD: ${REDIS_PASSWORD}
+            SENTINEL_PASSWORD: ${SENTINEL_PASSWORD:-sentinel-dev}
+            AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+        depends_on:
+            seaweed-master-1: { condition: service_healthy }
+            seaweed-master-2: { condition: service_healthy }
+            seaweed-master-3: { condition: service_healthy }
+            seaweed-volume-1: { condition: service_healthy }
+            seaweed-volume-2: { condition: service_healthy }
+            valkey-1: { condition: service_healthy }
+            sentinel-1: { condition: service_healthy }
+        networks:
+            - sail
+        restart: unless-stopped
+        healthcheck:
+            test: ["CMD", "curl", "-fs", "http://127.0.0.1:8888/healthz"]
+            interval: 10s
+            timeout: 3s
+            retries: 10
+            start_period: 30s
+
+    seaweed-filer-2:
+        <<: *seaweed-filer-base
+        command:
+            - filer
+            - -ip=seaweed-filer-2
+            - -ip.bind=0.0.0.0
+            - -master=seaweed-master-1:9333,seaweed-master-2:9333,seaweed-master-3:9333
+            - -s3
+            - -s3.config=/etc/seaweedfs/s3.json
+            - -defaultReplicaPlacement=001
+
+    # ------------------------------------------------------------
+    # HAProxy — internal L4/L7 frontend for the HA data tier.
+    #
+    # Two instances for redundancy. Apps address them via the
+    # `haproxy` network alias (docker embedded DNS returns both
+    # IPs; client libraries that retry on connection failure land
+    # on the surviving instance). Keepalived VIPs are deferred to
+    # production-host deployments — docker bridge networks don't
+    # carry multicast cleanly.
+    # ------------------------------------------------------------
+    haproxy-1: &haproxy-base
+        build:
+            context: ./docker/haproxy
+        environment:
+            REDIS_PASSWORD: ${REDIS_PASSWORD}
+        depends_on:
+            patroni-1: { condition: service_healthy }
+            valkey-1: { condition: service_healthy }
+            seaweed-filer-1: { condition: service_healthy }
+        networks:
+            sail:
+                aliases:
+                    - haproxy
+        restart: unless-stopped
+        healthcheck:
+            # Stats frontend responds 200 on / when haproxy is live.
+            # -o /dev/null suppresses body output; -f fails on non-2xx.
+            test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:8404/stats"]
+            interval: 10s
+            timeout: 3s
+            retries: 5
+            start_period: 15s
+
+    haproxy-2:
+        <<: *haproxy-base
+
+volumes:
+    ha-etcd-1:
+        driver: local
+    ha-etcd-2:
+        driver: local
+    ha-etcd-3:
+        driver: local
+    ha-patroni-1:
+        driver: local
+    ha-patroni-2:
+        driver: local
+    ha-patroni-3:
+        driver: local
+    ha-pgbackrest-repo:
+        driver: local
+    ha-pgbackrest-ssh:
+        driver: local
+    ha-pgbackrest-sshd-keys:
+        driver: local
+    ha-valkey-1:
+        driver: local
+    ha-valkey-2:
+        driver: local
+    ha-valkey-3:
+        driver: local
+    ha-sentinel-1:
+        driver: local
+    ha-sentinel-2:
+        driver: local
+    ha-sentinel-3:
+        driver: local
+    ha-seaweed-master-1:
+        driver: local
+    ha-seaweed-master-2:
+        driver: local
+    ha-seaweed-master-3:
+        driver: local
+    ha-seaweed-volume-1:
+        driver: local
+    ha-seaweed-volume-2:
+        driver: local

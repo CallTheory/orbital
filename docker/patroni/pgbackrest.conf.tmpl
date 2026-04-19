@@ -1,0 +1,16 @@
+# pgBackRest CLIENT config (rendered by entrypoint via envsubst).
+#
+# Each Patroni node pushes WAL segments and backups to the dedicated
+# pgbackrest-repo host over SSH. The repo host's own config owns
+# retention, compression, and log-level settings; we only put
+# client-specific options here to avoid pgBackRest 2.58's
+# duplicate-option errors.
+
+[global]
+repo1-host=${BACKUP_REPO_HOST}
+repo1-host-user=${BACKUP_REPO_USER}
+
+[${BACKUP_STANZA}]
+pg1-path=${PGDATA}
+pg1-port=5432
+pg1-user=postgres

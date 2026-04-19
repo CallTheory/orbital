@@ -1,0 +1,96 @@
+# Orbital HA observability tier — Phase H.
+#
+# Second instances of Grafana, Prometheus, and Loki so the
+# reporting/dashboard surface stays available alongside the rest
+# of the stack. The plan upgraded Grafana from "single-instance,
+# fine if down briefly" to "customer-facing reporting surface —
+# always up" — this compose file implements that.
+#
+# Shared state:
+#   - Grafana:   Postgres `grafana` database on the Patroni cluster
+#                (dashboards, users, datasources, alerts live here
+#                so the nodes themselves stay stateless).
+#   - Prometheus: per-node TSDB storage. Both scrape the same
+#                 targets independently. Minor query-time drift is
+#                 acceptable for dashboard use.
+#   - Loki:      shared SeaweedFS S3 bucket `loki-chunks`. Any node
+#                can answer any query against the shared chunks.
+#
+# Usage:
+#   docker compose -f docker-compose.yml \
+#                  -f compose/ha-data.yml \
+#                  -f compose/ha-app.yml \
+#                  -f compose/ha-telephony.yml \
+#                  -f compose/ha-edge.yml \
+#                  -f compose/ha-obs.yml up -d
+
+services:
+    grafana-2:
+        image: 'grafana/grafana:latest'
+        # No host port binding — HAProxy `grafana` frontend
+        # balances across both grafana nodes.
+        environment:
+            GF_SECURITY_ADMIN_USER: '${GRAFANA_ADMIN_USER:-admin}'
+            GF_SECURITY_ADMIN_PASSWORD: '${GRAFANA_ADMIN_PASSWORD:-admin}'
+            GF_USERS_ALLOW_SIGN_UP: 'false'
+            GF_ANALYTICS_REPORTING_ENABLED: 'false'
+            GF_AUTH_ANONYMOUS_ENABLED: 'false'
+            GF_AUTH_PROXY_ENABLED: 'true'
+            GF_AUTH_PROXY_HEADER_NAME: 'X-WEBAUTH-USER'
+            GF_AUTH_PROXY_HEADER_PROPERTY: 'username'
+            GF_AUTH_PROXY_AUTO_SIGN_UP: 'true'
+            GF_AUTH_PROXY_HEADERS: 'Email:X-WEBAUTH-EMAIL Name:X-WEBAUTH-NAME'
+            GF_AUTH_PROXY_WHITELIST: '172.16.0.0/12,127.0.0.1'
+            GF_USERS_AUTO_ASSIGN_ORG_ROLE: 'Viewer'
+            GF_SERVER_ROOT_URL: '%(protocol)s://%(domain)s/admin/grafana/'
+            GF_SERVER_SERVE_FROM_SUB_PATH: 'true'
+            # Same Postgres DB as grafana-1 → shared state.
+            GF_DATABASE_TYPE: 'postgres'
+            GF_DATABASE_HOST: '${DB_HOST:-haproxy}:${DB_PORT:-5432}'
+            GF_DATABASE_NAME: 'grafana'
+            GF_DATABASE_USER: '${DB_USERNAME:-orbital}'
+            GF_DATABASE_PASSWORD: '${DB_PASSWORD:-password}'
+            GF_DATABASE_SSL_MODE: 'disable'
+        volumes:
+            - './docker/grafana/provisioning:/etc/grafana/provisioning:ro'
+            - 'sail-grafana-2:/var/lib/grafana'
+        networks:
+            - sail
+        restart: unless-stopped
+
+    prometheus-2:
+        image: 'prom/prometheus:latest'
+        command:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            - --web.console.libraries=/etc/prometheus/console_libraries
+            - --web.console.templates=/etc/prometheus/consoles
+            - --web.enable-lifecycle
+        volumes:
+            - './docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro'
+            - 'sail-prometheus-2:/prometheus'
+        networks:
+            - sail
+        restart: unless-stopped
+
+    loki-2:
+        image: 'grafana/loki:latest'
+        user: '0'
+        command: '-config.file=/etc/loki/local-config.yaml -config.expand-env=true'
+        environment:
+            AWS_ACCESS_KEY_ID: 'orbital'
+            AWS_SECRET_ACCESS_KEY: '${AWS_SECRET_ACCESS_KEY}'
+        volumes:
+            - './docker/loki/loki-config.yaml:/etc/loki/local-config.yaml:ro'
+            - 'sail-loki-2:/loki-data'
+        networks:
+            - sail
+        restart: unless-stopped
+
+volumes:
+    sail-grafana-2:
+        driver: local
+    sail-prometheus-2:
+        driver: local
+    sail-loki-2:
+        driver: local

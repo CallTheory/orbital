@@ -1,0 +1,30 @@
+# pgBackRest REPOSITORY config (lives on the pgbackrest-repo host).
+#
+# IMPORTANT: pgBackRest 2.58 aggressively rejects any option that
+# appears both here AND in the remote-protocol options the client
+# passes when it SSH-spawns this process ("option X cannot be set
+# multiple times"). We therefore keep this file to the minimum:
+# just the repo path, the retention policy, and the per-stanza pg
+# node map. Everything else (log-level, compression) is set by the
+# client at invocation time.
+
+[global]
+repo1-path=/var/lib/pgbackrest
+repo1-retention-full=7
+repo1-retention-diff=14
+
+[${BACKUP_STANZA}]
+pg1-host=${PATRONI_NODE_1}
+pg1-host-user=postgres
+pg1-path=${PGDATA}
+pg1-port=5432
+
+pg2-host=${PATRONI_NODE_2}
+pg2-host-user=postgres
+pg2-path=${PGDATA}
+pg2-port=5432
+
+pg3-host=${PATRONI_NODE_3}
+pg3-host-user=postgres
+pg3-path=${PGDATA}
+pg3-port=5432

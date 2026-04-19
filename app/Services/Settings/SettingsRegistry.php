@@ -330,7 +330,7 @@ final class SettingsRegistry
                 'label' => 'AMI Host',
                 'type' => 'text',
                 'config_key' => 'telephony.asterisk.ami.host',
-                'placeholder' => 'asterisk',
+                'placeholder' => 'asterisk-1',
             ],
             'telephony.asterisk.ami.port' => [
                 'section' => 'asterisk',
@@ -357,7 +357,7 @@ final class SettingsRegistry
                 'label' => 'ARI URL',
                 'type' => 'url',
                 'config_key' => 'telephony.asterisk.ari.url',
-                'placeholder' => 'http://asterisk:8088',
+                'placeholder' => 'http://asterisk-1:8088',
             ],
             'telephony.asterisk.ari.username' => [
                 'section' => 'asterisk',

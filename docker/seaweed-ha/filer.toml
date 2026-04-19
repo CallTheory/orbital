@@ -1,0 +1,27 @@
+# SeaweedFS filer metadata backend.
+#
+# Backed by Valkey Sentinel so both filer-1 and filer-2 share the
+# same metadata tree and either can serve any S3 request. Without
+# this, each filer would carry its own local leveldb and the two
+# would see different file views.
+#
+# Passwords are interpolated at entrypoint time via envsubst.
+
+[leveldb2]
+enabled = false
+
+[redis3_sentinel]
+enabled = true
+addresses = ["sentinel-1:26379", "sentinel-2:26379", "sentinel-3:26379"]
+masterName = "orbital"
+username = ""
+# Data-plane auth (talking to whichever valkey node is currently
+# primary, as chosen by Sentinel).
+password = "${REDIS_PASSWORD}"
+# Dedicated Valkey logical DB so filer metadata doesn't share
+# keyspace with Laravel sessions/cache/queue. App already uses
+# database 0; sentinel config uses its own key namespace.
+database = 2
+# Sentinel auth (talking to the sentinel processes themselves).
+sentinelUsername = ""
+sentinelPassword = "${SENTINEL_PASSWORD}"

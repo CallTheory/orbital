@@ -1,0 +1,142 @@
+# Orbital HA telephony tier — Phase E.
+#
+# Second instances of Asterisk, LiveKit, the LiveKit SIP bridge,
+# and Icecast. All are internal-only in dev (no host ports) since
+# the primary instance keeps the 5038/8089/10000-10099/7880/5069
+# host bindings. In production each node gets its own host with
+# the full port set.
+#
+# Usage:
+#   docker compose -f docker-compose.yml \
+#                  -f compose/ha-data.yml \
+#                  -f compose/ha-app.yml \
+#                  -f compose/ha-telephony.yml up -d
+#
+# Kamailio's dispatcher.list lists both Asterisks for set 1 and
+# routes by Call-ID hash so in-dialog traffic stays on the same
+# node. Failover between Asterisks drops in-flight calls (RTP
+# media is node-pinned) — the goal is availability for NEW calls
+# during maintenance, not mid-call portability. This is by design
+# and documented in TODO.md.
+
+services:
+    # Second Asterisk node. Reads from the same ARA realtime tables
+    # (via HAProxy → Patroni leader) as asterisk-1, so both see the
+    # same endpoints, queues, routes, and dialplan. Per-node volumes
+    # for spool/recordings because those are live call state and
+    # MixMonitor output — UploadCallRecordingJob ships completed
+    # recordings to SeaweedFS S3 and deletes the local copy.
+    # Disclosure prompts are content-hashed so the shared volume is
+    # safe for dev (FUSE mount in prod per HA plan).
+    asterisk-2:
+        build:
+            context: ./docker/asterisk
+            dockerfile: Dockerfile
+        environment:
+            DB_HOST: '${DB_HOST:-haproxy}'
+            DB_PORT: '${DB_PORT:-5432}'
+            DB_DATABASE: '${DB_DATABASE:-orbital}'
+            DB_USERNAME: '${DB_USERNAME:-orbital}'
+            DB_PASSWORD: '${DB_PASSWORD:-password}'
+            # Stamps ps_contacts.reg_server per-registration so the
+            # SIP Proxy page can show how many dynamic registrations
+            # THIS Asterisk actually holds vs its sibling.
+            ASTERISK_NODE_NAME: 'asterisk-2'
+        volumes:
+            - './docker/asterisk/config:/etc/asterisk/generated:ro'
+            - 'asterisk-2-spool:/var/spool/asterisk'
+            - 'asterisk-2-recordings:/var/spool/asterisk/monitor'
+            - 'asterisk-prompts:/var/spool/asterisk/prompts'
+            - 'tls-certs:/etc/tls:ro'
+        networks:
+            - sail
+            - telephony
+        cap_add:
+            # Asterisk needs NET_ADMIN + SYS_NICE for PJSIP timing.
+            # Mirrors the primary asterisk service.
+            - NET_ADMIN
+            - SYS_NICE
+        restart: unless-stopped
+
+    # Second LiveKit node. Both nodes share room state via Valkey
+    # (already configured in docker/livekit/livekit.yaml) so a room
+    # created on one node can migrate to the other if load or
+    # failover demands it. Host ports stay on the primary.
+    livekit-2:
+        image: 'livekit/livekit-server:latest'
+        command: --config /etc/livekit.yaml --bind 0.0.0.0
+        volumes:
+            - './docker/livekit/livekit.yaml:/etc/livekit.yaml:ro'
+        networks:
+            - telephony
+        restart: unless-stopped
+
+    # Second LiveKit SIP bridge. Stateless — both register with
+    # LiveKit and use the Redis backend for call state.
+    livekit-sip-2:
+        image: 'livekit/sip:latest'
+        volumes:
+            - './docker/livekit/sip-config.yaml:/sip/config.yaml:ro'
+        networks:
+            - telephony
+        depends_on:
+            - livekit-2
+        restart: unless-stopped
+
+    # Second Kamailio — SIP front door in warm-standby mode.
+    #
+    # Both nodes run the same image (same dispatcher.list, same
+    # routing logic) and probe both Asterisks every 30s via
+    # OPTIONS. Only kamailio-1 binds host ports 5060/5061/8090;
+    # external SIP trunks reach it directly.
+    #
+    # In production a keepalived VRRP instance floats a SIP VIP
+    # between the two kamailio hosts — trunks point at the VIP,
+    # and a kamailio-1 failure moves the VIP to kamailio-2
+    # without any trunk-side reconfiguration. In dev docker
+    # bridges don't carry VRRP multicast cleanly, so the VIP
+    # is deferred; this compose file gives us the topology
+    # for validating drain / activate / restart workflows.
+    #
+    # STATE SYNC CAVEAT: Kamailio's dispatcher state (which
+    # backends are active / draining) is per-node. Draining
+    # asterisk-1 via kamailio-1's JSON-RPC does NOT propagate
+    # to kamailio-2. Today the failover model is warm-standby:
+    # the standby doesn't serve until the VIP moves to it, and
+    # at that point the admin UI re-applies drain state. For
+    # true active/active, Kamailio DMQ (Distributed Message
+    # Queue) is the canonical fix — filed as a follow-up task.
+    kamailio-2:
+        build:
+            context: ./docker/kamailio
+            dockerfile: Dockerfile
+        networks:
+            - telephony
+        depends_on:
+            - asterisk-1
+        restart: unless-stopped
+
+    # Second Icecast running in relay mode from the primary. Admins
+    # and listeners can fall back to this node if the primary is
+    # down; it mirrors mountpoints via pull-relay. Note: if the
+    # primary is completely lost, its source feeds also die (the
+    # publisher pushes to ONE node), so this only covers listener-
+    # side HA. Source-side HA requires a publishing sidecar that
+    # could republish to either node — deferred to a follow-up.
+    icecast-2:
+        image: 'moul/icecast:latest'
+        environment:
+            ICECAST_SOURCE_PASSWORD: '${ICECAST_SOURCE_PASSWORD:-changeme}'
+            ICECAST_ADMIN_PASSWORD: '${ICECAST_ADMIN_PASSWORD:-changeme}'
+            ICECAST_PASSWORD: '${ICECAST_PASSWORD:-changeme}'
+            ICECAST_RELAY_PASSWORD: '${ICECAST_RELAY_PASSWORD:-changeme}'
+            ICECAST_HOSTNAME: 'icecast-2'
+        networks:
+            - telephony
+        restart: unless-stopped
+
+volumes:
+    asterisk-2-spool:
+        driver: local
+    asterisk-2-recordings:
+        driver: local

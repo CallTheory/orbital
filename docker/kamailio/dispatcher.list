@@ -1,12 +1,18 @@
 # Dispatcher set 1 — Asterisk backends.
 # Format: setid destination flags priority attrs
 #
-# Phase 0: single backend. Phase 1 adds more lines here.
-# Kamailio resolves `asterisk` via docker DNS on the telephony
-# network — it's the compose service name for the Asterisk
-# container.
+# Phase 1: two Asterisk nodes. Kamailio probes both every 30s via
+# SIP OPTIONS (ds_ping_interval=30 in kamailio.cfg); unreachable
+# backends get dropped from rotation automatically. Selection is
+# ds_select_dst("1", "0") — algo 0 = hash over Call-ID, so in-
+# dialog traffic stays pinned to one node and a mid-call failover
+# would drop the call (acceptable per TODO.md).
+#
+# Both names resolve via docker DNS on the telephony network.
+# Production replaces these with real VM hostnames.
 #
 # Flags: 0 = no special flags
-# Priority: 0 = equal
+# Priority: 0 = equal (both picked equally by hash)
 # Attrs: weight=100
-1 sip:asterisk:5060 0 0 weight=100
+1 sip:asterisk-1:5060 0 0 weight=100
+1 sip:asterisk-2:5060 0 0 weight=100

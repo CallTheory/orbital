@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Telephony;
 
+use App\Models\AsteriskBackend;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -25,14 +26,16 @@ use Illuminate\Support\Facades\Log;
  */
 class AsteriskClusterActivity
 {
-    /** @param list<string> $hosts e.g. ['asterisk-1', 'asterisk-2'] */
     public function __construct(
-        protected array $hosts = ['asterisk-1', 'asterisk-2'],
-        protected int $port = 5038,
         protected float $timeout = 2.0,
     ) {}
 
     /**
+     * Enumerates the registered AsteriskBackend rows and hits each
+     * one's AMI endpoint for its live channel count. Inactive rows
+     * are excluded so disabled-but-still-in-the-database entries
+     * don't show up in the SIP Proxy page.
+     *
      * @return array<string, array{channels: int, registrations: int, reachable: bool}>
      */
     public function all(): array
@@ -42,12 +45,14 @@ class AsteriskClusterActivity
         // stamps with its own systemname (see entrypoint.sh).
         $registrations = $this->registrationsByNode();
 
+        $backends = AsteriskBackend::query()->active()->orderBy('sort_order')->orderBy('hostname')->get();
+
         $out = [];
-        foreach ($this->hosts as $host) {
-            $channels = $this->countChannelsViaAmi($host);
-            $out[$host] = [
+        foreach ($backends as $backend) {
+            $channels = $this->countChannelsViaAmi($backend->amiHost(), $backend->ami_port);
+            $out[$backend->hostname] = [
                 'channels' => $channels['count'],
-                'registrations' => $registrations[$host] ?? 0,
+                'registrations' => $registrations[$backend->hostname] ?? 0,
                 'reachable' => $channels['reachable'],
             ];
         }
@@ -63,12 +68,13 @@ class AsteriskClusterActivity
      *
      * @return array{count: int, reachable: bool}
      */
-    protected function countChannelsViaAmi(string $host): array
+    protected function countChannelsViaAmi(string $host, int $port = 5038): array
     {
-        $socket = @fsockopen($host, $this->port, $errno, $errstr, (int) $this->timeout);
+        $socket = @fsockopen($host, $port, $errno, $errstr, (int) $this->timeout);
         if (! $socket) {
             Log::info('asterisk-activity: unreachable', [
                 'host' => $host,
+                'port' => $port,
                 'error' => $errstr,
             ]);
             return ['count' => 0, 'reachable' => false];

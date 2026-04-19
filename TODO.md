@@ -141,6 +141,16 @@ the work.
 
 ### Other
 
+- [ ] **Partial-message policy when caller hangs up mid-intake.**
+      Tenant/script/goal toggle for what happens when a caller
+      drops off mid-script before the agent (AI or human-operator)
+      finishes collecting the required fields. Today the message
+      is discarded; some tenants want the partial capture preserved
+      (name + callback number even without the reason) so a human
+      can follow up. Needs: a `keep_partial_messages` flag at the
+      tenant level with per-script/per-goal override, UI to set it,
+      and logic in both AI flow runner and operator intake to branch
+      on hangup. Applies to AI + human-operator scripts alike.
 - [ ] **Horizon metrics + alerting.** Once the observability stack
       lands, wire Horizon queue depth + failure rate into the
       Orbital App dashboard so a stalled `inbound-mail` queue or a

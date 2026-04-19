@@ -43,13 +43,22 @@ use Illuminate\Support\Facades\Log;
  */
 class KamailioService
 {
-    private string $jsonrpcUrl;
+    /** @var list<string> Non-empty JSON-RPC endpoints, one per Kamailio node. */
+    private array $jsonrpcUrls;
 
     private const TIMEOUT_SECONDS = 2;
 
     public function __construct()
     {
-        $this->jsonrpcUrl = (string) config('telephony.kamailio.jsonrpc_url');
+        $urls = (array) config('telephony.kamailio.jsonrpc_urls', []);
+        if (empty($urls)) {
+            // Back-compat path: fall back to the single-URL legacy
+            // config value so existing installs don't break when
+            // KAMAILIO_JSONRPC_URLS isn't set.
+            $single = (string) config('telephony.kamailio.jsonrpc_url');
+            $urls = $single === '' ? [] : [$single];
+        }
+        $this->jsonrpcUrls = array_values(array_filter($urls, fn ($u) => is_string($u) && $u !== ''));
     }
 
     public function isHealthy(): bool
@@ -124,7 +133,14 @@ class KamailioService
     }
 
     /**
-     * Change a backend's runtime state.
+     * Change a backend's runtime state on EVERY Kamailio node.
+     *
+     * Fan-out rather than relying on DMQ: dispatcher state lives
+     * per-process, so a drain applied to kamailio-1 only is invisible
+     * to kamailio-2 and a VRRP failover would put a kamailio with
+     * stale state in charge. Mirroring the HAProxyStatsClient pattern
+     * (see feedback_haproxy_action_all_nodes) — each node gets the
+     * RPC, caller treats it successful only when all accepted.
      *
      * @param  string  $state  One of: 'active', 'drain', 'disable'
      */
@@ -140,11 +156,14 @@ class KamailioService
             default => throw new \InvalidArgumentException("Unknown state: {$state}"),
         };
 
-        // dispatcher.set_state expects positional params in some
-        // Kamailio versions: [state, group, address]
-        $result = $this->rpc('dispatcher.set_state', [$rpcState, $setId, "sip:{$address}"]);
-
-        return $result !== null;
+        $allOk = true;
+        foreach ($this->jsonrpcUrls as $url) {
+            $result = $this->rpcAt($url, 'dispatcher.set_state', [$rpcState, $setId, "sip:{$address}"]);
+            if ($result === null) {
+                $allOk = false;
+            }
+        }
+        return $allOk;
     }
 
     /**
@@ -177,11 +196,31 @@ class KamailioService
     }
 
     /**
+     * Read calls: try each Kamailio in turn, return the first
+     * successful result. Dispatcher/dialog state mirrors closely
+     * enough across nodes that whichever answers is representative.
+     *
      * @return array<string, mixed>|null
      */
     private function rpc(string $method, array $params = []): ?array
     {
-        if ($this->jsonrpcUrl === '') {
+        foreach ($this->jsonrpcUrls as $url) {
+            $result = $this->rpcAt($url, $method, $params);
+            if ($result !== null) {
+                return $result;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Send one JSON-RPC call to a specific Kamailio endpoint.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function rpcAt(string $url, string $method, array $params = []): ?array
+    {
+        if ($url === '') {
             return null;
         }
 
@@ -198,10 +237,11 @@ class KamailioService
 
             $response = Http::timeout(self::TIMEOUT_SECONDS)
                 ->withHeaders(['Content-Type' => 'application/json'])
-                ->post($this->jsonrpcUrl, $payload);
+                ->post($url, $payload);
 
             if (! $response->successful()) {
                 Log::warning('Kamailio JSON-RPC returned non-2xx', [
+                    'url' => $url,
                     'method' => $method,
                     'status' => $response->status(),
                 ]);
@@ -211,6 +251,7 @@ class KamailioService
             $body = $response->json();
             if (isset($body['error'])) {
                 Log::warning('Kamailio JSON-RPC error', [
+                    'url' => $url,
                     'method' => $method,
                     'error' => $body['error'],
                 ]);
@@ -220,6 +261,7 @@ class KamailioService
             return $body['result'] ?? null;
         } catch (\Throwable $e) {
             Log::warning('Kamailio JSON-RPC call failed', [
+                'url' => $url,
                 'method' => $method,
                 'error' => $e->getMessage(),
             ]);

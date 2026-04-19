@@ -131,7 +131,23 @@ return [
     */
     'kamailio' => [
         'enabled' => (bool) env('KAMAILIO_ENABLED', false),
+        // Comma-separated list of JSON-RPC endpoints, one per
+        // Kamailio node in the VRRP pair. KamailioService reads
+        // from whichever responds first but WRITES (dispatcher
+        // state changes) fan out to every node so draining a
+        // backend on kamailio-1 also drains it on kamailio-2.
+        // Without this, a VRRP failover after a drain would put
+        // the backup kamailio in charge with stale dispatcher
+        // state and it would happily route new calls to the
+        // "drained" Asterisk.
         'jsonrpc_url' => env('KAMAILIO_JSONRPC_URL', 'http://kamailio:8090/jsonrpc'),
+        'jsonrpc_urls' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env(
+                'KAMAILIO_JSONRPC_URLS',
+                'http://kamailio:8090/jsonrpc,http://kamailio-2:8090/jsonrpc'
+            ))
+        ))),
     ],
 
 ];

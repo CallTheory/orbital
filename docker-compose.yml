@@ -387,6 +387,13 @@ services:
             # app container reaches it via the telephony network,
             # not the host port.
             - '127.0.0.1:8090:8090/tcp'
+        volumes:
+            # Bind-mount the dispatcher list so Laravel can regenerate
+            # it from the AsteriskBackend table on save and trigger a
+            # dispatcher.reload via JSON-RPC. Without this mount the
+            # file is baked into the image at build time and admin UI
+            # changes would require a rebuild to take effect.
+            - './docker/kamailio/dispatcher.list:/etc/kamailio/dispatcher.list'
         networks:
             - telephony
         depends_on:

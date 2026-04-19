@@ -60,7 +60,13 @@ class SystemHealthService
             'prometheus' => ['host' => 'prometheus', 'port' => 9090],
             'loki' => ['host' => 'loki', 'port' => 3100],
             'grafana' => ['host' => 'grafana', 'port' => 3000],
-            'seaweedfs' => ['host' => 'seaweedfs', 'port' => 8333],
+            // SeaweedFS S3 API is fronted by the HAProxy pair which
+            // round-robins across filer-1 and filer-2. Probing the
+            // frontend exercises the whole data-plane path rather
+            // than a single filer, so the card goes red only when
+            // the bucket itself is unreachable (not when one filer
+            // is restarting).
+            'seaweedfs' => ['host' => 'haproxy', 'port' => 8333],
             // Ollama is opt-in (docker-compose `local-ai` profile) —
             // reported as a degraded/warn state when unreachable rather
             // than down, same pattern as Icecast.

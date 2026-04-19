@@ -85,6 +85,276 @@ class FailoverCentral extends Page
     }
 
     /**
+     * Explain the expected UP/DOWN shape for each HAProxy backend.
+     * Backends that route based on an HTTP role check (Patroni
+     * `/primary` vs `/replica`, valkey AUTH+ROLE tcp-check) show
+     * only the qualifying node as UP by design — without this
+     * note the admin sees "1 UP, 2 DOWN" and thinks something's
+     * broken. Returns null when no explanation is needed
+     * (round-robin backends behave the obvious way).
+     */
+    public function haproxyBackendNote(string $backend): ?string
+    {
+        return match ($backend) {
+            'pgsql_rw_be' => 'Expect exactly one UP: Patroni\'s leader. Replicas correctly fail the /primary health check and show DOWN here — that\'s how the router sends writes to the leader only.',
+            'pgsql_ro_be' => 'Expect replicas UP, leader DOWN: the /replica check only passes on non-leaders. A row-reversed state usually means a switchover just happened.',
+            'valkey_be' => 'Expect exactly one UP: Sentinel\'s current master. Replicas answer ROLE with "slave" so the tcp-check rejects them — correct for a write path.',
+            'asterisk_wss_be' => 'All Asterisk backends should be UP in normal operation. MAINT means an operator drained it from the SIP Proxy page.',
+            'seaweed_s3_be' => 'Both filers share one Valkey-backed metadata store so round-robin is fine. Any DOWN here means a filer is restarting or its /healthz is failing.',
+            default => null,
+        };
+    }
+
+    /**
+     * At-a-glance section health. Each tier returns one of:
+     *   'ok'    — everything in the expected state → green border
+     *   'warn'  — degraded but still serving → yellow border
+     *   'down'  — tier is offline or cannot be reached → red border
+     *
+     * Kept deliberately conservative: a tier only reports 'ok' when
+     * there's unambiguous evidence of health. If we can't tell, we
+     * warn rather than silently show green.
+     */
+    public function patroniHealth(): string
+    {
+        if (! $this->patroni) {
+            return 'down';
+        }
+        if (! ($this->patroni['leader'] ?? null)) {
+            return 'down';
+        }
+        foreach ($this->patroni['members'] ?? [] as $m) {
+            $state = (string) ($m['state'] ?? '');
+            $role = (string) ($m['role'] ?? '');
+            $lag = (int) ($m['lag'] ?? 0);
+            // Leader should be "running"; replicas should be "streaming".
+            $wantedState = $role === 'leader' ? 'running' : 'streaming';
+            if ($state !== $wantedState) {
+                return 'warn';
+            }
+            // Arbitrary-but-practical threshold: any replica more
+            // than 32MB behind is suspicious on a quiet cluster.
+            if ($role !== 'leader' && $lag > 32) {
+                return 'warn';
+            }
+        }
+        return 'ok';
+    }
+
+    public function sentinelHealth(): string
+    {
+        if (! $this->sentinel) {
+            return 'down';
+        }
+        if (empty($this->sentinel['master'])) {
+            return 'down';
+        }
+        $masterFlags = (string) ($this->sentinel['master']['flags'] ?? '');
+        if (str_contains($masterFlags, 'down') || str_contains($masterFlags, 'disconnect')) {
+            return 'down';
+        }
+        foreach ($this->sentinel['replicas'] ?? [] as $r) {
+            $flags = (string) ($r['flags'] ?? '');
+            if (str_contains($flags, 'down') || str_contains($flags, 'disconnect')) {
+                return 'warn';
+            }
+        }
+        return 'ok';
+    }
+
+    public function seaweedHealth(): string
+    {
+        if (! $this->seaweed) {
+            return 'down';
+        }
+        if (! ($this->seaweed['leader'] ?? null)) {
+            return 'down';
+        }
+        foreach ($this->seaweed['masters'] ?? [] as $m) {
+            if (! ($m['reachable'] ?? false)) {
+                return 'warn';
+            }
+        }
+        // At least one filer must answer /healthz — filers are the
+        // S3 gateway, so if both are down the object store is
+        // effectively offline even when Raft is healthy.
+        $filersUp = 0;
+        foreach ($this->seaweed['filers'] ?? [] as $f) {
+            if ($f['reachable'] ?? false) {
+                $filersUp++;
+            }
+        }
+        if (! empty($this->seaweed['filers']) && $filersUp === 0) {
+            return 'down';
+        }
+        if (! empty($this->seaweed['filers']) && $filersUp < count($this->seaweed['filers'])) {
+            return 'warn';
+        }
+        return 'ok';
+    }
+
+    /**
+     * Per-backend health using the shape-expectations noted in
+     * haproxyBackendNote(). Returns the same 'ok'/'warn'/'down'
+     * vocabulary so it aggregates cleanly with the other tiers.
+     *
+     * @param  list<array<string, string>>  $servers
+     */
+    public function haproxyBackendHealth(string $backend, array $servers): string
+    {
+        if (empty($servers)) {
+            return 'down';
+        }
+        $upCount = 0;
+        $maintCount = 0;
+        foreach ($servers as $s) {
+            $status = (string) ($s['status'] ?? '');
+            if (str_starts_with($status, 'UP')) {
+                $upCount++;
+            } elseif (str_contains($status, 'MAINT')) {
+                $maintCount++;
+            }
+        }
+        $total = count($servers);
+
+        return match ($backend) {
+            // Role-restricted write paths: exactly one UP is the
+            // correct state. Anything else is a problem.
+            'pgsql_rw_be', 'valkey_be' => match (true) {
+                $upCount === 1 => 'ok',
+                $upCount === 0 => 'down',
+                default => 'warn',  // multiple UP shouldn't happen
+            },
+            // Read-only pool: at least one replica UP = ok.
+            'pgsql_ro_be' => match (true) {
+                $upCount >= 1 => 'ok',
+                default => 'down',
+            },
+            // Round-robin pools: ALL should be UP (minus operator-
+            // drained nodes, which show MAINT and aren't a problem).
+            'asterisk_wss_be', 'seaweed_s3_be', 'grafana_be', 'prometheus_be', 'loki_be' => match (true) {
+                $upCount + $maintCount === $total && $upCount > 0 => 'ok',
+                $upCount === 0 => 'down',
+                default => 'warn',
+            },
+            default => $upCount > 0 ? 'ok' : 'down',
+        };
+    }
+
+    /**
+     * Worst per-backend state bubbles up to the section header.
+     */
+    public function haproxyHealth(): string
+    {
+        if (empty($this->haproxyServers)) {
+            return 'down';
+        }
+        $worst = 'ok';
+        foreach ($this->haproxyByBackend() as $backend => $servers) {
+            $h = $this->haproxyBackendHealth($backend, $servers);
+            if ($h === 'down') {
+                return 'down';
+            }
+            if ($h === 'warn') {
+                $worst = 'warn';
+            }
+        }
+        return $worst;
+    }
+
+    /**
+     * Resolve a server-name + backend to a human role tag for the
+     * per-server rows. Pulls from the already-fetched Patroni /
+     * Sentinel / SeaweedFS state so we don't make extra calls per
+     * row render. Returns null when a backend has no meaningful
+     * role distinction — caller just skips the tag.
+     *
+     * Examples:
+     *   pgsql_rw_be + patroni-2   → "leader" / "sync_standby" / "replica"
+     *   valkey_be + valkey-1      → "master" / "slave"
+     *   asterisk_wss_be + asterisk-1 → "peer" (active/active — no role)
+     */
+    public function serverRoleTag(string $backend, string $svname): ?string
+    {
+        return match ($backend) {
+            'pgsql_rw_be', 'pgsql_ro_be' => $this->patroniRoleFor($svname),
+            'valkey_be' => $this->sentinelRoleFor($svname),
+            'seaweed_s3_be' => 'filer',
+            'asterisk_wss_be' => 'peer',
+            'grafana_be', 'prometheus_be', 'loki_be' => 'peer',
+            default => null,
+        };
+    }
+
+    private function patroniRoleFor(string $name): ?string
+    {
+        if (! $this->patroni) {
+            return null;
+        }
+        foreach ($this->patroni['members'] ?? [] as $m) {
+            if (($m['name'] ?? null) === $name) {
+                // Patroni's `replica` role covers both synchronous and
+                // asynchronous replicas — humanise to match the member
+                // state shown in the Patroni card above.
+                return str_replace('_', ' ', (string) $m['role']);
+            }
+        }
+        return null;
+    }
+
+    private function sentinelRoleFor(string $name): ?string
+    {
+        if (! $this->sentinel) {
+            return null;
+        }
+        // Sentinel reports ip+port; HAProxy reports container name.
+        // Match loosely: if the ip looks like a hostname compare
+        // directly, otherwise fall back to the last byte of the IP.
+        $matches = function (array $node) use ($name): bool {
+            $ip = (string) ($node['ip'] ?? '');
+            return $ip === $name
+                || str_starts_with($ip, $name . '.')
+                || str_ends_with($ip, '.' . $name);
+        };
+
+        $master = $this->sentinel['master'] ?? null;
+        if ($master && $matches($master)) {
+            return 'master';
+        }
+        foreach ($this->sentinel['replicas'] ?? [] as $r) {
+            if ($matches($r)) {
+                return 'replica';
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Sort Patroni members into the operational hierarchy:
+     * leader → sync_standby → replica → any other state. Keeps the
+     * card order stable across refreshes so the eye doesn't jump
+     * when a leader steps down and the new leader slides up.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function patroniMembersSorted(): array
+    {
+        if (! $this->patroni) {
+            return [];
+        }
+        $rank = fn (string $role): int => match ($role) {
+            'leader' => 0,
+            'sync_standby' => 1,
+            'replica' => 2,
+            default => 3,
+        };
+        $members = $this->patroni['members'] ?? [];
+        usort($members, fn ($a, $b) => $rank($a['role']) <=> $rank($b['role'])
+            ?: strcmp((string) $a['name'], (string) $b['name']));
+        return $members;
+    }
+
+    /**
      * @return array<Action>
      */
     protected function getHeaderActions(): array

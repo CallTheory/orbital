@@ -1,18 +1,18 @@
 #
-# Orbital Loki config — single-binary filesystem storage.
+# Orbital Loki config — shared S3 backend (SeaweedFS).
 #
 # HA story: two Loki instances run in parallel, each scraping
-# Promtail feeds from its own host, each persisting chunks on its
-# own volume. Grafana datasource goes through HAProxy which
-# round-robins queries across both. This means query results only
-# reflect one node's time window unless Promtail double-ships; in
-# practice the drift is fine for ops dashboards and callers.
+# Promtail feeds from its own host. Chunks + index land in the
+# `loki-chunks` bucket on the clustered SeaweedFS filers via
+# HAProxy's seaweed-s3 frontend. Both Lokis see the same data
+# so Grafana round-robin queries return a unified view.
 #
-# A shared S3 backend (`loki-chunks` bucket in SeaweedFS) would
-# give a unified view but Loki's compactor triggers DeleteObject
-# calls that SeaweedFS S3 auth rejects with InvalidAccessKeyId
-# even though identical creds work via aws-cli. Filed as
-# follow-up; swap back to the S3 config when resolved.
+# Earlier attempts hit `InvalidAccessKeyId` on SeaweedFS DELETE
+# requests from the compactor. Root cause was the multi-filer
+# bootstrap hang (task #18) — with only filer-1 live, the
+# compactor's DELETE traffic sometimes hit an address that the
+# S3 gateway rejected. With filer-1 + filer-2 both healthy and
+# HAProxy round-robin in front, DELETE works end-to-end.
 #
 
 auth_enabled: false
@@ -25,20 +25,25 @@ server:
 common:
   instance_addr: 127.0.0.1
   path_prefix: /loki-data
-  storage:
-    filesystem:
-      chunks_directory: /loki-data/chunks
-      rules_directory: /loki-data/rules
   replication_factor: 1
   ring:
     kvstore:
       store: inmemory
+  storage:
+    s3:
+      endpoint: haproxy:8333
+      bucketnames: loki-chunks
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_SECRET_ACCESS_KEY}
+      region: us-east-1
+      s3forcepathstyle: true
+      insecure: true
 
 schema_config:
   configs:
     - from: 2020-10-24
       store: tsdb
-      object_store: filesystem
+      object_store: s3
       schema: v13
       index:
         prefix: index_
@@ -55,7 +60,7 @@ compactor:
   retention_enabled: true
   retention_delete_delay: 2h
   retention_delete_worker_count: 150
-  delete_request_store: filesystem
+  delete_request_store: s3
 
 ruler:
   alertmanager_url: http://localhost:9093

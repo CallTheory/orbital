@@ -8,6 +8,7 @@ Orbital is a multi-tenant answering-service platform that combines AI voice agen
 - [Email Routing](admin/email-routing.md) — how inbound email flows from SMTP to operator inbox
 - [Agent Groups](admin/agent-groups.md) — organizing operators into teams for queue assignment
 - [Users & Roles](admin/users-roles.md) — platform staff, tenant contacts, and permissions
+- [High Availability & Maintenance](admin/high-availability.md) — per-tier maintenance, Failover Central, SIP Proxy, backups, troubleshooting
 
 ## For Operators
 

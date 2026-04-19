@@ -110,6 +110,11 @@ services:
         build:
             context: ./docker/kamailio
             dockerfile: Dockerfile
+        volumes:
+            # Same bind mount as kamailio-1 — both nodes read the
+            # dispatcher list Laravel writes and dispatcher.reload
+            # RPCs fan out to both (see AsteriskDispatcherWriter).
+            - './docker/kamailio/dispatcher.list:/etc/kamailio/dispatcher.list'
         networks:
             - telephony
         depends_on:

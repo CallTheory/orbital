@@ -4,24 +4,34 @@
 # survive a total DB-tier failure. The Patroni nodes push WAL
 # segments and full/incremental backups here over SSH.
 #
-# Deliberately built on Debian bookworm to match the pgbackrest
-# version that ships with the Patroni image (pgvector/pgvector:pg17
-# is bookworm-based). Mixing pgbackrest client/server versions
-# across 2.45 ↔ 2.58 triggers subtle remote-protocol errors like
-# "option 'lock-path' cannot be set multiple times".
+# pgBackRest must run the SAME major version on client and server.
+# The Patroni image (pgvector/pgvector:pg17) bundles pgbackrest
+# 2.58 via the PGDG apt repo; plain `debian:bookworm-slim` ships
+# 2.45 from the default Debian pool, which breaks the remote
+# protocol ("expected value '2.58.0' for greeting key 'version'
+# but got '2.45'"). Pulling from PGDG on this side keeps both ends
+# on 2.58 so archive-push / backup / restore work across SSH.
 
 FROM debian:bookworm-slim
 
 ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl \
+        gnupg \
+        ca-certificates \
+    && install -d /usr/share/postgresql-common/pgdg \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+         -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+    && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
+         > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update && apt-get install -y --no-install-recommends \
         pgbackrest \
         openssh-server \
         openssh-client \
         gettext-base \
         tini \
         gosu \
-        ca-certificates \
         procps \
     && rm -rf /var/lib/apt/lists/*
 

@@ -149,7 +149,10 @@ backend seaweed_s3_be
     http-check expect status 200
     balance roundrobin
     # Health check hits filer HTTP port 8888; traffic goes to 8333.
+    # Both filers share Valkey-backed metadata so either can serve
+    # any S3 request; round-robin balances writes + reads.
     server seaweed-filer-1 seaweed-filer-1:8333 check port 8888 inter 5s rise 2 fall 2 resolvers docker
+    server seaweed-filer-2 seaweed-filer-2:8333 check port 8888 inter 5s rise 2 fall 2 resolvers docker
 
 #-----------------------------------------------------------
 # Grafana — shared-Postgres-state stateless pair. Cookie-based

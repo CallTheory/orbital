@@ -7,9 +7,10 @@
 
         <title>{{ config('app.name', 'Laravel') }}</title>
 
-        <!-- Fonts -->
-        <link rel="preconnect" href="https://fonts.bunny.net">
-        <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
+        {{-- Fonts intentionally local/system — Orbital is offline-first.
+             Filament panels self-host Inter from /fonts/filament/...;
+             this Jetstream layout falls back to the browser sans-serif
+             stack applied via Tailwind's `font-sans` on <body>. --}}
 
         <!-- Scripts -->
         @vite(['resources/css/app.css', 'resources/js/app.js'])

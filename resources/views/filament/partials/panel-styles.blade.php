@@ -87,33 +87,32 @@
     .dark .orbital-card-metrics dt { color: rgb(107 114 128); }
     .dark .orbital-card-metrics dd { color: rgb(229 231 235); }
 
-    /* Brand header: logo + wordmark. Default size is the sidebar size.
-       On the login/simple layout we scale both up significantly so
-       they read as a header. */
-    .orbital-brand {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
-    .orbital-brand-img {
-        height: 1.75rem;
-        width: auto;
-    }
-    .orbital-brand-text {
-        font-weight: 600;
-        font-size: 1.125rem;
-    }
+    /* Brand mark for the login/auth simple-layout. Filament's own
+       panel chrome renders the brand logo via ->brandLogo() and
+       handles dark-mode swap automatically — these rules are only
+       for the simple-layout auth screens. The uploaded logo
+       contains its own wordmark so we don't emit a separate text
+       span.
+
+       Explicit `.orbital-brand-img-light` / `.orbital-brand-img-dark`
+       classes instead of Tailwind's `dark:hidden` / `hidden dark:block`
+       utilities — the simple-layout head doesn't ship the full
+       Tailwind build, so those utilities aren't guaranteed to be
+       present. These rules key off Filament's `.dark` class on the
+       <html> element (same toggle Filament panels use). */
     .fi-simple-layout .orbital-brand {
-        gap: 0.875rem;
+        display: flex;
+        justify-content: center;
         margin-bottom: 1.5rem;
     }
     .fi-simple-layout .orbital-brand-img {
         height: 4rem;
+        width: auto;
     }
-    .fi-simple-layout .orbital-brand-text {
-        font-size: 2.25rem;
-        letter-spacing: -0.01em;
-    }
+    .orbital-brand-img-light { display: block; }
+    .orbital-brand-img-dark  { display: none; }
+    html.dark .orbital-brand-img-light { display: none; }
+    html.dark .orbital-brand-img-dark  { display: block; }
 
     /* Shared dashboard grid used by the portal Dashboard, operator
        Workspace, and any future page that wants a 3-up layout with a

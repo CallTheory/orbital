@@ -169,6 +169,30 @@ trait RendersRegistrySettings
             'textarea' => Forms\Components\Textarea::make($name)->rows(3),
             'select' => Forms\Components\Select::make($name)->options($def['options'] ?? []),
             'toggle' => Forms\Components\Toggle::make($name),
+            // Rectangular image uploader for logos/favicons.
+            // `->image()` turns on Filament's image-specific preview
+            // + validation; `->avatar()` is deliberately NOT set
+            // because logos are 512×128 rectangles and a circular
+            // preview would clip them. Visibility('public') flags
+            // the uploaded object so SeaweedFS serves it without
+            // signing — logos and favicons are public-by-intent.
+            'image' => Forms\Components\FileUpload::make($name)
+                ->image()
+                ->imagePreviewHeight('96')
+                ->panelAspectRatio('4:1')
+                ->panelLayout('integrated')
+                ->disk($def['disk'] ?? 's3')
+                ->directory($def['directory'] ?? 'branding')
+                ->visibility('public')
+                ->maxSize(2048)
+                ->acceptedFileTypes($def['accept'] ?? [
+                    'image/png',
+                    'image/jpeg',
+                    'image/svg+xml',
+                    'image/x-icon',
+                    'image/vnd.microsoft.icon',
+                    'image/webp',
+                ]),
             default => Forms\Components\TextInput::make($name),
         };
 
@@ -193,6 +217,9 @@ trait RendersRegistrySettings
             $field->helperText($helper);
         }
 
+        // Only textarea spans full width. Image fields stay one-col
+        // so a light/dark logo pair sits on the same row in a
+        // ->columns(2) section.
         if (in_array($def['type'], ['textarea'], true)) {
             $field->columnSpanFull();
         }

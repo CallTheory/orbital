@@ -19,7 +19,6 @@ use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
-use Illuminate\Support\HtmlString;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 /**
@@ -38,15 +37,11 @@ class PortalPanelProvider extends PanelProvider
             ->id('portal')
             ->path('portal')
             ->profile(page: \App\Filament\Auth\EditProfile::class, isSimple: false)
-            ->brandName('Orbital')
-            ->brandLogo(fn () => new HtmlString(
-                '<div class="orbital-brand">'
-                    .'<img src="'.asset('images/orbital-logo.png').'" alt="Orbital" class="orbital-brand-img">'
-                    .'<span class="orbital-brand-text">Orbital</span>'
-                .'</div>'
-            ))
-            ->brandLogoHeight('1.75rem')
-            ->favicon(fn () => asset('images/orbital-logo.png'))
+            ->brandName(fn () => (string) config('orbital.portal_name', 'Customer Portal'))
+            ->brandLogo(fn () => \App\Support\Branding::portalLogoLightUrl())
+            ->darkModeBrandLogo(fn () => \App\Support\Branding::portalLogoDarkUrl())
+            ->brandLogoHeight('2rem')
+            ->favicon(fn () => \App\Support\Branding::portalFaviconUrl())
             ->colors([
                 'primary' => Color::Sky,
                 'danger' => Color::Red,

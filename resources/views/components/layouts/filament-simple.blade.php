@@ -1,19 +1,23 @@
 @php
     // All Fortify-backed auth pages render inside Filament's own
-    // SimpleLayout shell by piggybacking on the admin panel's context.
-    // Filament's layout components assume `filament()` resolves to a
-    // panel (brand, favicon, fonts, theme, colors, fonts, dark-mode
-    // script), so we set and *boot* one here before rendering.
+    // SimpleLayout shell by piggybacking on the PORTAL panel's context.
+    // The login page is the single unified entry point for every user
+    // on the platform (staff and tenants alike) — and since the portal
+    // is the customer-facing identity, it's the brand and palette
+    // customers should see when they land. Staff still authenticate
+    // here; they just see portal branding while they do it.
     //
-    // Booting is what materializes the panel's `->colors()` palette
-    // into the CSS variables `--primary-*`, `--gray-*`, etc. Without
-    // the boot call, Filament falls back to its default amber palette
-    // even though the admin panel is configured for indigo.
+    // Filament's layout components assume `filament()` resolves to a
+    // panel (brand, favicon, fonts, theme, colors, dark-mode script),
+    // so we set and *boot* one here before rendering. Booting is
+    // what materializes the panel's `->colors()` palette into the
+    // CSS variables; without it, Filament falls back to its default
+    // amber palette.
     //
     // The actual auth step still runs via Fortify's controllers under
     // routes/web.php; panel context here is purely for rendering.
     \Filament\Facades\Filament::setServingStatus();
-    \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('admin'));
+    \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('portal'));
 
     // Clear ColorManager's internal cache before booting the panel.
     // ColorManager caches resolved colors on the first getColors() call,
@@ -29,12 +33,14 @@
     // Call Panel::boot() directly instead of bootCurrentPanel() — the
     // manager's booted-flag may already be true from an earlier
     // getCurrentOrDefaultPanel() call during the request pipeline,
-    // which would short-circuit the boot and leave our admin panel's
+    // which would short-circuit the boot and leave our portal panel's
     // ->colors() palette unregistered.
-    \Filament\Facades\Filament::getPanel('admin')->boot();
+    \Filament\Facades\Filament::getPanel('portal')->boot();
 
     $heading = $heading ?? null;
     $subheading = $subheading ?? null;
+    $portalLogoLightUrl = \App\Support\Branding::portalLogoLightUrl();
+    $portalLogoDarkUrl = \App\Support\Branding::portalLogoDarkUrl();
 @endphp
 
 <x-filament-panels::layout.base>
@@ -53,9 +59,24 @@
                              image + text ourselves keeps the simple-layout
                              scaling (4rem logo, 2.25rem text) intact. --}}
                         <header class="fi-simple-header">
+                            {{-- Dual-rendered logo: browser shows one
+                                 per color mode via Filament's
+                                 `dark:hidden` / `hidden dark:block`
+                                 Tailwind utilities. The 512×128
+                                 uploaded logo contains its own
+                                 wordmark, so no separate text span. --}}
+                            @php
+                                // Same phrasing Filament uses in its own chrome:
+                                // `:name logo` → e.g. "Customer Portal logo".
+                                $brandAlt = __('filament-panels::layout.logo.alt', ['name' => filament()->getBrandName()]);
+                            @endphp
                             <div class="orbital-brand">
-                                <img src="{{ asset('images/orbital-logo.png') }}" alt="{{ filament()->getBrandName() }}" class="orbital-brand-img">
-                                <span class="orbital-brand-text">{{ filament()->getBrandName() }}</span>
+                                <img src="{{ $portalLogoLightUrl }}"
+                                     alt="{{ $brandAlt }}"
+                                     class="orbital-brand-img orbital-brand-img-light">
+                                <img src="{{ $portalLogoDarkUrl }}"
+                                     alt="{{ $brandAlt }}"
+                                     class="orbital-brand-img orbital-brand-img-dark">
                             </div>
 
                             @if (filled($heading))

@@ -30,7 +30,12 @@ final class SettingsRegistry
             'branding' => [
                 'label' => 'Branding',
                 'icon' => 'heroicon-o-identification',
-                'description' => 'How the platform identifies itself in UIs, emails, and error messages.',
+                'description' => 'How the platform identifies itself in UIs, emails, and error messages. Applied to the admin and operator panels — customer-facing portal branding lives in Preferences → Portal Branding.',
+            ],
+            'portal_branding' => [
+                'label' => 'Portal Branding',
+                'icon' => 'heroicon-o-paint-brush',
+                'description' => 'Identity shown on the customer portal and the shared login page — the first thing your tenants see.',
             ],
             'app' => [
                 'label' => 'Application',
@@ -120,7 +125,7 @@ final class SettingsRegistry
      * @return array<string, array{
      *     section: string,
      *     label: string,
-     *     type: 'text'|'password'|'email'|'url'|'number'|'textarea'|'select'|'toggle',
+     *     type: 'text'|'password'|'email'|'url'|'number'|'textarea'|'select'|'toggle'|'image',
      *     config_key: ?string,
      *     config_keys?: array<int, string>,
      *     secret?: bool,
@@ -128,6 +133,9 @@ final class SettingsRegistry
      *     helper?: string,
      *     placeholder?: string,
      *     restart_required?: array<int, string>,
+     *     disk?: string,
+     *     directory?: string,
+     *     accept?: array<int, string>,
      * }>
      */
     public static function all(): array
@@ -161,6 +169,68 @@ final class SettingsRegistry
                 'type' => 'textarea',
                 'config_key' => 'orbital.support_message',
                 'helper' => 'Shown when users hit a quota or error and need to be told who to contact.',
+            ],
+            'orbital.platform_logo_light' => [
+                'section' => 'branding',
+                'label' => 'Platform logo (light mode)',
+                'type' => 'image',
+                'config_key' => 'orbital.platform_logo_light',
+                'directory' => 'branding/platform',
+                'helper' => 'Shown in the top-left of the admin and operator panels when the UI is in light mode. Recommended 512×128 PNG or SVG with a transparent background.',
+            ],
+            'orbital.platform_logo_dark' => [
+                'section' => 'branding',
+                'label' => 'Platform logo (dark mode)',
+                'type' => 'image',
+                'config_key' => 'orbital.platform_logo_dark',
+                'directory' => 'branding/platform',
+                'helper' => 'Dark-mode counterpart of the platform logo. If you upload only one variant, it\'s used in both modes.',
+            ],
+            'orbital.platform_favicon' => [
+                'section' => 'branding',
+                'label' => 'Platform favicon',
+                'type' => 'image',
+                'config_key' => 'orbital.platform_favicon',
+                'directory' => 'branding/platform',
+                'helper' => 'Browser tab icon for the admin and operator panels. Square image, 32×32 or 64×64 recommended (PNG, ICO, or SVG).',
+            ],
+
+            // ─── Portal Branding ───────────────────────────────────────
+            // Customer-facing identity: shown on the portal panel AND
+            // the shared root /login page. Every user — tenant or
+            // staff — authenticates at the portal-branded login
+            // before being routed to their actual panel.
+            'orbital.portal_name' => [
+                'section' => 'portal_branding',
+                'label' => 'Portal name',
+                'type' => 'text',
+                'config_key' => 'orbital.portal_name',
+                'placeholder' => 'Customer Portal',
+                'helper' => 'Shown in the portal header and the login page <title>.',
+            ],
+            'orbital.portal_logo_light' => [
+                'section' => 'portal_branding',
+                'label' => 'Portal logo (light mode)',
+                'type' => 'image',
+                'config_key' => 'orbital.portal_logo_light',
+                'directory' => 'branding/portal',
+                'helper' => 'Shown in the top-left of the customer portal and centered on the login page when in light mode. Recommended 512×128 PNG or SVG.',
+            ],
+            'orbital.portal_logo_dark' => [
+                'section' => 'portal_branding',
+                'label' => 'Portal logo (dark mode)',
+                'type' => 'image',
+                'config_key' => 'orbital.portal_logo_dark',
+                'directory' => 'branding/portal',
+                'helper' => 'Dark-mode counterpart of the portal logo. If you upload only one variant, it\'s used in both modes.',
+            ],
+            'orbital.portal_favicon' => [
+                'section' => 'portal_branding',
+                'label' => 'Portal favicon',
+                'type' => 'image',
+                'config_key' => 'orbital.portal_favicon',
+                'directory' => 'branding/portal',
+                'helper' => 'Browser tab icon for the portal and login page. Square image, 32×32 or 64×64 recommended.',
             ],
 
             // ─── Application ───────────────────────────────────────────

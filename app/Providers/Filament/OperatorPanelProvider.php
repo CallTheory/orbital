@@ -30,7 +30,6 @@ use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Blade;
-use Illuminate\Support\HtmlString;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 /**
@@ -55,15 +54,11 @@ class OperatorPanelProvider extends PanelProvider
             ->spa()
             ->maxContentWidth(\Filament\Support\Enums\Width::Full)
             ->profile(page: EditProfile::class, isSimple: false)
-            ->brandName('Orbital')
-            ->brandLogo(fn () => new HtmlString(
-                '<div class="orbital-brand">'
-                    .'<img src="'.asset('images/orbital-logo.png').'" alt="Orbital" class="orbital-brand-img">'
-                    .'<span class="orbital-brand-text">Orbital</span>'
-                .'</div>'
-            ))
-            ->brandLogoHeight('1.75rem')
-            ->favicon(fn () => asset('images/orbital-logo.png'))
+            ->brandName(fn () => (string) config('orbital.platform_name', 'Orbital'))
+            ->brandLogo(fn () => \App\Support\Branding::platformLogoLightUrl())
+            ->darkModeBrandLogo(fn () => \App\Support\Branding::platformLogoDarkUrl())
+            ->brandLogoHeight('2rem')
+            ->favicon(fn () => \App\Support\Branding::platformFaviconUrl())
             ->colors([
                 'primary' => Color::Emerald,
                 'danger' => Color::Red,

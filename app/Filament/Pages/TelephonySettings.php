@@ -50,7 +50,7 @@ class TelephonySettings extends Page implements HasForms
 
     protected static string|UnitEnum|null $navigationGroup = 'Telephony';
 
-    protected static ?int $navigationSort = 5;
+    protected static ?int $navigationSort = 100;
 
     protected static ?string $navigationLabel = 'Settings';
 

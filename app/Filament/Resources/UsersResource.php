@@ -94,78 +94,136 @@ class UsersResource extends Resource
     {
         return $schema
             ->schema([
-                \Filament\Schemas\Components\Section::make('Account')
-                    ->icon('heroicon-o-user')
+                // Three-column grid mirrors AllUsersResource: Account
+                // and Softphone stack in the left two-thirds, Tenant
+                // memberships sits in the right third and grows
+                // independently as staff get attached to more
+                // customers (account managers, impersonation testing).
+                \Filament\Schemas\Components\Grid::make(3)
+                    ->columnSpanFull()
                     ->schema([
-                        Forms\Components\TextInput::make('name')
-                            ->required()
-                            ->maxLength(255),
-                        Forms\Components\TextInput::make('email')
-                            ->email()
-                            ->required()
-                            ->unique(ignoreRecord: true)
-                            ->maxLength(255),
-                        Forms\Components\Select::make('role')
-                            ->label('Role')
-                            ->options(fn () => Role::query()
-                                ->whereNull('team_id')
-                                ->orderBy('name')
-                                ->pluck('name', 'name')
-                                ->all())
-                            ->required()
-                            ->searchable()
-                            ->helperText('Manage available roles in Platform → Roles.')
-                            ->dehydrated(false),
-                        Forms\Components\TextInput::make('password')
-                            ->password()
-                            ->helperText('Leave blank to generate a random password.')
-                            ->dehydrated(fn ($state) => filled($state))
-                            ->revealable(),
-                    ])
-                    ->columns(2),
+                        \Filament\Schemas\Components\Group::make([
+                            \Filament\Schemas\Components\Section::make('Account')
+                                ->icon('heroicon-o-user')
+                                ->schema([
+                                    Forms\Components\TextInput::make('name')
+                                        ->required()
+                                        ->maxLength(255),
+                                    Forms\Components\TextInput::make('email')
+                                        ->email()
+                                        ->required()
+                                        ->unique(ignoreRecord: true)
+                                        ->maxLength(255),
+                                    Forms\Components\Select::make('role')
+                                        ->label('Role')
+                                        ->options(fn () => Role::query()
+                                            ->whereNull('team_id')
+                                            ->orderBy('name')
+                                            ->pluck('name', 'name')
+                                            ->all())
+                                        ->required()
+                                        ->searchable()
+                                        ->helperText('Manage available roles in Platform → Roles.')
+                                        ->dehydrated(false),
+                                    Forms\Components\TextInput::make('password')
+                                        ->password()
+                                        ->helperText('Leave blank to generate a random password.')
+                                        ->dehydrated(fn ($state) => filled($state))
+                                        ->revealable(),
+                                ])
+                                ->columns(2),
 
-                \Filament\Schemas\Components\Section::make('Softphone')
-                    ->icon('heroicon-o-phone')
-                    ->description('SIP credentials for this staff member\'s browser softphone. Auto-allocated on user creation.')
-                    ->schema([
-                        Forms\Components\TextInput::make('softphone_extension')
-                            ->label('Extension Number')
-                            ->disabled()
-                            ->dehydrated(false)
-                            ->afterStateHydrated(function (Forms\Components\TextInput $component, ?User $record) {
-                                if ($record) {
-                                    $ext = app(\App\Services\Telephony\PlatformExtensionAllocator::class)
-                                        ->extensionFor($record);
-                                    $component->state($ext?->number ?? '(not yet allocated)');
-                                }
-                            }),
-                        Forms\Components\TextInput::make('softphone_username')
-                            ->label('SIP Username')
-                            ->disabled()
-                            ->dehydrated(false)
-                            ->afterStateHydrated(function (Forms\Components\TextInput $component, ?User $record) {
-                                if ($record) {
-                                    $ext = app(\App\Services\Telephony\PlatformExtensionAllocator::class)
-                                        ->extensionFor($record);
-                                    $component->state($ext?->sip_username ?? '—');
-                                }
-                            }),
-                        Forms\Components\TextInput::make('softphone_password')
-                            ->label('SIP Password')
-                            ->password()
-                            ->revealable()
-                            ->disabled()
-                            ->dehydrated(false)
-                            ->afterStateHydrated(function (Forms\Components\TextInput $component, ?User $record) {
-                                if ($record) {
-                                    $ext = app(\App\Services\Telephony\PlatformExtensionAllocator::class)
-                                        ->extensionFor($record);
-                                    $component->state($ext?->sip_password ?? '—');
-                                }
-                            }),
-                    ])
-                    ->columns(2)
-                    ->visibleOn('edit'),
+                            \Filament\Schemas\Components\Section::make('Softphone')
+                                ->icon('heroicon-o-phone')
+                                ->description('SIP credentials for this staff member\'s browser softphone. Auto-allocated on user creation.')
+                                ->schema([
+                                    Forms\Components\TextInput::make('softphone_extension')
+                                        ->label('Extension Number')
+                                        ->disabled()
+                                        ->dehydrated(false)
+                                        ->afterStateHydrated(function (Forms\Components\TextInput $component, ?User $record) {
+                                            if ($record) {
+                                                $ext = app(\App\Services\Telephony\PlatformExtensionAllocator::class)
+                                                    ->extensionFor($record);
+                                                $component->state($ext?->number ?? '(not yet allocated)');
+                                            }
+                                        }),
+                                    Forms\Components\TextInput::make('softphone_username')
+                                        ->label('SIP Username')
+                                        ->disabled()
+                                        ->dehydrated(false)
+                                        ->afterStateHydrated(function (Forms\Components\TextInput $component, ?User $record) {
+                                            if ($record) {
+                                                $ext = app(\App\Services\Telephony\PlatformExtensionAllocator::class)
+                                                    ->extensionFor($record);
+                                                $component->state($ext?->sip_username ?? '—');
+                                            }
+                                        }),
+                                    Forms\Components\TextInput::make('softphone_password')
+                                        ->label('SIP Password')
+                                        ->password()
+                                        ->revealable()
+                                        ->disabled()
+                                        ->dehydrated(false)
+                                        ->afterStateHydrated(function (Forms\Components\TextInput $component, ?User $record) {
+                                            if ($record) {
+                                                $ext = app(\App\Services\Telephony\PlatformExtensionAllocator::class)
+                                                    ->extensionFor($record);
+                                                $component->state($ext?->sip_password ?? '—');
+                                            }
+                                        }),
+                                ])
+                                ->columns(2)
+                                ->visibleOn('edit'),
+                        ])
+                            ->columnSpan(2),
+
+                        \Filament\Schemas\Components\Section::make('Tenant memberships')
+                            ->description('Tenants this staff member is attached to.')
+                            ->schema([
+                                Forms\Components\Placeholder::make('tenants')
+                                    ->hiddenLabel()
+                                    ->content(function (?User $record) {
+                                        if (! $record) {
+                                            return new \Illuminate\Support\HtmlString(
+                                                '<span class="text-sm text-gray-500 dark:text-gray-400">Tenant memberships appear after the account is created.</span>'
+                                            );
+                                        }
+
+                                        // Exclude Jetstream personal teams — the Platform
+                                        // and user-specific personal teams aren't real
+                                        // customers and would just be noise on this list.
+                                        $tenants = \App\Models\Team::query()
+                                            ->where('personal_team', false)
+                                            ->whereIn('id', \DB::table('team_user')
+                                                ->where('user_id', $record->id)
+                                                ->pluck('team_id'))
+                                            ->orderBy('name')
+                                            ->get(['id', 'name', 'account_number']);
+
+                                        if ($tenants->isEmpty()) {
+                                            return new \Illuminate\Support\HtmlString(
+                                                '<span class="text-sm text-gray-500 dark:text-gray-400">Not attached to any tenant.</span>'
+                                            );
+                                        }
+
+                                        $rows = $tenants->map(function ($t) {
+                                            $name = e($t->name);
+                                            $acct = $t->account_number
+                                                ? ' <span class="text-gray-500 dark:text-gray-400">· #'.e($t->account_number).'</span>'
+                                                : '';
+                                            $url = \App\Filament\Resources\TenantResource::getUrl('users', ['record' => $t->id]);
+                                            return '<li style="display: list-item; list-style-type: disc;"><a href="'.$url.'" class="text-primary-600 hover:underline dark:text-primary-400">'.$name.'</a>'.$acct.'</li>';
+                                        })->implode('');
+
+                                        return new \Illuminate\Support\HtmlString(
+                                            '<ul style="list-style: disc; padding-left: 1.25rem;" class="space-y-4 text-sm">'.$rows.'</ul>'
+                                        );
+                                    }),
+                            ])
+                            ->columnSpan(1)
+                            ->visibleOn('edit'),
+                    ]),
             ]);
     }
 

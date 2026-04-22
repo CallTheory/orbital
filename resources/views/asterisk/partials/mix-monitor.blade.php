@@ -58,7 +58,14 @@
     $beepInterval = (int) ($policy?->beepIntervalSeconds ?? 0);
 @endphp
 @if($shouldRecord)
- same => n,NoOp(Recording enabled via {{ $policy->source }}; mix + rx + tx)
+{{-- PHP strips the newline immediately after `?>`, which makes
+     the first `same =>` line land at column 0 when rendered — and
+     Asterisk reads a column-0 `same =>` as a new extension
+     definition, not a continuation of the current `exten =>`.
+     A comment line at column 0 is a no-op for the parser and
+     also forces the continuations below to parse correctly. --}}
+; recording enabled
+ same => n,NoOp(Recording enabled via {{ $policy->source }} - mix rx tx)
  same => n,System(mkdir -p {{ $dir }})
  same => n,MixMonitor({{ $mixFile }},{{ $beep }}r({{ $rxFile }})t({{ $txFile }}))
 @if($disclosurePath)

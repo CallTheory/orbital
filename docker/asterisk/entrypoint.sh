@@ -76,6 +76,46 @@ if grep -q '^;systemname = my_system_name' /etc/asterisk/asterisk.conf 2>/dev/nu
     echo "[orbital-asterisk] systemname = ${NODE_NAME}"
 fi
 
+# ── msmtp config for voicemail-by-email ────────────────────────
+# Asterisk's voicemail app invokes /usr/sbin/sendmail (msmtp-mta
+# symlink) when a voicemail arrives for a mailbox with email= set.
+# Render /etc/msmtprc from MAIL_* env vars mirrored from Laravel's
+# mail config.
+: "${MAIL_HOST:=mailpit}"
+: "${MAIL_PORT:=1025}"
+: "${MAIL_USERNAME:=}"
+: "${MAIL_PASSWORD:=}"
+: "${MAIL_ENCRYPTION:=}"
+: "${MAIL_FROM_ADDRESS:=voicemail@orbital.local}"
+
+# msmtp's AUTH toggle + credentials are conditional. If MAIL_USERNAME
+# is empty or the literal "null" (Laravel convention) we disable
+# auth entirely; otherwise we emit user/password lines.
+if [ -n "${MAIL_USERNAME}" ] && [ "${MAIL_USERNAME}" != "null" ]; then
+    export MSMTP_AUTH_ENABLED="on"
+    export MSMTP_AUTH_LINES="user           ${MAIL_USERNAME}
+password       ${MAIL_PASSWORD}"
+else
+    export MSMTP_AUTH_ENABLED="off"
+    export MSMTP_AUTH_LINES=""
+fi
+
+# TLS/STARTTLS match Laravel's MAIL_ENCRYPTION semantics: "tls" is
+# STARTTLS on the submission port; "ssl" is implicit TLS.
+case "${MAIL_ENCRYPTION}" in
+    tls)  export MSMTP_TLS_ENABLED="on"; export MSMTP_STARTTLS_ENABLED="on";;
+    ssl)  export MSMTP_TLS_ENABLED="on"; export MSMTP_STARTTLS_ENABLED="off";;
+    *)    export MSMTP_TLS_ENABLED="off"; export MSMTP_STARTTLS_ENABLED="off";;
+esac
+
+export MAIL_HOST MAIL_PORT MAIL_FROM_ADDRESS
+
+if [ -f /etc/msmtprc.tmpl ]; then
+    envsubst < /etc/msmtprc.tmpl > /etc/msmtprc
+    chmod 600 /etc/msmtprc
+    echo "[orbital-asterisk] msmtp relay → ${MAIL_HOST}:${MAIL_PORT}"
+fi
+
 # ── 3. Wait for Postgres ────────────────────────────────────────
 WAIT_DEADLINE=$((`date +%s` + 30))
 while ! nc -z "$DB_HOST" "$DB_PORT" 2>/dev/null; do

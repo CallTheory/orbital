@@ -28,6 +28,21 @@ return [
         // Resolved via base_path() so it works inside sail (/var/www/html/...)
         // as well as the host shell — don't hard-code a machine-specific path.
         'config_path' => env('ASTERISK_CONFIG_PATH', base_path('docker/asterisk/config')),
+
+        /*
+        | Internal DID simulation. When enabled, an operator's
+        | softphone can dial a tenant's external DID number (e.g.
+        | `15550000001`) and land in the same from-trunk dispatcher
+        | a real inbound SIP call would take. Useful for testing
+        | routing rules, voicemail mailboxes, and AI-agent flows
+        | without having to ring in from an external trunk.
+        |
+        | Disable in production — a real operator should never be
+        | able to self-originate a call as if it came from outside
+        | the building. Guard with a platform setting later so
+        | super-admins can flip it per-install without redeploys.
+        */
+        'internal_did_simulation' => (bool) env('TELEPHONY_INTERNAL_DID_SIMULATION', false),
     ],
 
     /*

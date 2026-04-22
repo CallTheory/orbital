@@ -49,7 +49,7 @@ class AvailabilityReasonResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-clock';
 
-    protected static string|UnitEnum|null $navigationGroup = 'Features';
+    protected static string|UnitEnum|null $navigationGroup = 'Preferences';
 
     protected static ?string $navigationLabel = 'Availability Reasons';
 

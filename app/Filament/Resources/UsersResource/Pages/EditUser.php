@@ -5,12 +5,17 @@ declare(strict_types=1);
 namespace App\Filament\Resources\UsersResource\Pages;
 
 use App\Filament\Resources\UsersResource;
+use App\Models\Team;
+use App\Models\User;
 use App\Services\Telephony\PlatformExtensionAllocator;
+use App\Services\Tenancy\TenantProvisioner;
 use Filament\Actions;
+use Filament\Forms;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
 use Illuminate\Support\Facades\Password;
 use Laravel\Fortify\Actions\DisableTwoFactorAuthentication;
+use Spatie\Permission\PermissionRegistrar;
 
 class EditUser extends EditRecord
 {
@@ -106,8 +111,86 @@ class EditUser extends EditRecord
                     $this->refreshFormData(['two_factor_secret']);
                 }),
 
+            Actions\Action::make('addToTenant')
+                ->label('Add to tenant')
+                ->icon('heroicon-o-building-office-2')
+                ->modalHeading('Add this staff member to a tenant')
+                ->modalDescription('Attaches this user to the selected tenant. Common use: wire a staff member into a specific customer as their account manager so they can take calls or manage the portal on the customer\'s behalf.')
+                ->schema([
+                    Forms\Components\Select::make('team_id')
+                        ->label('Tenant')
+                        ->required()
+                        ->searchable()
+                        ->options(function () {
+                            /** @var User $record */
+                            $record = $this->record;
+                            $currentIds = \DB::table('team_user')
+                                ->where('user_id', $record->id)
+                                ->pluck('team_id');
+                            return Team::query()
+                                ->where('personal_team', false)
+                                ->whereNotIn('id', $currentIds)
+                                ->orderBy('name')
+                                ->pluck('name', 'id')
+                                ->all();
+                        })
+                        ->helperText('Only tenants this user is not already attached to appear here.'),
+                    Forms\Components\Select::make('role')
+                        ->label('Tenant role')
+                        ->options([
+                            'admin' => 'Admin — can manage users and roles in this tenant',
+                            'member' => 'Member — default invitee role (portal.view_* only)',
+                        ])
+                        ->default('admin')
+                        ->required(),
+                ])
+                ->action(function (array $data): void {
+                    /** @var User $record */
+                    $record = $this->record;
+                    $tenant = Team::findOrFail($data['team_id']);
+                    $this->attachUserToTenant($tenant, $record, $data['role']);
+                }),
+
             Actions\DeleteAction::make(),
         ];
+    }
+
+    /**
+     * Attach $user to $tenant with the given pivot role and assign
+     * the corresponding tenant-scoped Spatie roles. Mirrors the
+     * helper on EditAllUser — same shape, different page.
+     */
+    protected function attachUserToTenant(Team $tenant, User $user, string $role): void
+    {
+        $role = $role === 'admin' ? 'admin' : 'member';
+
+        $tenant->users()->syncWithoutDetaching([
+            $user->id => ['role' => $role],
+        ]);
+
+        $spatieRoles = $role === 'admin'
+            ? [TenantProvisioner::ROLE_TENANT_ADMIN, TenantProvisioner::ROLE_TENANT_USER]
+            : [TenantProvisioner::ROLE_TENANT_USER];
+
+        $registrar = app(PermissionRegistrar::class);
+        $previous = $registrar->getPermissionsTeamId();
+        $registrar->setPermissionsTeamId($tenant->id);
+        try {
+            $user->assignRole($spatieRoles);
+        } finally {
+            $registrar->setPermissionsTeamId($previous);
+            $registrar->forgetCachedPermissions();
+        }
+
+        $user->forceFill(['current_team_id' => $tenant->id])->save();
+
+        $this->refreshFormData(['tenants']);
+
+        Notification::make()
+            ->success()
+            ->title("{$user->email} added to {$tenant->name} as {$role}.")
+            ->body('Their current tenant context has been switched to '.$tenant->name.'.')
+            ->send();
     }
 
     protected function mutateFormDataBeforeFill(array $data): array

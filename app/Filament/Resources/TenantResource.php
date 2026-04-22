@@ -29,7 +29,7 @@ class TenantResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-building-office-2';
 
-    protected static string|UnitEnum|null $navigationGroup = 'Platform';
+    protected static string|UnitEnum|null $navigationGroup = 'Customers';
 
     protected static ?int $navigationSort = 1;
 
@@ -92,11 +92,20 @@ class TenantResource extends Resource
                                     ->numeric()
                                     ->unique(ignoreRecord: true)
                                     ->helperText('Customer-facing identifier. Manually assigned.'),
+                                // Owner is only required at CREATE time (the
+                                // Team needs an initial user_id), and it's
+                                // captured here so the create flow stays
+                                // one-step. Once the tenant exists, the
+                                // Users tab is the authoritative surface —
+                                // portal users and additional members are
+                                // managed via team_user pivot rows there.
                                 Forms\Components\Select::make('user_id')
-                                    ->label('Owner')
+                                    ->label('Initial Owner')
                                     ->relationship('owner', 'name')
                                     ->searchable()
-                                    ->required(),
+                                    ->required()
+                                    ->helperText('The tenant\'s first portal user. After create, invite additional users via the Users tab.')
+                                    ->visibleOn('create'),
                                 Forms\Components\Select::make('timezone')
                                     ->options(fn () => collect(timezone_identifiers_list())->mapWithKeys(fn ($tz) => [$tz => $tz]))
                                     ->searchable()
@@ -200,6 +209,138 @@ class TenantResource extends Resource
                                     ->helperText('Optional text spoken to the caller at the start of a recorded call — e.g. "This call may be monitored or recorded for quality assurance." Leave blank to inherit the platform default.')
                                     ->columnSpanFull(),
                             ]),
+
+                        Tab::make('Voicemail')
+                            ->icon('heroicon-o-envelope-open')
+                            ->schema([
+                                Forms\Components\Placeholder::make('voicemail_help')
+                                    ->content('Configure how voicemails left in this tenant\'s mailbox get transcribed before they are emailed out. Audio is always attached; transcripts are inline in the email body when a provider is selected.')
+                                    ->columnSpanFull(),
+
+                                \Filament\Schemas\Components\Section::make('Greeting')
+                                    ->description('What callers hear before the beep.')
+                                    ->schema([
+                                        Forms\Components\Select::make('voicemail_greeting_mode')
+                                            ->label('Greeting mode')
+                                            ->options([
+                                                'asterisk_default' => 'Asterisk default (no custom greeting)',
+                                                'custom_tts' => 'Custom TTS greeting',
+                                            ])
+                                            ->default('asterisk_default')
+                                            ->native(false)
+                                            ->live(),
+                                        Forms\Components\Textarea::make('voicemail_greeting_text')
+                                            ->label('Greeting text')
+                                            ->rows(3)
+                                            ->maxLength(1000)
+                                            ->placeholder('Hi — you\'ve reached Acme Co. We can\'t take your call right now. Please leave your name, number, and a brief message after the beep.')
+                                            ->helperText('Gets TTS-rendered into a WAV the Asterisk dialplan plays before the caller records. Re-rendered automatically on save.')
+                                            ->visible(fn (\Filament\Schemas\Components\Utilities\Get $get) => $get('voicemail_greeting_mode') === 'custom_tts'),
+                                        Forms\Components\Select::make('voicemail_greeting_voice_provider')
+                                            ->label('Voice provider')
+                                            ->options([
+                                                'openai' => 'OpenAI (tts-1)',
+                                                'elevenlabs' => 'ElevenLabs',
+                                            ])
+                                            ->default('openai')
+                                            ->native(false)
+                                            ->visible(fn (\Filament\Schemas\Components\Utilities\Get $get) => $get('voicemail_greeting_mode') === 'custom_tts'),
+                                        Forms\Components\TextInput::make('voicemail_greeting_voice_id')
+                                            ->label('Voice')
+                                            ->helperText('OpenAI voices: alloy, echo, fable, onyx, nova, shimmer. ElevenLabs: paste a voice ID from your library.')
+                                            ->placeholder('alloy')
+                                            ->visible(fn (\Filament\Schemas\Components\Utilities\Get $get) => $get('voicemail_greeting_mode') === 'custom_tts'),
+                                    ]),
+
+                                \Filament\Schemas\Components\Section::make('Transcription')
+                                    ->description('Convert the recorded audio to text in the notification email.')
+                                    ->schema([
+                                Forms\Components\Select::make('voicemail_transcription_provider')
+                                    ->label('Transcription provider')
+                                    ->options(\App\Services\Voicemail\VoicemailTranscriber::PROVIDERS)
+                                    ->default('none')
+                                    ->live()
+                                    ->native(false)
+                                    ->helperText('Pick "Whisper (local)" if you want to stay off the public internet; pick a cloud provider for higher accuracy or multilingual support.'),
+                                // Cloud provider API key — shown for any
+                                // provider that isn't "none" or the
+                                // local whisper.cpp server.
+                                Forms\Components\TextInput::make('voicemail_transcription_config.api_key')
+                                    ->label('API key')
+                                    ->password()
+                                    ->revealable()
+                                    ->helperText('Stored encrypted. Rotate by replacing the value here.')
+                                    ->visible(fn (\Filament\Schemas\Components\Utilities\Get $get) => in_array(
+                                        $get('voicemail_transcription_provider'),
+                                        ['openai_whisper', 'deepgram', 'elevenlabs'],
+                                        true,
+                                    )),
+                                Forms\Components\TextInput::make('voicemail_transcription_config.model')
+                                    ->label('Model')
+                                    ->helperText('Optional — defaults to whisper-1 (OpenAI) or nova-2 (Deepgram).')
+                                    ->visible(fn (\Filament\Schemas\Components\Utilities\Get $get) => in_array(
+                                        $get('voicemail_transcription_provider'),
+                                        ['openai_whisper', 'deepgram'],
+                                        true,
+                                    )),
+                                Forms\Components\TextInput::make('voicemail_transcription_config.model_id')
+                                    ->label('Model ID')
+                                    ->helperText('Optional — defaults to scribe_v1.')
+                                    ->visible(fn (\Filament\Schemas\Components\Utilities\Get $get) => $get('voicemail_transcription_provider') === 'elevenlabs'),
+                                // Whisper (local) — pick one of the ggml
+                                // models baked into the whisper-local
+                                // image. The list here must stay in sync
+                                // with the WHISPER_MODELS compose build
+                                // arg; models not bundled will return a
+                                // clear HTTP 400 from the service with
+                                // the available set listed.
+                                Forms\Components\Select::make('voicemail_transcription_config.model')
+                                    ->label('Whisper model')
+                                    ->options([
+                                        'tiny.en' => 'tiny.en — English-only, fastest (~75MB)',
+                                        'tiny' => 'tiny — multilingual, fastest (~75MB)',
+                                        'base.en' => 'base.en — English-only, balanced (~142MB)',
+                                        'base' => 'base — multilingual, balanced (~142MB)',
+                                        'small.en' => 'small.en — English-only, higher accuracy (~466MB)',
+                                        'small' => 'small — multilingual, higher accuracy (~466MB)',
+                                        'medium.en' => 'medium.en — English-only, slower (~1.5GB)',
+                                        'medium' => 'medium — multilingual, slower (~1.5GB)',
+                                        'large-v3-turbo' => 'large-v3-turbo — multilingual, best size/accuracy (~809MB)',
+                                        'large-v3' => 'large-v3 — multilingual, highest accuracy (~3GB)',
+                                    ])
+                                    ->default('base.en')
+                                    ->native(false)
+                                    ->helperText('Models with `.en` only understand English. Multilingual variants accept any language whisper supports — leave Language blank to auto-detect.')
+                                    ->visible(fn (\Filament\Schemas\Components\Utilities\Get $get) => $get('voicemail_transcription_provider') === 'whisper_local'),
+                                Forms\Components\Select::make('voicemail_transcription_config.language')
+                                    ->label('Language')
+                                    ->options([
+                                        '' => 'Auto-detect (multilingual only)',
+                                        'en' => 'English',
+                                        'es' => 'Spanish',
+                                        'fr' => 'French',
+                                        'de' => 'German',
+                                        'it' => 'Italian',
+                                        'pt' => 'Portuguese',
+                                        'nl' => 'Dutch',
+                                        'pl' => 'Polish',
+                                        'ru' => 'Russian',
+                                        'uk' => 'Ukrainian',
+                                        'zh' => 'Chinese',
+                                        'ja' => 'Japanese',
+                                        'ko' => 'Korean',
+                                        'ar' => 'Arabic',
+                                        'hi' => 'Hindi',
+                                    ])
+                                    ->native(false)
+                                    ->default('')
+                                    ->helperText('Forces whisper to interpret audio as this language. Leave blank to let the model decide (only works on multilingual models). Ignored entirely by `.en` models.')
+                                    ->visible(fn (\Filament\Schemas\Components\Utilities\Get $get) => $get('voicemail_transcription_provider') === 'whisper_local'),
+                                Forms\Components\Placeholder::make('voicemail_local_note')
+                                    ->content('Whisper (local) uses the in-cluster whisper-local service — no credentials needed, no outbound internet. Available models are set at image build time via the WHISPER_MODELS compose env var.')
+                                    ->visible(fn (\Filament\Schemas\Components\Utilities\Get $get) => $get('voicemail_transcription_provider') === 'whisper_local'),
+                                    ]),
+                            ]),
                     ])
                     ->columnSpanFull(),
             ]);
@@ -270,8 +411,7 @@ class TenantResource extends Resource
             Pages\ManageTenantPersonas::class,
             Pages\ManageTenantIntakeGoals::class,
             Pages\ManageTenantFlows::class,
-            Pages\ManageTenantContacts::class,
-            Pages\ManageTenantContactFields::class,
+            Pages\ManageTenantUsers::class,
             Pages\ManageTenantDirectory::class,
             Pages\ManageTenantDirectoryFields::class,
         ]);
@@ -292,11 +432,9 @@ class TenantResource extends Resource
             'personas' => Pages\ManageTenantPersonas::route('/{record}/personas'),
             'intake-goals' => Pages\ManageTenantIntakeGoals::route('/{record}/intake-goals'),
             'intake-flows' => Pages\ManageTenantFlows::route('/{record}/intake-flows'),
-            'contacts' => Pages\ManageTenantContacts::route('/{record}/contacts'),
-            'contact-fields' => Pages\ManageTenantContactFields::route('/{record}/contact-fields'),
+            'users' => Pages\ManageTenantUsers::route('/{record}/users'),
             'directory' => Pages\ManageTenantDirectory::route('/{record}/directory'),
             'directory-fields' => Pages\ManageTenantDirectoryFields::route('/{record}/directory-fields'),
-            'smart-ingest' => Pages\SmartIngestContacts::route('/{record}/smart-ingest'),
         ];
     }
 

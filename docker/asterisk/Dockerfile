@@ -134,8 +134,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libiksemel3 \
     gettext-base \
     netcat-openbsd \
+    # msmtp-mta ships a sendmail-compatible binary at /usr/sbin/sendmail
+    # so Asterisk's voicemail `attach=yes` → email path works without
+    # a full MTA. Config is rendered by the entrypoint from MAIL_*
+    # env vars (mirrored from Laravel's mail config).
+    msmtp \
+    msmtp-mta \
+    # curl — used by the notify-voicemail.sh externnotify hook to
+    # POST voicemail events to Laravel's /api/voicemail/received
+    # webhook. Without it the webhook POST fails silently (the
+    # script logs "webhook POST failed" and exits 0 so the caller
+    # never sees an error).
+    curl \
     && rm -rf /var/lib/apt/lists/* \
-    && adduser --system --group --no-create-home asterisk
+    # Pin asterisk uid/gid to 200/200 so adding packages (like msmtp)
+    # that create their own system users can't bump asterisk to a
+    # higher uid and orphan pre-existing /var/spool/asterisk files
+    # that were chowned at an earlier build.
+    && groupadd -g 200 asterisk \
+    && useradd -u 200 -g 200 -M -s /usr/sbin/nologin asterisk
 
 COPY --from=builder /usr/lib/asterisk /usr/lib/asterisk
 # Asterisk installs libasteriskssl / libasteriskpj into /usr/lib directly
@@ -188,11 +205,23 @@ COPY odbc.ini        /etc/odbc.ini.tmpl
 # Asterisk.
 COPY entrypoint.sh /usr/local/bin/orbital-asterisk-entrypoint
 
-RUN chmod +x /usr/local/bin/orbital-asterisk-entrypoint \
+# msmtp config template — entrypoint renders /etc/msmtprc from
+# MAIL_* env vars so voicemail-by-email works without bundling
+# relay credentials in the image.
+COPY msmtprc.tmpl /etc/msmtprc.tmpl
+
+# externnotify script Asterisk invokes after a new voicemail is
+# written. Posts to Laravel's /api/voicemail/received webhook so
+# the queued transcription job runs + a rich email gets delivered.
+# Asterisk's built-in email= path is kept off in voicemail.conf so
+# Laravel owns the whole delivery flow.
+COPY notify-voicemail.sh /usr/local/bin/notify-voicemail.sh
+
+RUN chmod +x /usr/local/bin/orbital-asterisk-entrypoint /usr/local/bin/notify-voicemail.sh \
     && ldconfig \
     && mkdir -p /var/run/asterisk /var/log/asterisk /etc/asterisk/keys /etc/asterisk/generated \
-    && touch /etc/odbc.ini \
-    && chown asterisk:asterisk /etc/odbc.ini /etc/odbc.ini.tmpl \
+    && touch /etc/odbc.ini /etc/msmtprc /var/log/msmtp.log \
+    && chown asterisk:asterisk /etc/odbc.ini /etc/odbc.ini.tmpl /etc/msmtprc /etc/msmtprc.tmpl /var/log/msmtp.log \
     && chown -R asterisk:asterisk /var/lib/asterisk /var/spool/asterisk /var/run/asterisk /var/log/asterisk /etc/asterisk
 
 EXPOSE 5038/tcp 5060/udp 5060/tcp 5061/tcp 8089/tcp 10000-10099/udp

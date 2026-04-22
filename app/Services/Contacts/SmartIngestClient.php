@@ -9,13 +9,13 @@ use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 /**
- * Wraps Anthropic's messages API for the contact smart-ingest flow.
+ * Wraps Anthropic's messages API for the directory smart-ingest flow.
  *
  * The ingest conversation is a chain of user + assistant turns where
  * user messages can carry a text block and/or an image block (base64).
  * The assistant is instructed to reply with JSON-only output shaped
- * like a Contact / DirectoryEntry array, possibly with a short
- * explanatory message alongside.
+ * like a DirectoryEntry array, possibly with a short explanatory
+ * message alongside.
  *
  * Two entry points:
  *   - `parse()` for a single-shot extraction with optional
@@ -39,16 +39,13 @@ class SmartIngestClient
      * parse and all subsequent revisions. The schema block is built
      * from the tenant's own field definitions — no fixed shape is
      * baked in here so the same client serves dog walkers, lawyers,
-     * and clinics with their wildly different Contact/Directory
-     * schemas. See {@see formatSchemaForPrompt()} for the block
-     * shape.
+     * and clinics with their wildly different directory schemas.
+     * See {@see formatSchemaForPrompt()} for the block shape.
      */
-    protected function systemPrompt(string $kind, string $schemaBlock): string
+    protected function systemPrompt(string $schemaBlock): string
     {
-        $kindLabel = $kind === 'directory' ? 'directory entries' : 'contacts';
-
         return <<<PROMPT
-You are a contact-parsing assistant for an answering-service platform. The operator will hand you raw input — CSV rows, an Excel sheet, a PDF, an image of a business card, an email forward, or free-text pasted from somewhere — and you extract it into structured {$kindLabel} for *this specific tenant*.
+You are a contact-parsing assistant for an answering-service platform. The operator will hand you raw input — CSV rows, an Excel sheet, a PDF, an image of a business card, an email forward, or free-text pasted from somewhere — and you extract it into structured directory entries for *this specific tenant*.
 
 The target schema is defined by the tenant. Use ONLY these field keys:
 
@@ -78,8 +75,7 @@ PROMPT;
      * Select / multi_select types append their option list inline so
      * the model knows the closed set of valid values.
      *
-     * @param  iterable<object>  $definitions  ContactFieldDefinition or
-     *                                          DirectoryFieldDefinition rows
+     * @param  iterable<object>  $definitions  DirectoryFieldDefinition rows
      */
     public function formatSchemaForPrompt(iterable $definitions): string
     {
@@ -119,7 +115,7 @@ PROMPT;
      *
      * @return array{rows: array<int, array<string, mixed>>, notes: string}
      */
-    public function parse(string $kind, string $schemaBlock, string $text, ?string $imageBase64 = null, ?string $imageMediaType = null): array
+    public function parse(string $schemaBlock, string $text, ?string $imageBase64 = null, ?string $imageMediaType = null): array
     {
         $content = [];
         if ($imageBase64 !== null && $imageMediaType !== null) {
@@ -136,7 +132,7 @@ PROMPT;
             $content[] = ['type' => 'text', 'text' => $text];
         }
 
-        return $this->call($kind, $schemaBlock, [
+        return $this->call($schemaBlock, [
             ['role' => 'user', 'content' => $content],
         ]);
     }
@@ -150,17 +146,17 @@ PROMPT;
      * @param  array<int, array{role: string, content: mixed}>  $priorMessages
      * @return array{rows: array<int, array<string, mixed>>, notes: string}
      */
-    public function revise(string $kind, string $schemaBlock, array $priorMessages, string $correction): array
+    public function revise(string $schemaBlock, array $priorMessages, string $correction): array
     {
         $messages = [...$priorMessages, ['role' => 'user', 'content' => $correction]];
-        return $this->call($kind, $schemaBlock, $messages);
+        return $this->call($schemaBlock, $messages);
     }
 
     /**
      * @param  array<int, array{role: string, content: mixed}>  $messages
      * @return array{rows: array<int, array<string, mixed>>, notes: string}
      */
-    protected function call(string $kind, string $schemaBlock, array $messages): array
+    protected function call(string $schemaBlock, array $messages): array
     {
         $apiKey = (string) config('services.anthropic.api_key', '');
         if ($apiKey === '') {
@@ -176,7 +172,7 @@ PROMPT;
             ->post($this->endpoint, [
                 'model' => $this->model,
                 'max_tokens' => $this->maxTokens,
-                'system' => $this->systemPrompt($kind, $schemaBlock),
+                'system' => $this->systemPrompt($schemaBlock),
                 'messages' => $messages,
             ]);
 

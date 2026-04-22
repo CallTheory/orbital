@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\ExtensionController;
 use App\Http\Controllers\Api\InboundMailController;
 use App\Http\Controllers\Api\KnowledgeController;
 use App\Http\Controllers\Api\TlsRenewalWebhookController;
+use App\Http\Controllers\Api\VoicemailWebhookController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Route;
@@ -51,6 +52,14 @@ Route::post('/mail/inbound', [InboundMailController::class, 'store'])
  */
 Route::get('/mail/validate-recipient', [InboundMailController::class, 'validateRecipient'])
     ->middleware('inbound-mail-token');
+
+/**
+ * Voicemail webhook. Asterisk's externnotify hook (notify-voicemail.sh
+ * inside the asterisk container) POSTs here whenever a new mailbox
+ * recording lands. Creates a Voicemail row, queues transcription +
+ * email. Auth via the X-Voicemail-Token shared secret.
+ */
+Route::post('/voicemail/received', [VoicemailWebhookController::class, 'store']);
 
 // Agent worker API (Sanctum token auth)
 Route::middleware('auth:sanctum')->group(function () {

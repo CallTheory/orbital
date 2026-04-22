@@ -12,8 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * Extended tenant-scope trait for models that can ALSO be owned
  * by a platform-level shared container attached to multiple
- * tenants via a pivot. Currently used by `Contact`,
- * `DirectoryEntry`, `ContactFieldDefinition`, and
+ * tenants via a pivot. Currently used by `DirectoryEntry` and
  * `DirectoryFieldDefinition`.
  *
  * The default `BelongsToTeam` scope filters queries to

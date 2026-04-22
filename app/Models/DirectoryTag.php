@@ -9,11 +9,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 /**
- * Tag on a directory entry. Separate vocabulary from ContactTag
- * because the routing semantics differ — directory tags drive
- * call-time decisions (after-hours, emergency, spanish-speaker,
- * department-sales), contact tags drive outbound communication
- * (billing, holiday card, newsletter).
+ * Tag on a directory entry. Used for call-time routing decisions
+ * (after-hours, emergency, spanish-speaker, department-sales).
  */
 class DirectoryTag extends Model
 {

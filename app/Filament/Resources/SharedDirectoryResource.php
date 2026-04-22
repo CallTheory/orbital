@@ -18,11 +18,10 @@ use Filament\Tables\Table;
 use UnitEnum;
 
 /**
- * Platform-level shared directory — phone-book variant of
- * SharedContactList. Same UI shape, different target table.
- * Attached tenants see entries from this directory during
- * call-time lookups via the BelongsToTeamOrSharedPool scope
- * on DirectoryEntry.
+ * Platform-level shared directory — a phone book curated by the
+ * platform operator and attached to one or more tenants. Attached
+ * tenants see entries from this directory during call-time lookups
+ * via the BelongsToTeamOrSharedPool scope on DirectoryEntry.
  */
 class SharedDirectoryResource extends Resource
 {
@@ -30,7 +29,7 @@ class SharedDirectoryResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-book-open';
 
-    protected static string|UnitEnum|null $navigationGroup = 'Features';
+    protected static string|UnitEnum|null $navigationGroup = 'Preferences';
 
     protected static ?string $navigationLabel = 'Shared Directories';
 

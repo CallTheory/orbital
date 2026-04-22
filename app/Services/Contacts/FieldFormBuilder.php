@@ -12,10 +12,10 @@ use Illuminate\Support\Collection;
  * form components keyed under `values.{slug}` so they read/write
  * directly into the model's `values` JSONB column.
  *
- * Used by ManageTenantContacts and ManageTenantDirectory — both pages
- * load definitions at form() time and hand them here. Field type →
- * component mapping is the only knowledge concentrated in this
- * class so adding a new field type is a single edit.
+ * Used by ManageTenantDirectory — the page loads definitions at
+ * form() time and hands them here. Field type → component mapping
+ * is the only knowledge concentrated in this class so adding a new
+ * field type is a single edit.
  *
  * The collection is consumed as-is (filtered to active definitions
  * and sorted by sort_order) — callers should pass the result of the
@@ -24,7 +24,7 @@ use Illuminate\Support\Collection;
 class FieldFormBuilder
 {
     /**
-     * @param  Collection<int, \App\Models\ContactFieldDefinition|\App\Models\DirectoryFieldDefinition>  $definitions
+     * @param  Collection<int, \App\Models\DirectoryFieldDefinition>  $definitions
      * @return array<int, Forms\Components\Field>
      */
     public function build(Collection $definitions): array

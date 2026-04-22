@@ -87,6 +87,11 @@ services:
             # completed MixMonitor files to MinIO. Asterisk writes, we
             # upload-and-delete.
             - 'asterisk-recordings:/var/spool/asterisk/monitor'
+            # Shared voicemail spool — Asterisk writes mailbox WAVs here
+            # via the VoiceMail() dialplan app, and TranscribeVoicemailJob
+            # reads the file at the same container-local path the
+            # externnotify webhook hands it.
+            - 'asterisk-voicemail-spool:/var/spool/asterisk/voicemail'
             # Shared disclosure-prompts volume — orbital.test renders
             # TTS audio files here, asterisk plays them back at call
             # time. Keyed by content hash, so identical messages across
@@ -100,8 +105,6 @@ services:
             - sail
             - telephony
         depends_on:
-            - pgsql
-            - valkey
             - mailpit
 
     # pgAdmin 4 — web-based Postgres admin UI. Pre-wired to the
@@ -146,8 +149,6 @@ services:
             # is gated by the Laravel proxy route instead.
         networks:
             - sail
-        depends_on:
-            - valkey
         restart: unless-stopped
 
     pgadmin:
@@ -216,68 +217,18 @@ services:
         networks:
             - sail
         depends_on:
-            - pgsql
             - orbital.test
         restart: unless-stopped
 
-    pgsql:
-        # pgvector/pgvector:pg17 is vanilla Postgres 17 with the pgvector
-        # extension pre-installed. Same on-disk format as postgres:17 so
-        # the existing sail-pgsql volume swaps in cleanly. Migrations run
-        # `CREATE EXTENSION IF NOT EXISTS vector` to activate it.
-        image: 'pgvector/pgvector:pg17'
-        ports:
-            - '${FORWARD_DB_PORT:-5432}:5432'
-        environment:
-            PGPASSWORD: '${DB_PASSWORD:-password}'
-            POSTGRES_DB: '${DB_DATABASE:-orbital}'
-            POSTGRES_USER: '${DB_USERNAME:-orbital}'
-            POSTGRES_PASSWORD: '${DB_PASSWORD:-password}'
-        volumes:
-            - 'sail-pgsql:/var/lib/postgresql/data'
-            - './vendor/laravel/sail/database/pgsql/create-testing-database.sql:/docker-entrypoint-initdb.d/10-create-testing-database.sql'
-        networks:
-            - sail
-        healthcheck:
-            test:
-                - CMD
-                - pg_isready
-                - '-q'
-                - '-d'
-                - '${DB_DATABASE:-orbital}'
-                - '-U'
-                - '${DB_USERNAME:-orbital}'
-            retries: 3
-            timeout: 5s
-
-    valkey:
-        image: 'valkey/valkey:8-alpine'
-        # `--requirepass` is set at the command line (not a config
-        # file) so it's pinned in place and can't drift from the
-        # Laravel / LiveKit / Redis Commander clients that all read
-        # REDIS_PASSWORD from .env. The healthcheck authenticates
-        # with the same value — without this the container reports
-        # unhealthy as soon as we turn on requirepass because
-        # unauthenticated PINGs get rejected.
-        command:
-            - '--requirepass'
-            - '${REDIS_PASSWORD}'
-        ports:
-            - '${FORWARD_REDIS_PORT:-6379}:6379'
-        volumes:
-            - 'sail-valkey:/data'
-        networks:
-            - sail
-            - telephony
-        healthcheck:
-            test:
-                - CMD
-                - valkey-cli
-                - '-a'
-                - '${REDIS_PASSWORD}'
-                - ping
-            retries: 3
-            timeout: 5s
+    # Legacy single-node `pgsql` and `valkey` services were removed
+    # once the HA data tier landed. The app now talks to Postgres
+    # through haproxy → Patroni (compose/ha-data.yml) and to Valkey
+    # through haproxy → Sentinel-elected master. Bring the HA
+    # overlays up alongside this file:
+    #
+    #   docker compose -f docker-compose.yml -f compose/ha-data.yml up -d
+    #
+    # See docs/ENVIRONMENT.md for the per-tier topology.
 
     # Laravel Reverb — self-hosted websocket broadcasting server. Runs
     # `php artisan reverb:start` inside a fresh copy of the app image
@@ -306,9 +257,62 @@ services:
         networks:
             - sail
             - telephony
-        depends_on:
-            - pgsql
-            - valkey
+        restart: unless-stopped
+
+    # Laravel scheduler — runs `schedule:work` which loops forever
+    # and fires every task in routes/console.php at its configured
+    # cadence (scheduler heartbeat, recording retention prune, the
+    # queue-metrics rollup, etc.). Without this container, those
+    # jobs silently stop running. Replaces the "run `schedule:work`
+    # in a second terminal" dev pattern with a supervised container
+    # that auto-restarts.
+    scheduler:
+        build:
+            context: ./docker/8.4
+            dockerfile: Dockerfile
+            args:
+                WWWGROUP: '${WWWGROUP}'
+        command: ['php', '/var/www/html/artisan', 'schedule:work']
+        environment:
+            WWWUSER: '${WWWUSER}'
+            LARAVEL_SAIL: 1
+        volumes:
+            - '.:/var/www/html'
+        networks:
+            - sail
+        restart: unless-stopped
+
+    # Laravel Horizon — dedicated queue worker process. Runs as its
+    # own container so queued jobs (voicemail transcription +
+    # email, inbound mail processing, broadcast events, etc.) get
+    # picked up automatically whenever the stack is running — no
+    # manual `sail artisan horizon` in a second terminal. Docker's
+    # restart policy replaces supervisord for crash recovery.
+    horizon:
+        build:
+            context: ./docker/8.4
+            dockerfile: Dockerfile
+            args:
+                WWWGROUP: '${WWWGROUP}'
+        command: ['php', '/var/www/html/artisan', 'horizon']
+        environment:
+            WWWUSER: '${WWWUSER}'
+            LARAVEL_SAIL: 1
+        volumes:
+            - '.:/var/www/html'
+            # Mount the voicemail spool so TranscribeVoicemailJob
+            # running here can read the WAV Asterisk wrote.
+            - 'asterisk-voicemail-spool:/var/spool/asterisk/voicemail'
+            # Mount the recordings volume too so future jobs that
+            # upload MixMonitor output to S3 don't fail the same
+            # way the voicemail job did before this mount landed.
+            - 'asterisk-recordings:/var/spool/asterisk/monitor'
+            # Shared TTS-prompt volume — any job that renders
+            # audio for Asterisk to play back drops it here.
+            - 'asterisk-prompts:/var/spool/asterisk/prompts'
+        networks:
+            - sail
+            - telephony
         restart: unless-stopped
 
     mailpit:
@@ -426,10 +430,35 @@ services:
             # SIP Proxy page can show how many dynamic registrations
             # THIS Asterisk actually holds vs its sibling.
             ASTERISK_NODE_NAME: 'asterisk-1'
+            # Voicemail-by-email relay — Asterisk calls /usr/sbin/sendmail
+            # (msmtp-mta) and msmtp forwards to MAIL_HOST:MAIL_PORT. In
+            # dev that's Mailpit; in prod set via .env to your real relay.
+            MAIL_HOST: '${MAIL_HOST:-mailpit}'
+            MAIL_PORT: '${MAIL_PORT:-1025}'
+            MAIL_USERNAME: '${MAIL_USERNAME:-}'
+            MAIL_PASSWORD: '${MAIL_PASSWORD:-}'
+            MAIL_ENCRYPTION: '${MAIL_ENCRYPTION:-}'
+            MAIL_FROM_ADDRESS: '${MAIL_FROM_ADDRESS:-voicemail@orbital.local}'
+            # Voicemail webhook — externnotify script POSTs here
+            # whenever Asterisk writes a new mailbox recording, so
+            # Laravel can run transcription + send the rich email.
+            VOICEMAIL_WEBHOOK_URL: '${VOICEMAIL_WEBHOOK_URL:-http://orbital.test/api/voicemail/received}'
+            VOICEMAIL_WEBHOOK_TOKEN: '${VOICEMAIL_WEBHOOK_TOKEN:-change-me-in-env}'
         volumes:
             - './docker/asterisk/config:/etc/asterisk/generated:ro'
+            # voicemail.conf is regenerated by AsteriskConfigService
+            # whenever a tenant adds/removes a voicemail routing rule.
+            # Bind-mount over the stock file so Laravel-owned mailbox
+            # state wins; `voicemail reload` via AMI picks it up
+            # without an Asterisk restart.
+            - './docker/asterisk/config/voicemail.conf:/etc/asterisk/voicemail.conf:ro'
             - 'asterisk-spool:/var/spool/asterisk'
             - 'asterisk-recordings:/var/spool/asterisk/monitor'
+            # Voicemail WAVs land here. Shared with the Laravel app
+            # container so TranscribeVoicemailJob can read the file
+            # directly from the spool path the externnotify script
+            # hands it via webhook payload.
+            - 'asterisk-voicemail-spool:/var/spool/asterisk/voicemail'
             # Disclosure-message TTS prompt files, written by the
             # Laravel app container (DisclosureRenderer) and played
             # back via dialplan Playback(...) at call time.
@@ -450,8 +479,6 @@ services:
             # Icecast / SIP-bridge peers.
             - sail
             - telephony
-        depends_on:
-            - pgsql
         cap_add:
             - NET_ADMIN
         restart: unless-stopped
@@ -467,8 +494,6 @@ services:
             - './docker/livekit/livekit.yaml:/etc/livekit.yaml:ro'
         networks:
             - telephony
-        depends_on:
-            - valkey
         restart: unless-stopped
 
     livekit-sip:
@@ -723,6 +748,31 @@ services:
             - sail
         restart: unless-stopped
 
+    # Local whisper.cpp transcription service. Used by tenants that
+    # select `whisper_local` as their voicemail transcription
+    # provider — the TranscribeVoicemailJob POSTs WAVs here and
+    # gets plain-text transcripts back. Offline-first: model files
+    # are baked into the image at build time, no cloud dependency.
+    #
+    # WHISPER_MODELS is the comma-separated list of ggml models to
+    # pre-download. Defaults cover fast/accurate English + two
+    # multilingual options. Add `medium` or `large-v3` if a tenant
+    # asks for higher accuracy and the host can afford the RAM.
+    whisper-local:
+        build:
+            context: ./docker/whisper-local
+            args:
+                WHISPER_MODELS: '${WHISPER_MODELS:-tiny.en,base.en,small,large-v3-turbo}'
+        networks:
+            - sail
+        restart: unless-stopped
+        healthcheck:
+            test: ['CMD', 'curl', '-fs', 'http://127.0.0.1:9700/']
+            interval: 30s
+            timeout: 5s
+            retries: 3
+            start_period: 20s
+
     grafana:
         image: 'grafana/grafana:latest'
         # Loopback binding only — the host port is kept as a
@@ -792,17 +842,17 @@ networks:
         driver: bridge
 
 volumes:
-    sail-pgsql:
-        driver: local
     sail-pgadmin:
-        driver: local
-    sail-valkey:
         driver: local
     asterisk-spool:
         driver: local
     asterisk-recordings:
         driver: local
     asterisk-prompts:
+        driver: local
+    # Shared between asterisk-1, asterisk-2, and orbital.test. Asterisk
+    # writes mailbox WAVs; Laravel reads them via TranscribeVoicemailJob.
+    asterisk-voicemail-spool:
         driver: local
     icecast-config:
         driver: local

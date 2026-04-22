@@ -8,10 +8,9 @@ use App\Models\Concerns\BelongsToTeamOrSharedPool;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * Schema entry for a DirectoryEntry field. Parallels
- * ContactFieldDefinition — same shape, separate table, different
- * vocabulary scoped by use case (directory fields drive call-time
- * routing, contact fields drive outbound communication).
+ * Schema entry for a DirectoryEntry field. Directory fields drive
+ * call-time routing — the tenant's phone book used by AI agents and
+ * live operators while handling a call.
  */
 class DirectoryFieldDefinition extends Model
 {

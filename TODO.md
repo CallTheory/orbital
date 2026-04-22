@@ -141,6 +141,35 @@ the work.
 
 ### Other
 
+- [ ] **Template tenants for common answering-service patterns.**
+      Ship a set of "start here" tenants we (and future platform
+      operators) can clone for new clients. Each one exercises a
+      different mix of AI + human + routing primitives we already
+      have, and surfaces gaps that need new features. Templates:
+      - **Voicemail-only** — no AI, no operator, just take a message,
+        email it to the tenant. Tests bare intake-flow → message path.
+      - **Live operator only** — no AI, humans take every call.
+      - **Live operator with AI overflow** — humans pick up when
+        available; AI handles when everyone's busy or after hours.
+      - **Virtual assistant** — directory of named people at the
+        tenant. Call comes in, operator (AI or human) greets, asks
+        who the caller wants, transfers to the right person (or
+        takes a message if they're unavailable). This one likely
+        needs new primitives: a tenant-scoped directory model and a
+        `transfer-to-contact` agent action. Also needs to prove the
+        SAME workflow works whether an AI or a human is fronting
+        the call.
+      - **(Existing)** — whatever we have today gets codified as
+        a fifth template so new tenants have a known-good baseline.
+      Work splits into: (1) inventory what's already composable from
+      RoutingRule + CallQueue + IntakeFlow + AgentPersona, (2) fill
+      the gaps, (3) seeders that spin up each template + docs.
+- [ ] **Phone book / directory in the softphone widget.** When an
+      operator is working inside a tenant context, the phone widget
+      should expose that tenant's directory (contacts, on-call
+      staff, shared lists) so transfers and outbound calls don't
+      require switching pages. Needed for the virtual-assistant
+      template above to be usable by human operators.
 - [ ] **Partial-message policy when caller hangs up mid-intake.**
       Tenant/script/goal toggle for what happens when a caller
       drops off mid-script before the agent (AI or human-operator)

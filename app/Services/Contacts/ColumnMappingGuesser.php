@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Services\Contacts;
 
-use App\Models\ContactFieldDefinition;
 use App\Models\DirectoryFieldDefinition;
 use Illuminate\Support\Collection;
 
@@ -12,18 +11,17 @@ use Illuminate\Support\Collection;
  * Header → tenant-defined field matcher for the CSV / Excel import
  * flow. The Filament import action calls this twice per file:
  *
- *   1. {@see optionsForContacts()} / {@see optionsForDirectory()} to
- *      build the dropdown list of valid mapping targets — sourced
- *      entirely from the tenant's own field definitions.
+ *   1. {@see optionsForDirectory()} to build the dropdown list of
+ *      valid mapping targets — sourced entirely from the tenant's
+ *      own directory field definitions.
  *
- *   2. {@see guessContact()} / {@see guessDirectory()} once per
- *      column header to seed each Select's default value with a
- *      best-guess match. The matcher uses two strategies: first an
- *      exact normalize-and-compare against every definition's label
- *      and key, then a role-based fallback so common header names
- *      ("Email Address", "Phone") still find the right field even
- *      when the tenant labeled it something idiosyncratic ("Patient
- *      Email", "Office Number").
+ *   2. {@see guessDirectory()} once per column header to seed each
+ *      Select's default value with a best-guess match. The matcher
+ *      uses two strategies: first an exact normalize-and-compare
+ *      against every definition's label and key, then a role-based
+ *      fallback so common header names ("Email Address", "Phone")
+ *      still find the right field even when the tenant labeled it
+ *      something idiosyncratic ("Patient Email", "Office Number").
  */
 class ColumnMappingGuesser
 {
@@ -41,31 +39,9 @@ class ColumnMappingGuesser
     ];
 
     /**
-     * Mapping options for the Contacts import dropdown.
-     *
-     * @return array<string, string>  ['' => '— Skip —', 'field_key' => 'Field label', …]
-     */
-    public function optionsForContacts(int $teamId): array
-    {
-        return $this->buildOptions($this->contactDefinitions($teamId));
-    }
-
-    /**
-     * Mapping options for the Shared Contact List import dropdown.
-     * Same shape as optionsForContacts, but the field definitions
-     * come from the shared list's own schema rather than a tenant's.
-     *
-     * @return array<string, string>
-     */
-    public function optionsForSharedContactList(int $sharedContactListId): array
-    {
-        return $this->buildOptions($this->sharedContactDefinitions($sharedContactListId));
-    }
-
-    /**
      * Mapping options for the Directory import dropdown.
      *
-     * @return array<string, string>
+     * @return array<string, string>  ['' => '— Skip —', 'field_key' => 'Field label', …]
      */
     public function optionsForDirectory(int $teamId): array
     {
@@ -73,32 +49,18 @@ class ColumnMappingGuesser
     }
 
     /**
-     * Best-guess target field key for a Contacts CSV header. Returns
-     * null if nothing matches confidently — the import form treats
-     * that as "skip this column" and the operator can still pick a
-     * target manually.
+     * Best-guess target field key for a Directory CSV header. Returns
+     * null if nothing matches confidently — the import form treats that
+     * as "skip this column" and the operator can still pick a target
+     * manually.
      */
-    public function guessContact(int $teamId, string $header): ?string
-    {
-        return $this->guess($this->contactDefinitions($teamId), $header);
-    }
-
-    /**
-     * Best-guess target field key for a Shared Contact List CSV header.
-     * Uses the shared list's own definitions instead of any tenant's.
-     */
-    public function guessSharedContact(int $sharedContactListId, string $header): ?string
-    {
-        return $this->guess($this->sharedContactDefinitions($sharedContactListId), $header);
-    }
-
     public function guessDirectory(int $teamId, string $header): ?string
     {
         return $this->guess($this->directoryDefinitions($teamId), $header);
     }
 
     /**
-     * @param  Collection<int, ContactFieldDefinition|DirectoryFieldDefinition>  $definitions
+     * @param  Collection<int, DirectoryFieldDefinition>  $definitions
      * @return array<string, string>
      */
     protected function buildOptions(Collection $definitions): array
@@ -111,7 +73,7 @@ class ColumnMappingGuesser
     }
 
     /**
-     * @param  Collection<int, ContactFieldDefinition|DirectoryFieldDefinition>  $definitions
+     * @param  Collection<int, DirectoryFieldDefinition>  $definitions
      */
     protected function guess(Collection $definitions, string $header): ?string
     {
@@ -144,25 +106,6 @@ class ColumnMappingGuesser
         }
 
         return null;
-    }
-
-    protected function contactDefinitions(int $teamId): Collection
-    {
-        return ContactFieldDefinition::query()
-            ->where('team_id', $teamId)
-            ->where('is_active', true)
-            ->orderBy('sort_order')
-            ->get();
-    }
-
-    protected function sharedContactDefinitions(int $sharedContactListId): Collection
-    {
-        return ContactFieldDefinition::query()
-            ->withoutGlobalScope('team')
-            ->where('shared_contact_list_id', $sharedContactListId)
-            ->where('is_active', true)
-            ->orderBy('sort_order')
-            ->get();
     }
 
     protected function directoryDefinitions(int $teamId): Collection

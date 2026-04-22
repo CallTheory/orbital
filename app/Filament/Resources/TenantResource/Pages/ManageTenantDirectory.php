@@ -30,9 +30,8 @@ use Illuminate\Http\UploadedFile;
  * all driven by DirectoryFieldDefinition rows scoped to this team.
  * Manage the schema via the sibling "Directory Fields" sub-nav page.
  *
- * Never has login accounts attached. No "grant portal access" action
- * here; if a directory entry needs portal access, they should be a
- * Contact, not a directory entry.
+ * Directory entries never have login accounts attached. Tenant
+ * login users live on the Users tab (Jetstream team_user pivot).
  */
 class ManageTenantDirectory extends ManageRelatedRecords
 {

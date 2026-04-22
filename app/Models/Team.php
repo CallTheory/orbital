@@ -61,6 +61,10 @@ class Team extends JetstreamTeam
             'max_users' => 'integer',
             'max_concurrent_calls' => 'integer',
             'recording_overrides' => 'array',
+            // Voicemail transcription creds — API keys live per-tenant,
+            // encrypted at rest. The cast handles encrypt/decrypt on
+            // read and write so consumers just see a plain array.
+            'voicemail_transcription_config' => 'encrypted:array',
         ];
     }
 
@@ -151,19 +155,10 @@ class Team extends JetstreamTeam
     }
 
     /**
-     * Account-level tenant contacts — people we communicate with about
-     * the tenant's account (billing, holiday, newsletter, escalation).
-     * Most contacts never log in; the ones that do have `user_id` set.
-     */
-    public function contacts(): HasMany
-    {
-        return $this->hasMany(Contact::class);
-    }
-
-    /**
      * Tenant's own phone book, used by AI agents and live operators
-     * while handling a call. Separate from `contacts` — different use
-     * case, different vocabulary, different table.
+     * while handling a call. Distinct from `team_user` pivot, which
+     * holds login accounts. Directory is arbitrary contacts with
+     * tenant-defined custom fields.
      */
     public function directoryEntries(): HasMany
     {
@@ -171,20 +166,8 @@ class Team extends JetstreamTeam
     }
 
     /**
-     * Tenant-authored Contact field schema. Each row defines one
-     * input on the Contacts form for this tenant only — label,
-     * type, sort order, and an optional semantic role (name / email
-     * / phone / organization). The values captured by these
-     * definitions live in the `contacts.values` JSONB column.
-     */
-    public function contactFieldDefinitions(): HasMany
-    {
-        return $this->hasMany(ContactFieldDefinition::class)->orderBy('sort_order');
-    }
-
-    /**
-     * Tenant-authored Directory field schema. Parallel to contact
-     * fields — separate table, separate vocabulary.
+     * Tenant-authored Directory field schema. Defines the input
+     * schema captured into each DirectoryEntry's `values` JSONB.
      */
     public function directoryFieldDefinitions(): HasMany
     {
@@ -192,26 +175,9 @@ class Team extends JetstreamTeam
     }
 
     /**
-     * Platform-level shared contact lists this tenant is
-     * subscribed to. Managed by super-admins under
-     * `/admin/shared-contact-lists`. The `is_active` pivot flag
-     * lets a super-admin temporarily detach a list without
-     * destroying the link. The Contact global scope checks
-     * this pivot via subquery to union shared rows into
-     * tenant-scoped queries.
-     */
-    public function sharedContactLists(): BelongsToMany
-    {
-        return $this->belongsToMany(SharedContactList::class, 'team_shared_contact_list')
-            ->withPivot('is_active')
-            ->withTimestamps();
-    }
-
-    /**
      * Platform-level shared directories this tenant is
-     * subscribed to. Same pattern as sharedContactLists but
-     * targeting the "phone book used during call handling"
-     * side of the split.
+     * subscribed to. Managed by super-admins; tenants see shared
+     * rows unioned into their directory view.
      */
     public function sharedDirectories(): BelongsToMany
     {

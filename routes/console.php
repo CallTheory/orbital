@@ -22,7 +22,13 @@ Artisan::command('inspire', function () {
 Schedule::call(fn () => Cache::forever('scheduler:heartbeat', now()->toIso8601String()))
     ->everyMinute()
     ->name('scheduler-heartbeat')
-    ->withoutOverlapping();
+    ->withoutOverlapping()
+    // onOneServer() takes a cache lock so only one scheduler replica
+    // fires this tick. Harmless for this specific task (two writes
+    // of the same timestamp is a no-op) but kept here to reinforce
+    // the pattern: EVERY scheduled task in this file should carry
+    // onOneServer() so prod can run N scheduler containers safely.
+    ->onOneServer();
 
 // Walk every call log past its tenant's retention window, delete the
 // S3 objects, and null the columns. Runs at 03:15 local so overnight

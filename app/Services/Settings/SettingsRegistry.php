@@ -42,6 +42,31 @@ final class SettingsRegistry
                 'icon' => 'heroicon-o-envelope',
                 'description' => 'Outbound email transport. Applies to all notifications, password resets, and tenant messages.',
             ],
+            'inbound_mail' => [
+                'label' => 'Inbound Mail',
+                'icon' => 'heroicon-o-inbox-arrow-down',
+                'description' => 'SendGrid-style inbound parsing: the Haraka SMTP shim accepts mail for tenant account numbers and posts it to the Laravel webhook.',
+            ],
+            'logging' => [
+                'label' => 'Logging',
+                'icon' => 'heroicon-o-document-text',
+                'description' => 'Default log channel and verbosity. Applies instantly to HTTP requests; Horizon workers pick up changes after restart.',
+            ],
+            'icecast' => [
+                'label' => 'Icecast',
+                'icon' => 'heroicon-o-musical-note',
+                'description' => 'Credentials Laravel uses to authenticate to the Icecast admin endpoint for live status and listener counts.',
+            ],
+            'sessions' => [
+                'label' => 'Sessions',
+                'icon' => 'heroicon-o-clock',
+                'description' => 'Session lifetime and cookie protection.',
+            ],
+            'security' => [
+                'label' => 'Security',
+                'icon' => 'heroicon-o-lock-closed',
+                'description' => 'Password hashing and other platform-wide security tuning.',
+            ],
             'broadcasting' => [
                 'label' => 'Broadcasting',
                 'icon' => 'heroicon-o-signal',
@@ -97,10 +122,12 @@ final class SettingsRegistry
      *     label: string,
      *     type: 'text'|'password'|'email'|'url'|'number'|'textarea'|'select'|'toggle',
      *     config_key: ?string,
+     *     config_keys?: array<int, string>,
      *     secret?: bool,
      *     options?: array<string, string>,
      *     helper?: string,
      *     placeholder?: string,
+     *     restart_required?: array<int, string>,
      * }>
      */
     public static function all(): array
@@ -137,12 +164,10 @@ final class SettingsRegistry
             ],
 
             // ─── Application ───────────────────────────────────────────
-            'app.name' => [
-                'section' => 'app',
-                'label' => 'App Name',
-                'type' => 'text',
-                'config_key' => 'app.name',
-            ],
+            // App Name intentionally not surfaced here — "Platform
+            // Name" (Branding section) is the tenant-facing name and
+            // now feeds everything that would have read app.name.
+            // APP_NAME in .env still drives Laravel's internal config.
             'app.url' => [
                 'section' => 'app',
                 'label' => 'App URL',
@@ -236,6 +261,143 @@ final class SettingsRegistry
                 'config_key' => 'mail.from.name',
             ],
 
+            // ─── Inbound Mail ──────────────────────────────────────────
+            // Pairs with docker-compose Haraka config — both sides MUST
+            // carry the same token, and the MX record for the domain
+            // MUST point at the Haraka container's public address. The
+            // admin UI can only update the Laravel side, so these
+            // helpers spell out the other half of the operation.
+            'services.inbound_mail.domain' => [
+                'section' => 'inbound_mail',
+                'label' => 'Inbound domain',
+                'type' => 'text',
+                'config_key' => 'services.inbound_mail.domain',
+                'placeholder' => 'inbound.orbital.test',
+                'helper' => 'The domain tenant account-number local-parts land on — e.g. 100001@inbound.orbital.test. Used by outbound Reply-To headers. DNS MX record for this domain must point at the Haraka SMTP shim or inbound mail will bounce.',
+            ],
+            'services.inbound_mail.token' => [
+                'section' => 'inbound_mail',
+                'label' => 'Webhook shared secret',
+                'type' => 'password',
+                'config_key' => 'services.inbound_mail.token',
+                'secret' => true,
+                'helper' => 'Shared secret between the Haraka SMTP shim and the /api/mail/inbound webhook. Haraka sends it as `Authorization: Bearer {token}`. Rotating here WILL break inbound mail until you also update INBOUND_MAIL_TOKEN on the haraka service in docker-compose.yml and restart the container.',
+            ],
+
+            // ─── Logging ───────────────────────────────────────────────
+            // LOG_CHANNEL controls which channel name `Log::info(...)`
+            // writes to by default. LOG_LEVEL filters the minimum
+            // severity each individual channel emits — baked into each
+            // channel config at env-load time, so we fan a single
+            // override out across every channel via `config_keys`.
+            'logging.default' => [
+                'section' => 'logging',
+                'label' => 'Default channel',
+                'type' => 'select',
+                'config_key' => 'logging.default',
+                'options' => [
+                    'stack' => 'Stack (composes several channels)',
+                    'single' => 'Single file (storage/logs/laravel.log)',
+                    'daily' => 'Daily rotating files',
+                    'stderr' => 'stderr (container stdout, recommended in HA)',
+                    'syslog' => 'syslog',
+                    'errorlog' => 'PHP error_log',
+                    'slack' => 'Slack webhook (critical-only by default)',
+                    'null' => 'Discard (no logging)',
+                ],
+                'helper' => 'To compose a stack of multiple channels (LOG_STACK), edit .env — the composition isn\'t surfaced here because it needs both channel names and an array type.',
+                'restart_required' => ['horizon'],
+            ],
+            'logging.level' => [
+                'section' => 'logging',
+                'label' => 'Minimum log level',
+                'type' => 'select',
+                'config_keys' => [
+                    'logging.channels.single.level',
+                    'logging.channels.daily.level',
+                    'logging.channels.stderr.level',
+                    'logging.channels.syslog.level',
+                    'logging.channels.errorlog.level',
+                    'logging.channels.papertrail.level',
+                    // Slack intentionally omitted — its default is
+                    // 'critical' so it doesn't spam a channel with
+                    // info-level chatter, and blanket-setting it to
+                    // `debug` would flood the webhook.
+                ],
+                'options' => [
+                    'debug' => 'Debug (most verbose)',
+                    'info' => 'Info',
+                    'notice' => 'Notice',
+                    'warning' => 'Warning',
+                    'error' => 'Error',
+                    'critical' => 'Critical',
+                    'alert' => 'Alert',
+                    'emergency' => 'Emergency (least verbose)',
+                ],
+                'helper' => 'Applies to file, stderr, syslog, errorlog, and papertrail channels. Slack is left at `critical` regardless so low-severity events don\'t spam the webhook.',
+                'restart_required' => ['horizon'],
+            ],
+
+            // ─── Icecast ───────────────────────────────────────────────
+            // Laravel only uses the admin credentials — it reverse-
+            // proxies the Icecast admin UI so operators can watch
+            // listener counts without shipping a public Icecast admin.
+            // The source/relay/main listener passwords are consumed
+            // INSIDE the icecast container (and by the Asterisk MOH
+            // publisher) via their own env; rotating them via this UI
+            // wouldn't change anything, so they deliberately aren't
+            // here — document `.env` for those.
+            'services.icecast.admin_user' => [
+                'section' => 'icecast',
+                'label' => 'Admin username',
+                'type' => 'text',
+                'config_key' => 'services.icecast.admin_user',
+                'placeholder' => 'admin',
+                'helper' => 'Hardcoded to `admin` by every Icecast image we\'ve shipped against. Only change if a future image uses a different convention.',
+            ],
+            'services.icecast.admin_password' => [
+                'section' => 'icecast',
+                'label' => 'Admin password',
+                'type' => 'password',
+                'config_key' => 'services.icecast.admin_password',
+                'secret' => true,
+                'helper' => 'Used by the /icecast admin proxy to Basic-Auth to Icecast. Rotating here WILL break the proxy until you also update ICECAST_ADMIN_PASSWORD on the icecast service in docker-compose.yml and restart the container.',
+            ],
+
+            // ─── Sessions ──────────────────────────────────────────────
+            // Applied at request time — live cookies aren't touched,
+            // but newly-issued cookies use the updated values. Flipping
+            // encryption on an existing deployment invalidates every
+            // extant session on first read; helper calls it out.
+            'session.lifetime' => [
+                'section' => 'sessions',
+                'label' => 'Session lifetime (minutes)',
+                'type' => 'number',
+                'config_key' => 'session.lifetime',
+                'placeholder' => '120',
+                'helper' => 'How long a user stays logged in between requests. Defaults to 120 (2 hours). Longer values reduce login friction; shorter values reduce the window a stolen cookie stays useful.',
+            ],
+            'session.encrypt' => [
+                'section' => 'sessions',
+                'label' => 'Encrypt session cookie',
+                'type' => 'toggle',
+                'config_key' => 'session.encrypt',
+                'helper' => 'When on, Laravel encrypts the session cookie end-to-end. Turning this on (or off) after users are already signed in will invalidate every active session — everyone gets logged out on their next request.',
+            ],
+
+            // ─── Security ──────────────────────────────────────────────
+            // Bcrypt cost rounds; higher = slower = harder to brute
+            // force. Existing hashes keep working at their original
+            // cost — only new hashes and rehashes use the new value.
+            'hashing.bcrypt.rounds' => [
+                'section' => 'security',
+                'label' => 'Bcrypt cost rounds',
+                'type' => 'number',
+                'config_key' => 'hashing.bcrypt.rounds',
+                'placeholder' => '12',
+                'helper' => 'Cost factor for password hashing. Each +1 roughly doubles hash time. Laravel default is 12; raise to 13–14 on fast servers for a modest security bump. Existing password hashes aren\'t re-hashed retroactively — only new logins/password changes pick up the new cost.',
+            ],
+
             // ─── Broadcasting ──────────────────────────────────────────
             'broadcasting.default' => [
                 'section' => 'broadcasting',
@@ -250,31 +412,61 @@ final class SettingsRegistry
                     'ably' => 'Ably',
                 ],
             ],
-            'broadcasting.pusher.key' => [
+            // Reverb — Laravel's self-hosted Pusher-protocol WebSocket
+            // server. Orbital ships Reverb wired for real-time UI
+            // updates (softphone events, call queue status, etc.). The
+            // app-id / key / secret tuple authenticates both the
+            // server process and the JS client (via VITE_REVERB_*),
+            // so editing any of these requires a Reverb restart AND
+            // a front-end rebuild (or at minimum a fresh page load
+            // where the JS client picks up the new values).
+            'broadcasting.reverb.app_id' => [
                 'section' => 'broadcasting',
-                'label' => 'Pusher Key',
+                'label' => 'Reverb App ID',
                 'type' => 'text',
-                'config_key' => 'broadcasting.connections.pusher.key',
+                'config_key' => 'reverb.apps.apps.0.app_id',
+                'helper' => 'Shared secret identifier between the Reverb server and its clients.',
             ],
-            'broadcasting.pusher.secret' => [
+            'broadcasting.reverb.key' => [
                 'section' => 'broadcasting',
-                'label' => 'Pusher Secret',
+                'label' => 'Reverb Key',
+                'type' => 'text',
+                'config_key' => 'reverb.apps.apps.0.key',
+                'helper' => 'Public key the JS client uses to subscribe. Must match VITE_REVERB_APP_KEY.',
+            ],
+            'broadcasting.reverb.secret' => [
+                'section' => 'broadcasting',
+                'label' => 'Reverb Secret',
                 'type' => 'password',
-                'config_key' => 'broadcasting.connections.pusher.secret',
+                'config_key' => 'reverb.apps.apps.0.secret',
                 'secret' => true,
+                'helper' => 'Server-side secret the Laravel app signs events with. Never shipped to the browser.',
             ],
-            'broadcasting.pusher.app_id' => [
+            'broadcasting.reverb.host' => [
                 'section' => 'broadcasting',
-                'label' => 'Pusher App ID',
+                'label' => 'Reverb Host',
                 'type' => 'text',
-                'config_key' => 'broadcasting.connections.pusher.app_id',
+                'config_key' => 'reverb.apps.apps.0.options.host',
+                'placeholder' => 'orbital.test',
+                'helper' => 'Public hostname the browser connects to for WebSockets. Usually your app domain.',
             ],
-            'broadcasting.pusher.cluster' => [
+            'broadcasting.reverb.port' => [
                 'section' => 'broadcasting',
-                'label' => 'Pusher Cluster',
-                'type' => 'text',
-                'config_key' => 'broadcasting.connections.pusher.options.cluster',
-                'placeholder' => 'mt1',
+                'label' => 'Reverb Port',
+                'type' => 'number',
+                'config_key' => 'reverb.apps.apps.0.options.port',
+                'placeholder' => '443',
+                'helper' => '443 in production (fronted by nginx), 8080 in local dev.',
+            ],
+            'broadcasting.reverb.scheme' => [
+                'section' => 'broadcasting',
+                'label' => 'Reverb Scheme',
+                'type' => 'select',
+                'config_key' => 'reverb.apps.apps.0.options.scheme',
+                'options' => [
+                    'https' => 'HTTPS (wss://)',
+                    'http' => 'HTTP (ws://) — dev only',
+                ],
             ],
 
             // ─── AI Providers ──────────────────────────────────────────
@@ -325,25 +517,15 @@ final class SettingsRegistry
             ],
 
             // ─── Asterisk ──────────────────────────────────────────────
-            'telephony.asterisk.ami.host' => [
-                'section' => 'asterisk',
-                'label' => 'AMI Host',
-                'type' => 'text',
-                'config_key' => 'telephony.asterisk.ami.host',
-                'placeholder' => 'asterisk-1',
-            ],
-            'telephony.asterisk.ami.port' => [
-                'section' => 'asterisk',
-                'label' => 'AMI Port',
-                'type' => 'number',
-                'config_key' => 'telephony.asterisk.ami.port',
-                'placeholder' => '5038',
-            ],
+            // AMI host/port and all ARI config live per-backend under
+            // Telephony → Asterisk Backends. Only cluster-wide
+            // credentials and external-facing endpoints belong here.
             'telephony.asterisk.ami.username' => [
                 'section' => 'asterisk',
                 'label' => 'AMI Username',
                 'type' => 'text',
                 'config_key' => 'telephony.asterisk.ami.username',
+                'helper' => 'Shared AMI login applied to every Asterisk backend. Per-node hostnames live under Telephony → Asterisk Backends.',
             ],
             'telephony.asterisk.ami.secret' => [
                 'section' => 'asterisk',
@@ -351,26 +533,7 @@ final class SettingsRegistry
                 'type' => 'password',
                 'config_key' => 'telephony.asterisk.ami.secret',
                 'secret' => true,
-            ],
-            'telephony.asterisk.ari.url' => [
-                'section' => 'asterisk',
-                'label' => 'ARI URL',
-                'type' => 'url',
-                'config_key' => 'telephony.asterisk.ari.url',
-                'placeholder' => 'http://asterisk-1:8088',
-            ],
-            'telephony.asterisk.ari.username' => [
-                'section' => 'asterisk',
-                'label' => 'ARI Username',
-                'type' => 'text',
-                'config_key' => 'telephony.asterisk.ari.username',
-            ],
-            'telephony.asterisk.ari.password' => [
-                'section' => 'asterisk',
-                'label' => 'ARI Password',
-                'type' => 'password',
-                'config_key' => 'telephony.asterisk.ari.password',
-                'secret' => true,
+                'helper' => 'Shared AMI password applied to every Asterisk backend.',
             ],
             'telephony.asterisk.sip_domain' => [
                 'section' => 'asterisk',
@@ -384,6 +547,14 @@ final class SettingsRegistry
                 'type' => 'url',
                 'config_key' => 'telephony.asterisk.wss_url',
                 'placeholder' => 'wss://example.com:8089/ws',
+            ],
+            'telephony.asterisk.internal_did_simulation' => [
+                'section' => 'asterisk',
+                'label' => 'Internal DID simulation',
+                'type' => 'toggle',
+                'config_key' => 'telephony.asterisk.internal_did_simulation',
+                'helper' => 'Development-only shortcut that lets operator softphones dial a tenant DID directly through the internal dialplan, as if it arrived on a real trunk. Leave OFF in production — a real operator should never be able to self-originate a call as if it came from outside the building.',
+                'restart_required' => ['asterisk'],
             ],
 
             // ─── LiveKit ───────────────────────────────────────────────
@@ -614,10 +785,10 @@ final class SettingsRegistry
                 'type' => 'select',
                 'config_key' => 'telephony.recording.storage_disk',
                 'options' => [
-                    's3' => 'S3 / MinIO (default)',
+                    's3' => 'S3 / SeaweedFS (default)',
                     'local' => 'Local filesystem (development only)',
                 ],
-                'helper' => 'Laravel filesystem disk recordings are uploaded to. Must be S3-compatible in production.',
+                'helper' => 'Laravel filesystem disk recordings are uploaded to. Must be S3-compatible in production — Orbital ships with SeaweedFS as the default object store.',
             ],
             'telephony.recording.beep_on_record' => [
                 'section' => 'recording',

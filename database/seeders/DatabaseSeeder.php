@@ -14,13 +14,17 @@ class DatabaseSeeder extends Seeder
             HoldMusicClassSeeder::class,
             PersonalityTemplateSeeder::class,
             IntakeGoalLibrarySeeder::class,
-            ContactTagLibrarySeeder::class,
             SkillCatalogSeeder::class,
             AvailabilityReasonSeeder::class,
             LogoutReasonSeeder::class,
             FirstSuperAdminSeeder::class,
+            // AsteriskBackend roster — seeds asterisk-1 and asterisk-2
+            // so the SIP Proxy page's AMI probe has targets to hit.
+            // Must run before SystemBootstrapSeeder, which generates
+            // Asterisk dialplan + dispatcher config from this roster.
+            AsteriskBackendSeeder::class,
             // Runs after DB-backed seeding so external services see
-            // the final row set — MinIO buckets, Ollama models,
+            // the final row set — SeaweedFS buckets, Ollama models,
             // Asterisk configs, etc.
             SystemBootstrapSeeder::class,
         ]);
@@ -28,6 +32,11 @@ class DatabaseSeeder extends Seeder
         if (app()->environment('local')) {
             $this->call([
                 DemoTenantSeeder::class,
+                // Template tenants — reusable example configurations
+                // for the three common answering-service patterns.
+                // Runs after DemoTenantSeeder so it can reuse the
+                // shared operator group and trunk that seeder creates.
+                TemplateTenantSeeder::class,
             ]);
         }
     }

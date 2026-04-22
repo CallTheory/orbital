@@ -4,7 +4,7 @@
     Required only because Passport 13 type-hints AuthorizationViewResponse
     as a method parameter on AuthorizationController, so Laravel needs SOME
     view bound to the contract even though our first-party clients
-    (pgAdmin, MinIO Console, registered in SsoSecretsBootstrapper) skip
+    (pgAdmin, Grafana, registered in SsoSecretsBootstrapper) skip
     the consent step via FirstPartyClient::skipsAuthorization().
 
     If you land on this page in a browser, it means a client hit
@@ -16,13 +16,13 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>Authorize — {{ config('app.name') }}</title>
+    <title>Authorize — {{ config('orbital.platform_name') }}</title>
 </head>
 <body style="font-family:system-ui,sans-serif;max-width:480px;margin:4rem auto;padding:1rem;">
     <h1>Authorization required</h1>
     <p>
         <strong>{{ $client->name ?? 'An application' }}</strong> is asking permission
-        to access your {{ config('app.name') }} account.
+        to access your {{ config('orbital.platform_name') }} account.
     </p>
 
     <p>

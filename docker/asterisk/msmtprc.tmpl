@@ -1,0 +1,15 @@
+# msmtp config, rendered at container start from MAIL_* env vars.
+# Asterisk's voicemail app invokes /usr/sbin/sendmail (msmtp-mta
+# symlink) when it needs to deliver a message by email. msmtp
+# pipes the message to the relay host configured here.
+defaults
+auth           ${MSMTP_AUTH_ENABLED}
+tls            ${MSMTP_TLS_ENABLED}
+tls_starttls   ${MSMTP_STARTTLS_ENABLED}
+logfile        /var/log/msmtp.log
+
+account        default
+host           ${MAIL_HOST}
+port           ${MAIL_PORT}
+from           ${MAIL_FROM_ADDRESS}
+${MSMTP_AUTH_LINES}

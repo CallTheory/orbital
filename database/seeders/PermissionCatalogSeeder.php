@@ -39,12 +39,18 @@ class PermissionCatalogSeeder extends Seeder
         'softphone.use', 'softphone.transfer', 'softphone.park', 'softphone.conference',
 
         // ────────────────────────────────────────────────────────────
-        // Customer portal (tenant_user role — view-only)
+        // Customer portal
         // ────────────────────────────────────────────────────────────
+        // Read-side — default `tenant_user` role perms.
         'portal.view_home',
         'portal.view_calls',
         'portal.view_messages',
         'portal.view_recordings',
+        // Management — `tenant_admin` grants, gate the portal
+        // Users/Roles admin pages. Never added to `tenant_user`;
+        // a tenant admin can hand them out via custom roles.
+        'portal.manage_users',
+        'portal.manage_roles',
 
         // ────────────────────────────────────────────────────────────
         // System tooling (Horizon, Telescope, Pulse, Grafana under Monitor)

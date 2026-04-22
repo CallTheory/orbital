@@ -36,7 +36,7 @@ class FailoverCentral extends Page
 {
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-bolt';
 
-    protected static string|UnitEnum|null $navigationGroup = 'Administration';
+    protected static string|UnitEnum|null $navigationGroup = 'System';
 
     protected static ?int $navigationSort = 5;
 

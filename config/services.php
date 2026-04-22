@@ -41,6 +41,17 @@ return [
     ],
 
     /*
+     * Voicemail webhook shared secret. Asterisk's externnotify
+     * hook (notify-voicemail.sh) sends it as the X-Voicemail-Token
+     * header; the controller constant-time compares. Rotate by
+     * setting VOICEMAIL_WEBHOOK_TOKEN in both the Laravel .env and
+     * the asterisk service env in docker-compose.yml.
+     */
+    'voicemail' => [
+        'webhook_token' => env('VOICEMAIL_WEBHOOK_TOKEN'),
+    ],
+
+    /*
      * Shared secret between the Haraka SMTP shim and the
      * `/api/mail/inbound` webhook. Haraka sends it as
      * `Authorization: Bearer {token}`. Rotate by setting

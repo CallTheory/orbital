@@ -266,6 +266,58 @@ in-progress rooms on the restarted node drop. Call-center use rarely
 uses LiveKit rooms beyond the AI-voice path, so this is typically low
 impact. There's no "drain LiveKit" control in the UI yet (see Gaps).
 
+### Horizon (queue worker)
+
+Runs in its own container (`horizon` compose service). Stateless at
+the process level — all coordination happens through Valkey — so it
+scales horizontally with no extra plumbing.
+
+- **Dev**: 1 replica; compose `restart: unless-stopped` handles
+  crash recovery.
+- **Prod (Kubernetes)**: deploy as a `Deployment` with `replicas: 2+`
+  for HA. Replicas discover peers via Valkey; queue work shards
+  automatically.
+- **Health check**: status-bar Horizon card reads
+  `MasterSupervisorRepository::all()` — goes red when no master
+  is registered in Valkey.
+
+Restart / graceful terminate: run from INSIDE the horizon container,
+not orbital.test:
+
+```bash
+docker compose restart horizon
+# or
+docker exec orbital-horizon-1 php artisan horizon:terminate
+```
+
+`sail artisan horizon:terminate` from the app container doesn't work
+— it signals a PID in orbital.test, not the horizon container.
+
+### Scheduler
+
+Runs `php artisan schedule:work` in its own container (`scheduler`
+compose service). Fires every minute, invokes every task in
+`routes/console.php`.
+
+**Horizontal scaling caveat**: a naive multi-replica deploy would
+fire every task on every replica — double emails, double pruning,
+etc. Two correct patterns:
+
+1. **Single replica** (safest default) — `replicas: 1`, Kubernetes
+   respawns on crash.
+2. **Multi-replica + `onOneServer()` on every task** — Laravel's
+   cache-lock does per-task leader election. `replicas: 2+` is then
+   safe.
+
+Our convention: **every scheduled task in `routes/console.php`
+carries `->onOneServer()`**, even when it doesn't strictly need to
+(the heartbeat is idempotent, but uses the guard anyway). That way
+prod is free to pick either pattern without auditing task-by-task.
+
+Health check: status-bar card reads a `scheduler:heartbeat` Valkey
+key written every minute by a trivial scheduled task. Stale > 2min =
+WARN, > 5min = DOWN.
+
 ### LiveKit SIP bridge, Agent workers, Haraka, Ollama
 
 All stateless active/active. Restart freely. HAProxy or DNS round-robin
@@ -352,6 +404,39 @@ which means the blob layer's path-to-volume mapping is lost. Running
 `weed filer.cat` recovery is possible but painful. In practice, treat
 a full Valkey loss as a "restore S3 from off-site backup" event; once
 per-tenant off-site sync is wired, this stops being scary.
+
+---
+
+## Testing shortcuts
+
+Non-HA but useful to know about while you're set up for admin work.
+
+### Operator-dialed DID simulation
+
+When `TELEPHONY_INTERNAL_DID_SIMULATION=true` in `.env`, an
+operator seated at any softphone can dial a tenant's external DID
+(e.g. `15550000001`) and the call takes the exact same routing
+path a real inbound SIP trunk call would. Handy for validating:
+
+- A new routing rule routes to the right queue / agent / mailbox
+- A voicemail mailbox accepts messages and emails work end-to-end
+- An AI persona answers and runs its intake flow
+- A template tenant behaves as designed
+
+**How it works.** `AsteriskConfigService` injects an extension
+pattern `_1NXXNXXXXXX` into the `[internal]` dialplan that
+unconditionally `Goto`'s `[from-trunk]` with the dialed digits as
+`${EXTEN}`. From there the dispatcher picks the matching routing
+rule exactly as if the call had arrived on a SIP trunk.
+
+**Turn it off in production.** Operators should never be able to
+self-originate calls that look like they came from outside the
+building — this only fires when the flag is true, but the flag
+defaults to false and should stay false on any real deployment.
+
+The feature lives in `config/telephony.php`
+(`'asterisk.internal_did_simulation'`) so a future admin surface
+can flip it per-install without a redeploy.
 
 ---
 

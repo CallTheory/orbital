@@ -161,3 +161,15 @@ Route::get('oauth/jwks', OidcJwksController::class)
 Route::get('oauth/userinfo', OidcUserinfoController::class)
     ->middleware('auth:api')
     ->name('oidc.userinfo');
+
+// ──────────────────────────────────────────────────────────────────
+// Tenant invitation acceptance — public (no auth middleware). One
+// page handles four auth states: brand-new user, existing user,
+// already signed in as the invited email, signed in as the wrong
+// email. The controller resolves which; the view branches.
+// ──────────────────────────────────────────────────────────────────
+Route::get('/invite/{token}', [\App\Http\Controllers\TenantInvitationController::class, 'show'])
+    ->name('invitation.show');
+Route::post('/invite/{token}', [\App\Http\Controllers\TenantInvitationController::class, 'accept'])
+    ->name('invitation.accept');
+

@@ -10,7 +10,7 @@ use RuntimeException;
 
 /**
  * Reads CSV and Excel (.xlsx/.xls) files into header + row arrays for
- * the Contact / DirectoryEntry import flow. The Filament import
+ * the DirectoryEntry import flow. The Filament import
  * action uses this to auto-detect headers (so we can offer a column
  * mapping form) and then stream all rows back for persistence.
  *

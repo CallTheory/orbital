@@ -1,11 +1,12 @@
 <x-filament-panels::page>
-    <form wire:submit="save">
+    <form wire:submit="save" id="form">
         {{ $this->form }}
 
-        <div class="mt-6 flex justify-end">
-            <x-filament::button type="submit">
-                Save changes
-            </x-filament::button>
+        <div style="margin-top: 1.5rem;">
+            <x-filament::actions
+                :actions="$this->getCachedFormActions()"
+                :alignment="\Filament\Support\Enums\Alignment::End"
+            />
         </div>
     </form>
 </x-filament-panels::page>

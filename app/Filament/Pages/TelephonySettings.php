@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Filament\Pages;
 
+use App\Filament\Pages\Concerns\RendersRegistrySettings;
 use App\Models\HoldMusicClass;
 use App\Models\Team;
 use App\Services\Settings\PlatformSettingsRepository;
+use App\Services\Settings\ServiceRestartCatalog;
 use App\Services\Settings\TelephonySettingsKeys as Keys;
 use BackedEnum;
 use Filament\Actions\Action;
@@ -33,6 +35,16 @@ use UnitEnum;
 class TelephonySettings extends Page implements HasForms
 {
     use InteractsWithForms;
+    use RendersRegistrySettings;
+
+    /**
+     * Registry sections appended after the hardcoded unmatched /
+     * outage / notifications sections. Recording moved here from
+     * Platform Settings because it's purely a telephony concern.
+     *
+     * @var array<int, string>
+     */
+    protected array $registrySectionKeys = ['recording'];
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-cog-6-tooth';
 
@@ -61,7 +73,7 @@ class TelephonySettings extends Page implements HasForms
     {
         $repo = app(PlatformSettingsRepository::class);
 
-        $this->form->fill([
+        $hardcoded = [
             'unmatched_action' => $repo->get(Keys::UNMATCHED_ACTION, Keys::DEFAULTS[Keys::UNMATCHED_ACTION]),
             'unmatched_reject_code' => $repo->get(Keys::UNMATCHED_REJECT_CODE, Keys::DEFAULTS[Keys::UNMATCHED_REJECT_CODE]),
             'unmatched_message' => $repo->get(Keys::UNMATCHED_MESSAGE, Keys::DEFAULTS[Keys::UNMATCHED_MESSAGE]),
@@ -74,7 +86,9 @@ class TelephonySettings extends Page implements HasForms
             'outage_notify_email' => $repo->get(Keys::OUTAGE_NOTIFY_EMAIL, Keys::DEFAULTS[Keys::OUTAGE_NOTIFY_EMAIL]),
             'outage_notify_cooldown_minutes' => $repo->get(Keys::OUTAGE_NOTIFY_COOLDOWN_MINUTES, Keys::DEFAULTS[Keys::OUTAGE_NOTIFY_COOLDOWN_MINUTES]),
             'outage_hold_music' => $repo->get(Keys::OUTAGE_HOLD_MUSIC, Keys::DEFAULTS[Keys::OUTAGE_HOLD_MUSIC]),
-        ]);
+        ];
+
+        $this->form->fill($hardcoded + $this->registrySectionState($this->registrySectionKeys));
     }
 
     public function form(Schema $schema): Schema
@@ -179,6 +193,12 @@ class TelephonySettings extends Page implements HasForms
                             ->helperText('Suppress repeat notifications within this window. The first alert in a window is sent immediately; subsequent triggers are counted and rolled into the next alert after the cooldown expires.'),
                     ])
                     ->columns(2),
+
+                // Recording section is registry-driven — it shares the
+                // `platform_settings` table with PlatformSettings but
+                // the UI lives here so operators editing telephony
+                // behavior don't have to pivot to a different page.
+                ...$this->registrySectionComponents($this->registrySectionKeys),
             ]);
     }
 
@@ -202,9 +222,25 @@ class TelephonySettings extends Page implements HasForms
             Keys::OUTAGE_HOLD_MUSIC => $data['outage_hold_music'] ?? 'default',
         ]);
 
+        // Persist the registry-driven section (recording) alongside
+        // the hardcoded keys. Ignores non-registry fields so passing
+        // the full form state here is safe.
+        $slugs = $this->saveRegistrySections($data, $this->registrySectionKeys);
+
+        if ($slugs === []) {
+            Notification::make()
+                ->success()
+                ->title('Telephony settings saved')
+                ->send();
+            return;
+        }
+
+        $labels = ServiceRestartCatalog::labelsFor($slugs);
         Notification::make()
-            ->success()
-            ->title('Telephony settings saved')
+            ->title('Telephony settings saved — restart required')
+            ->body('The following services need a restart: '.implode(', ', $labels).'.')
+            ->warning()
+            ->persistent()
             ->send();
     }
 

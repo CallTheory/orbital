@@ -78,11 +78,12 @@ class AdminPanelProvider extends PanelProvider
             ->databaseNotificationsPolling('5s')
             ->navigationGroups([
                 'Monitor',
+                'Customers',
                 'Platform',
-                'Features',
-                'Telephony',
+                'Preferences',
                 'Conversational AI',
-                'Administration',
+                'Telephony',
+                'System',
                 'Platform Utilities',
                 'Control Panels',
             ])

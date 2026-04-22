@@ -145,6 +145,12 @@ class AsteriskConfigService
             'extensions' => $extensions,
             'queues' => $queues,
             'rules' => $rules,
+            // Guard the "operator dials a DID and lands in from-trunk"
+            // pass-through behind a config flag. Off in production so a
+            // human operator can't self-originate calls that look like
+            // they came from outside; on in dev for testing templates
+            // without a real phone.
+            'internalDidSimulation' => (bool) config('telephony.asterisk.internal_did_simulation', false),
         ])->render();
     }
 
@@ -239,13 +245,79 @@ class AsteriskConfigService
             $this->configPath.'/dialplan_index.conf',
             $this->generateDialplanIndex(),
         );
+
+        File::put(
+            $this->configPath.'/voicemail.conf',
+            $this->generateVoicemail(),
+        );
     }
 
+    /**
+     * Render voicemail.conf with one mailbox per tenant that has a
+     * `destination_type=voicemail` routing rule. Mailbox number =
+     * tenant account_number; recordings go to the tenant's primary
+     * contact email with the audio attached.
+     *
+     * The rendered file is bind-mounted over the stock
+     * /etc/asterisk/voicemail.conf in the asterisk-1/asterisk-2
+     * compose services. A `voicemail reload` via AMI after a write
+     * picks up new mailboxes without an Asterisk restart.
+     */
+    public function generateVoicemail(): string
+    {
+        // Pull every team that has at least one active voicemail
+        // routing rule. One mailbox per team regardless of how many
+        // voicemail rules point at it — the mailbox is the tenant's,
+        // not the rule's.
+        $teamIds = RoutingRule::query()
+            ->where('destination_type', 'voicemail')
+            ->where('is_active', true)
+            ->pluck('team_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        $mailboxes = [];
+        foreach ($teamIds as $teamId) {
+            $team = Team::withoutGlobalScopes()->find($teamId);
+            if (! $team || ! $team->account_number) {
+                continue;
+            }
+            $contact = $team->owner;
+            $mailboxes[] = [
+                // Mailbox number is the tenant's account_number so
+                // it's stable across DID / rule changes and a human
+                // operator can say "mailbox 100001" on the phone.
+                'mailbox' => (string) $team->account_number,
+                // Password isn't used for IMAP-style retrieval — we
+                // deliver via email, not phone-based mailbox review —
+                // so a fixed placeholder is fine. Callers can't
+                // enter it anyway (no *98 login in the dialplan).
+                'password' => '0000',
+                'fullname' => $team->name,
+                'email' => $contact?->email ?? '',
+            ];
+        }
+
+        return View::make('asterisk.voicemail', [
+            'mailboxes' => $mailboxes,
+        ])->render();
+    }
+
+    /**
+     * Reload configuration on EVERY registered Asterisk backend —
+     * not just the primary. With multiple nodes sharing a bind-
+     * mounted config directory, writing a new file only takes
+     * effect on nodes that get a `dialplan reload` (or `core
+     * reload`) AMI command. Fan-out keeps them all in lock-step.
+     *
+     * Returns true only when every active backend accepted the
+     * command. Partial failure logs per-node so the operator can
+     * see which node didn't pick up the change.
+     */
     public function reloadAsterisk(): bool
     {
-        $ami = app(AsteriskAmiService::class);
-
-        return $ami->reload();
+        return $this->commandOnAllBackends('core reload');
     }
 
     /**
@@ -253,11 +325,51 @@ class AsteriskConfigService
      * (`dialplan reload`), not the whole config. Used by the
      * per-tenant write path so an edit to one tenant's RoutingRule
      * doesn't churn pjsip / queues / codec config across the whole
-     * Asterisk process.
+     * Asterisk process. Fan-out to every active backend.
      */
     public function reloadDialplan(): bool
     {
-        return app(AsteriskAmiService::class)->reloadDialplan();
+        return $this->commandOnAllBackends('dialplan reload');
+    }
+
+    /**
+     * Helper: send a single AMI Command to every active
+     * AsteriskBackend row. Falls back to the legacy single-host
+     * AMI config when no backends are registered (fresh installs,
+     * non-HA dev setups) so the service still works before the
+     * registry is seeded.
+     */
+    protected function commandOnAllBackends(string $command): bool
+    {
+        $ami = app(AsteriskAmiService::class);
+        $backends = \App\Models\AsteriskBackend::query()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('hostname')
+            ->get();
+
+        if ($backends->isEmpty()) {
+            // Legacy single-host path — use the original AMI
+            // connection the service was configured with via env.
+            return match ($command) {
+                'core reload' => $ami->reload(),
+                'dialplan reload' => $ami->reloadDialplan(),
+                default => false,
+            };
+        }
+
+        $allOk = true;
+        foreach ($backends as $backend) {
+            $ok = $ami->commandOn($backend->amiHost(), $backend->ami_port, $command);
+            if (! $ok) {
+                \Illuminate\Support\Facades\Log::warning('asterisk-config: reload failed on backend', [
+                    'backend' => $backend->hostname,
+                    'command' => $command,
+                ]);
+                $allOk = false;
+            }
+        }
+        return $allOk;
     }
 
     public function pushConfig(?int $teamId = null): bool

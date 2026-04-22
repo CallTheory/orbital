@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Services\Tenancy;
 
-use App\Models\ContactFieldDefinition;
 use App\Models\DirectoryFieldDefinition;
 use App\Models\EmailQueue;
 use App\Models\EmailRoutingRule;
@@ -20,28 +19,56 @@ use Spatie\Permission\PermissionRegistrar;
  *
  * In Orbital's platform-operator tenancy model, a tenant is a customer
  * account. Tenants have zero configuration responsibilities — the platform
- * operator does everything. The only role scoped to a tenant is `tenant_user`,
- * which gates access to the read-only customer portal.
+ * operator does everything. Two tenant-scoped roles are seeded:
  *
- * The `tenant_permission_grants` allow-list is still populated (very
- * restrictively) so that future "delegated tenant" deployments can widen
- * what a tenant can do without changing code. By default it contains only
- * the portal.* permissions.
+ *   - `tenant_admin` — holds every permission on the tenant's allow-list.
+ *     The tenant's own admin uses this to delegate access to their staff.
+ *     Every tenant must have at least one user carrying this role; the
+ *     portal Users page blocks removing or demoting the last admin.
+ *   - `tenant_user` — default role on invite acceptance; carries only the
+ *     portal.view_* permissions so fresh invitees can see the dashboard
+ *     without being over-privileged.
+ *
+ * The `tenant_permission_grants` allow-list is populated restrictively
+ * by default so that future "delegated tenant" deployments can widen
+ * what a tenant admin is able to grant without changing code.
  *
  * Idempotent.
  */
 class TenantProvisioner
 {
     /**
-     * Default permissions granted to a newly provisioned tenant.
-     * Only portal.* — nothing configurable.
+     * Everything that's on a freshly provisioned tenant's allow-list.
+     * The admin role picks up ALL of these; the default tenant_user
+     * role picks up only the view-only subset below. Management perms
+     * (portal.manage_*) live on the allow-list so a tenant admin can
+     * hand them out via custom roles, but aren't granted automatically
+     * to everyone invited to the tenant.
      */
     public const DEFAULT_TENANT_ALLOW_LIST = [
         'portal.view_home',
         'portal.view_calls',
         'portal.view_messages',
         'portal.view_recordings',
+        'portal.manage_users',
+        'portal.manage_roles',
     ];
+
+    /**
+     * View-only subset used to seed the `tenant_user` role on fresh
+     * tenants. Intentionally EXCLUDES the manage_* perms so invitees
+     * can see the portal dashboard without being able to manage
+     * membership or roles — those are admin concerns.
+     */
+    public const DEFAULT_TENANT_USER_PERMISSIONS = [
+        'portal.view_home',
+        'portal.view_calls',
+        'portal.view_messages',
+        'portal.view_recordings',
+    ];
+
+    public const ROLE_TENANT_ADMIN = 'tenant_admin';
+    public const ROLE_TENANT_USER = 'tenant_user';
 
     public function __construct(
         protected TenantPermissionGatekeeper $gatekeeper,
@@ -51,20 +78,22 @@ class TenantProvisioner
      * Provision a freshly created $team. Call this from CreateTeam actions,
      * from the TenantResource create flow, from tests, or from seeders.
      *
-     * If $initialTenantUser is provided, the user gets the `tenant_user` role
-     * inside this team (a contact at the customer who can log in to /portal).
+     * If $initialTenantUser is provided, they're assigned BOTH `tenant_admin`
+     * and `tenant_user` roles and stamped as admin on the team_user pivot.
+     * The assumption is the first user provisioned is the tenant's owner,
+     * and every tenant needs at least one admin who can delegate access.
      */
     public function provision(Team $team, ?User $initialTenantUser = null): void
     {
         DB::transaction(function () use ($team, $initialTenantUser) {
             $this->seedDefaultAllowList($team);
             $this->createTenantUserRole($team);
-            $this->seedDefaultContactFields($team);
+            $this->createTenantAdminRole($team);
             $this->seedDefaultDirectoryFields($team);
             $this->seedDefaultEmailQueue($team);
 
             if ($initialTenantUser) {
-                $this->assignTenantUser($team, $initialTenantUser);
+                $this->assignInitialAdmin($team, $initialTenantUser);
             }
         });
 
@@ -93,13 +122,16 @@ class TenantProvisioner
     }
 
     /**
-     * Create the per-tenant `tenant_user` role and grant it the default
-     * portal permissions.
+     * Create the per-tenant `tenant_user` role — granted to every invited
+     * user on acceptance. Carries only the portal.view_* permissions so
+     * a fresh invitee can see their tenant's dashboard and call history
+     * without being able to manage anything. Tenant admins can later
+     * create narrower roles (or widen this one) via the portal.
      */
     protected function createTenantUserRole(Team $team): void
     {
         $role = Role::firstOrCreate(
-            ['name' => 'tenant_user', 'guard_name' => 'web', 'team_id' => $team->id],
+            ['name' => self::ROLE_TENANT_USER, 'guard_name' => 'web', 'team_id' => $team->id],
         );
 
         $registrar = app(PermissionRegistrar::class);
@@ -107,8 +139,7 @@ class TenantProvisioner
         $registrar->setPermissionsTeamId($team->id);
 
         try {
-            // All default-allow-list perms (just portal.* by default)
-            $role->syncPermissions(self::DEFAULT_TENANT_ALLOW_LIST);
+            $role->syncPermissions(self::DEFAULT_TENANT_USER_PERMISSIONS);
         } finally {
             $registrar->setPermissionsTeamId($originalTeamId);
             $registrar->forgetCachedPermissions();
@@ -116,41 +147,46 @@ class TenantProvisioner
     }
 
     /**
-     * Starter Contact field schema seeded into every fresh tenant.
-     * The operator can rename, reorder, add, or remove these from the
-     * tenant's Contact Fields page; the goal here is just to give a
-     * useful out-of-the-box form so the Contacts page isn't empty
-     * before anyone has authored a schema.
+     * Create the per-tenant `tenant_admin` role — holds every permission
+     * on this tenant's allow-list. Anyone carrying this role can manage
+     * other tenant users' role assignments and customize the tenant's
+     * own Spatie roles via the portal Users/Roles pages.
      *
-     * Note the role assignments — they're what make features like
-     * "Grant portal access" and the list-view record title work
-     * without the operator having to wire anything up.
+     * Re-syncs the permission set on every call so cascaded allow-list
+     * shrinks (see TenantPermissionGatekeeper::reconcileTenantRoles) and
+     * widenings both track automatically on next provision call.
      */
-    protected function seedDefaultContactFields(Team $team): void
+    protected function createTenantAdminRole(Team $team): void
     {
-        $fields = [
-            ['key' => 'name',                     'label' => 'Name',                     'type' => 'text',     'role' => 'name',         'required' => true,  'sort_order' => 10],
-            ['key' => 'email',                    'label' => 'Email',                    'type' => 'email',    'role' => 'email',        'required' => false, 'sort_order' => 20],
-            ['key' => 'phone',                    'label' => 'Phone',                    'type' => 'phone',    'role' => 'phone',        'required' => false, 'sort_order' => 30],
-            ['key' => 'organization',             'label' => 'Organization',             'type' => 'text',     'role' => 'organization', 'required' => false, 'sort_order' => 40],
-            ['key' => 'title',                    'label' => 'Title',                    'type' => 'text',     'role' => 'none',         'required' => false, 'sort_order' => 50],
-            ['key' => 'preferred_contact_method', 'label' => 'Preferred contact method', 'type' => 'select',   'role' => 'none',         'required' => false, 'sort_order' => 60, 'options' => ['email', 'phone', 'sms', 'mail', 'any']],
-            ['key' => 'notes',                    'label' => 'Notes',                    'type' => 'textarea', 'role' => 'none',         'required' => false, 'sort_order' => 70],
-        ];
+        $role = Role::firstOrCreate(
+            ['name' => self::ROLE_TENANT_ADMIN, 'guard_name' => 'web', 'team_id' => $team->id],
+        );
 
-        foreach ($fields as $row) {
-            ContactFieldDefinition::query()->updateOrCreate(
-                ['team_id' => $team->id, 'key' => $row['key']],
-                $row + ['team_id' => $team->id, 'is_active' => true],
-            );
+        // Pulls whatever the tenant's current allow-list resolves to so
+        // a tenant that's been widened past the default sees the admin
+        // role pick up the new perms on next provision / re-run.
+        $allowed = $this->gatekeeper->allowedPermissionsFor($team);
+        if ($allowed === []) {
+            $allowed = self::DEFAULT_TENANT_ALLOW_LIST;
+        }
+
+        $registrar = app(PermissionRegistrar::class);
+        $originalTeamId = $registrar->getPermissionsTeamId();
+        $registrar->setPermissionsTeamId($team->id);
+
+        try {
+            $role->syncPermissions($allowed);
+        } finally {
+            $registrar->setPermissionsTeamId($originalTeamId);
+            $registrar->forgetCachedPermissions();
         }
     }
 
     /**
-     * Starter Directory field schema. Mirrors the Contact set with a
-     * different vocabulary that fits the "phone book the AI uses
-     * during a call" use case better — display name, organization,
-     * department, primary phone, etc.
+     * Starter Directory field schema — the phone book the AI uses
+     * during a call. Display name, organization, department, primary
+     * phone, etc. The operator can rename, reorder, add, or remove
+     * these from the tenant's Directory Fields page.
      */
     protected function seedDefaultDirectoryFields(Team $team): void
     {
@@ -202,20 +238,37 @@ class TenantProvisioner
     }
 
     /**
-     * Attach a user to the tenant and grant them the `tenant_user` role.
+     * Attach the initial user to the tenant as its first admin.
+     *
+     * Does three things in one shot:
+     *   - Stamps the team_user pivot with role='admin' so the portal
+     *     shows them the Users/Roles management tabs.
+     *   - Grants the Spatie `tenant_admin` role — carries every
+     *     permission on the tenant's allow-list.
+     *   - Also grants `tenant_user` — the fallback role any other
+     *     invited user would get. Redundant for permission purposes
+     *     (admins already have the portal.view_* perms through
+     *     tenant_admin) but keeps role assignments uniform so a later
+     *     demotion is purely a matter of removing `tenant_admin`.
+     *
+     * Uses syncWithoutDetaching rather than belongsToTeam + attach:
+     * Jetstream's belongsToTeam returns true for team owners even
+     * without a team_user pivot row, which would leave the Users tab
+     * blank for the owner. Forcing a pivot row for every tenant user
+     * (owner included) keeps the Users list canonical.
      */
-    protected function assignTenantUser(Team $team, User $user): void
+    protected function assignInitialAdmin(Team $team, User $user): void
     {
-        if (! $user->belongsToTeam($team)) {
-            $team->users()->attach($user, ['role' => 'member']);
-        }
+        $team->users()->syncWithoutDetaching([
+            $user->id => ['role' => 'admin'],
+        ]);
 
         $registrar = app(PermissionRegistrar::class);
         $originalTeamId = $registrar->getPermissionsTeamId();
         $registrar->setPermissionsTeamId($team->id);
 
         try {
-            $user->assignRole('tenant_user');
+            $user->assignRole([self::ROLE_TENANT_ADMIN, self::ROLE_TENANT_USER]);
         } finally {
             $registrar->setPermissionsTeamId($originalTeamId);
         }

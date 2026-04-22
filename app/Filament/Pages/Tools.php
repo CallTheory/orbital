@@ -27,9 +27,9 @@ class Tools extends Page
 {
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-wrench';
 
-    protected static string|UnitEnum|null $navigationGroup = 'Administration';
+    protected static string|UnitEnum|null $navigationGroup = 'System';
 
-    protected static ?int $navigationSort = 7;
+    protected static ?int $navigationSort = 2;
 
     protected static ?string $navigationLabel = 'Tools';
 

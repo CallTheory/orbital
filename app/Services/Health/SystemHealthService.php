@@ -101,6 +101,20 @@ class SystemHealthService
             // kamailio.enabled is false so installs without the
             // container don't get a red card.
             'kamailio' => ['host' => 'kamailio', 'port' => 8090],
+            // HAProxy internal stats frontend. Not the dataplane
+            // probe (the tier-specific probes like `seaweedfs` already
+            // hit the LB for their path) — this probes the stats
+            // page on 8404 so a haproxy that's up but misrouting
+            // still surfaces via the HAProxyStatsClient + per-tier
+            // red lights rather than a single overall-red card.
+            'haproxy' => ['host' => 'haproxy', 'port' => 8404],
+            // Local whisper.cpp transcription service. Used by
+            // tenants that pick `whisper_local` as their voicemail
+            // transcription provider. Optional because a down
+            // whisper-local just means voicemail emails go out
+            // without transcripts (the job catches + degrades) —
+            // not an outage.
+            'whisper_local' => ['host' => 'whisper-local', 'port' => 9700],
             // Dev control panels — pgAdmin (Postgres) and Redis
             // Commander (Valkey). Both reach the database instances
             // they wrap over the sail network, so probing them tells
@@ -130,6 +144,8 @@ class SystemHealthService
             $this->probeResultToCheck($probes['haraka'], 'haraka', 'Inbound Mail', 'Mail', 'Haraka Inbound SMTP gateway', 'heroicon-o-envelope-open'),
             $this->probeResultToCheck($probes['reverb'], 'reverb', 'Reverb', 'System', 'Websocket broadcast server for real-time UI', 'heroicon-o-bolt'),
             $this->probeResultToCheck($probes['kamailio'], 'kamailio', 'Kamailio', 'Telephony', 'SIP proxy for call routing and draining', 'heroicon-o-arrows-right-left', optional: ! config('telephony.kamailio.enabled')),
+            $this->probeResultToCheck($probes['haproxy'], 'haproxy', 'HAProxy', 'System', 'Internal L4 load balancer', 'heroicon-o-arrows-right-left'),
+            $this->probeResultToCheck($probes['whisper_local'], 'whisper_local', 'Whisper (local)', 'AI', 'Local whisper.cpp transcription service for voicemail', 'heroicon-o-microphone', optional: true),
             $this->checkTlsCertificate(),
             $this->probeResultToCheck($probes['pgadmin'], 'pgadmin', 'pgAdmin', 'Control Panels', 'Postgres admin web UI', 'heroicon-o-circle-stack', optional: true),
             $this->probeResultToCheck($probes['redis_commander'], 'redis_commander', 'Redis Commander', 'Control Panels', 'Valkey / Redis web browser', 'heroicon-o-bolt', optional: true),

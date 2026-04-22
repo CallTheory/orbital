@@ -57,8 +57,10 @@ class PortalPanelProvider extends PanelProvider
             ->defaultAvatarProvider(\App\Filament\AvatarProviders\LocalAvatarProvider::class)
             ->navigationGroups([
                 'Activity',
+                'Administration',
             ])
             ->discoverPages(in: app_path('Filament/Portal/Pages'), for: 'App\\Filament\\Portal\\Pages')
+            ->discoverResources(in: app_path('Filament/Portal/Resources'), for: 'App\\Filament\\Portal\\Resources')
             ->pages([
                 // Shared security page — 2FA, password, sessions.
                 \App\Filament\Pages\Security::class,

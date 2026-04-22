@@ -30,6 +30,24 @@ exten => *60,1,NoOp(Speaking clock)
  same => n,SayUnixTime(,,IMp)
  same => n,Hangup()
 
+@if($internalDidSimulation)
+; ── Internal DID simulation ──
+; When an operator dials a tenant's external DID from a softphone
+; (e.g. 15550000001), bounce the call into [from-trunk] so it takes
+; the exact same routing path a real inbound SIP trunk call would.
+; Guarded by config('telephony.asterisk.internal_did_simulation'),
+; off by default — disable in production so operators can't
+; self-originate "inbound" calls.
+;
+; Matches any 11-digit number starting with 1 (US E.164 shape).
+; Deliberately looser than strict NANP (_1NXXNXXXXXX) because the
+; demo template DIDs like 15550000001 have `000` as the exchange,
+; which fails real NANP validation. Template testing should still
+; route cleanly even with invalid-in-the-wild fake numbers.
+exten => _1XXXXXXXXXX,1,NoOp(Internal DID simulation: ${EXTEN})
+ same => n,Goto(from-trunk,${EXTEN},1)
+@endif
+
 ; ── AI Agent Extensions (via LiveKit) ──
 @foreach($extensions->where('type', 'ai_agent') as $ext)
 exten => {{ $ext->number }},1,NoOp(AI Agent: {{ $ext->label ?? $ext->number }})
@@ -43,9 +61,9 @@ exten => {{ $ext->number }},1,NoOp(Dialing {{ $ext->label ?? 'extension' }} {{ $
 @include('asterisk.partials.mix-monitor', ['ext' => $ext])
  same => n,Dial(PJSIP/{{ $ext->number }},18,tTkK)
  same => n,GotoIf($["${DIALSTATUS}" = "BUSY"]?busy:unavail)
- same => n(busy),VoiceMail({{ $ext->number }}{{ '@default' }},b)
+ same => n(busy),VoiceMail({{ $ext->number }}@@default,b)
  same => n,Hangup()
- same => n(unavail),VoiceMail({{ $ext->number }}{{ '@default' }},u)
+ same => n(unavail),VoiceMail({{ $ext->number }}@@default,u)
  same => n,Hangup()
 @endforeach
 
@@ -82,7 +100,7 @@ exten => _X.,1,NoOp(Routing: {{ $rule->name }})
 @break
 @case('voicemail')
  same => n,Answer()
- same => n,VoiceMail({{ $rule->destination_id }}{{ '@default' }})
+ same => n,VoiceMail({{ $rule->destination_id }}@@default)
 @break
 @default
  same => n,Goto(internal,{{ $rule->destination_id }},1)

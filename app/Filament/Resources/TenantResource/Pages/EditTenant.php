@@ -6,6 +6,8 @@ namespace App\Filament\Resources\TenantResource\Pages;
 
 use App\Filament\Resources\TenantResource;
 use App\Jobs\RenderDisclosurePromptJob;
+use App\Services\Telephony\AsteriskConfigService;
+use App\Services\Telephony\VoicemailGreetingRenderer;
 use App\Services\Tenancy\TenantPermissionGatekeeper;
 use Filament\Actions;
 use Filament\Resources\Pages\EditRecord;
@@ -88,5 +90,23 @@ class EditTenant extends EditRecord
         if ($msg !== '') {
             RenderDisclosurePromptJob::dispatch($msg);
         }
+
+        // Voicemail greeting — render the TTS WAV or remove an old
+        // file when the tenant switched back to Asterisk's default.
+        // Synchronous (not queued) because the dialplan regen below
+        // needs to see the file state on disk to emit the right
+        // Playback() vs stock VoiceMail() branch.
+        $renderer = app(VoicemailGreetingRenderer::class);
+        $mode = (string) ($this->record->voicemail_greeting_mode ?? 'asterisk_default');
+        if ($mode === 'custom_tts') {
+            $renderer->ensureRenderedForTenant($this->record);
+        } else {
+            $renderer->deleteFor($this->record);
+        }
+
+        // Regen the tenant's dialplan so the new/removed custom
+        // greeting branch takes effect immediately. Fan-out reload
+        // hits every Asterisk backend.
+        app(AsteriskConfigService::class)->pushConfig($this->record->id);
     }
 }

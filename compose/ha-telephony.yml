@@ -42,10 +42,25 @@ services:
             # SIP Proxy page can show how many dynamic registrations
             # THIS Asterisk actually holds vs its sibling.
             ASTERISK_NODE_NAME: 'asterisk-2'
+            # Voicemail-by-email relay (mirrors asterisk-1).
+            MAIL_HOST: '${MAIL_HOST:-mailpit}'
+            MAIL_PORT: '${MAIL_PORT:-1025}'
+            MAIL_USERNAME: '${MAIL_USERNAME:-}'
+            MAIL_PASSWORD: '${MAIL_PASSWORD:-}'
+            MAIL_ENCRYPTION: '${MAIL_ENCRYPTION:-}'
+            MAIL_FROM_ADDRESS: '${MAIL_FROM_ADDRESS:-voicemail@orbital.local}'
+            VOICEMAIL_WEBHOOK_URL: '${VOICEMAIL_WEBHOOK_URL:-http://orbital.test/api/voicemail/received}'
+            VOICEMAIL_WEBHOOK_TOKEN: '${VOICEMAIL_WEBHOOK_TOKEN:-change-me-in-env}'
         volumes:
             - './docker/asterisk/config:/etc/asterisk/generated:ro'
+            # Same voicemail.conf bind mount as asterisk-1 so both
+            # nodes see the same mailbox definitions.
+            - './docker/asterisk/config/voicemail.conf:/etc/asterisk/voicemail.conf:ro'
             - 'asterisk-2-spool:/var/spool/asterisk'
             - 'asterisk-2-recordings:/var/spool/asterisk/monitor'
+            # Share the voicemail spool with asterisk-1 + Laravel so a
+            # softphone pinned to either node writes to the same bucket.
+            - 'asterisk-voicemail-spool:/var/spool/asterisk/voicemail'
             - 'asterisk-prompts:/var/spool/asterisk/prompts'
             - 'tls-certs:/etc/tls:ro'
         networks:

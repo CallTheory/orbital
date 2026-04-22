@@ -37,9 +37,9 @@ exten => {{ $ext->number }},1,NoOp(Dialing {{ $ext->label ?? 'extension' }} {{ $
 @include('asterisk.partials.mix-monitor', ['ext' => $ext])
  same => n,Dial(PJSIP/{{ $ext->number }},18,tTkK)
  same => n,GotoIf($["${DIALSTATUS}" = "BUSY"]?busy:unavail)
- same => n(busy),VoiceMail({{ $ext->number }}{{ '@default' }},b)
+ same => n(busy),VoiceMail({{ $ext->number }}@@default,b)
  same => n,Hangup()
- same => n(unavail),VoiceMail({{ $ext->number }}{{ '@default' }},u)
+ same => n(unavail),VoiceMail({{ $ext->number }}@@default,u)
  same => n,Hangup()
 
 @endforeach

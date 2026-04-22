@@ -14,8 +14,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * the directory while handling a call — "transfer to Dr. Smith's
  * office", "Alice prefers SMS after hours". Never logs in to Orbital.
  *
- * Fully tenant-defined schema, parallel to Contact. Every field value
- * lives inside the `values` JSONB column keyed by the slug of a
+ * Fully tenant-defined schema. Every field value lives inside the
+ * `values` JSONB column keyed by the slug of a
  * DirectoryFieldDefinition row. Role accessors ({@see name()},
  * {@see email()}, {@see phone()}, {@see organization()}) resolve the
  * canonical field at read time so downstream code doesn't need to
@@ -109,9 +109,8 @@ class DirectoryEntry extends Model
             return $this->resolvedRoleFields[$role];
         }
 
-        // Same pattern as Contact::resolveFieldByRole — look
-        // up the row's OWN parent's definitions, bypassing the
-        // unified tenant-view scope.
+        // Look up the row's OWN parent's definitions, bypassing
+        // the unified tenant-view scope.
         $query = DirectoryFieldDefinition::withoutGlobalScope('team')
             ->where('role', $role)
             ->where('is_active', true);

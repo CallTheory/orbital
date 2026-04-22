@@ -39,8 +39,29 @@ exten => {{ $pattern }},1,NoOp(Inbound {{ $pattern }} for tenant {{ $rule->team_
  same => n,Goto({{ $tenantContext }},queue-{{ $rule->destination_id }},1)
 @break
 @case('voicemail')
+@php
+    // Per-tenant custom TTS greeting: when the tenant picked
+    // `custom_tts` on their admin UI AND the renderer produced
+    // a WAV at /var/spool/asterisk/prompts/voicemail-greetings/{id}.wav,
+    // Playback() the custom file and pass `s` to VoiceMail so
+    // Asterisk skips its own "please leave a message" intro. If
+    // the tenant stayed on `asterisk_default` or the render
+    // failed, fall back to the stock VoiceMail() path.
+    $customGreeting = null;
+    if ($rule->team && $rule->team->voicemail_greeting_mode === 'custom_tts') {
+        $renderer = app(\App\Services\Telephony\VoicemailGreetingRenderer::class);
+        if ($renderer->hasGreeting($rule->team)) {
+            $customGreeting = $renderer->asteriskPromptPath($rule->team);
+        }
+    }
+@endphp
  same => n,Answer()
- same => n,VoiceMail({{ $rule->destination_id }}{{ '@default' }})
+@if($customGreeting)
+ same => n,Playback({{ $customGreeting }})
+ same => n,VoiceMail({{ $rule->destination_id }}@@default,s)
+@else
+ same => n,VoiceMail({{ $rule->destination_id }}@@default)
+@endif
 @break
 @default
  same => n,Goto({{ $tenantContext }},{{ $rule->destination_id }},1)

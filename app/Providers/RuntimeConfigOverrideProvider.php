@@ -58,12 +58,19 @@ class RuntimeConfigOverrideProvider extends ServiceProvider
                 continue;
             }
 
-            $configKey = $registry[$key]['config_key'] ?? null;
-            if (! $configKey) {
+            $def = $registry[$key] ?? null;
+            if (! $def) {
                 continue;
             }
 
-            config()->set($configKey, $value);
+            // A registry entry can target a single Laravel config key
+            // (`config_key`) or fan out to several at once (`config_keys`).
+            // Fan-out is used for settings like LOG_LEVEL where the real
+            // config lives under N channel entries instead of one root.
+            $targets = $def['config_keys'] ?? (isset($def['config_key']) ? [$def['config_key']] : []);
+            foreach ($targets as $target) {
+                config()->set($target, $value);
+            }
         }
     }
 }

@@ -28,9 +28,9 @@ class TlsCertificates extends Page
 {
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-lock-closed';
 
-    protected static string|UnitEnum|null $navigationGroup = 'Administration';
+    protected static string|UnitEnum|null $navigationGroup = 'System';
 
-    protected static ?int $navigationSort = 8;
+    protected static ?int $navigationSort = 3;
 
     protected static ?string $navigationLabel = 'TLS Certificates';
 

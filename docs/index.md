@@ -1,13 +1,13 @@
 # Orbital Documentation
 
-Orbital is a multi-tenant answering-service platform that combines AI voice agents, live human operators, and email handling into a unified workspace. A call-center company (the "platform operator") runs Orbital to take calls and handle messages on behalf of their customers ("tenants").
+Orbital is a multi-tenant answering-service platform that combines AI voice agents, live human operators, and email handling into a unified workspace. A call-center company (the "platform operator") runs Orbital to take calls and handle messages on behalf of their customers ("clients").
 
 ## For Administrators
 
-- [Tenants](admin/tenants.md) — creating and configuring customer accounts
+- [Clients](admin/clients.md) — creating and configuring customer accounts
 - [Email Routing](admin/email-routing.md) — how inbound email flows from SMTP to operator inbox
 - [Agent Groups](admin/agent-groups.md) — organizing operators into teams for queue assignment
-- [Users & Roles](admin/users-roles.md) — platform staff, tenant contacts, and permissions
+- [Users & Roles](admin/users-roles.md) — platform staff, client contacts, and permissions
 - [High Availability & Maintenance](admin/high-availability.md) — per-tier maintenance, Failover Central, SIP Proxy, backups, troubleshooting
 
 ## For Operators

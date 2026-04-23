@@ -43,10 +43,10 @@ class SipTrunkResource extends Resource
                     ->required()
                     ->maxLength(255),
                 Forms\Components\Select::make('team_id')
-                    ->label('Tenant')
+                    ->label('Client')
                     ->relationship('team', 'name', fn ($query) => $query->where('personal_team', false))
                     ->searchable()
-                    ->placeholder('Platform-wide (shared across all tenants)')
+                    ->placeholder('Platform-wide (shared across all clients)')
                     ->helperText('Leave blank for a platform-shared trunk.'),
                 Forms\Components\TextInput::make('provider')
                     ->placeholder('e.g. Twilio, Telnyx, VoIP.ms'),
@@ -98,7 +98,7 @@ class SipTrunkResource extends Resource
                     ->searchable()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('team.name')
-                    ->label('Tenant')
+                    ->label('Client')
                     ->placeholder('Platform-wide')
                     ->sortable(),
                 Tables\Columns\TextColumn::make('provider')
@@ -111,7 +111,7 @@ class SipTrunkResource extends Resource
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('team_id')
-                    ->label('Tenant')
+                    ->label('Client')
                     ->relationship('team', 'name', fn ($query) => $query->where('personal_team', false)),
             ])
             ->actions([

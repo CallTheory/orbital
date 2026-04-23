@@ -14,8 +14,8 @@ use Illuminate\Support\Facades\DB;
  * sync here is enough to make the endpoint live without any
  * Asterisk reload — that's the whole point of the ARA architecture.
  *
- * Endpoint id is `t{team_id}_{number}` for tenant extensions
- * (collision-safe across tenants) and unprefixed for platform-staff
+ * Endpoint id is `t{team_id}_{number}` for client extensions
+ * (collision-safe across clients) and unprefixed for platform-staff
  * extensions. Same id is used for the auth and aor rows so the
  * three tables join naturally on `id`.
  *
@@ -60,10 +60,18 @@ class EndpointSyncer
         // `transport-wss`, etc.); our Extension table stores the
         // raw protocol (`udp` / `tcp` / `tls` / `wss`). Translate
         // here so callers don't have to remember the prefix.
+        //
+        // WebRTC + AI-agent endpoints intentionally leave `transport`
+        // unset. Asterisk auto-picks the transport from the active
+        // client contact for registration-based endpoints — pinning
+        // it to `transport-wss` makes the AOR qualify loop log
+        // "Unsupported transport" whenever the contact is absent,
+        // because WSS is client-initiated and Asterisk can't open
+        // an outbound WSS socket to OPTIONS-ping a stale contact.
         $rawTransport = $extension->transport ?: 'udp';
         $endpointRow = [
             'id' => $endpointId,
-            'transport' => $isWebrtc || $isAiAgent ? 'transport-wss' : 'transport-'.$rawTransport,
+            'transport' => $isWebrtc || $isAiAgent ? null : 'transport-'.$rawTransport,
             'aors' => $endpointId,
             'auth' => $endpointId,
             'context' => $context,

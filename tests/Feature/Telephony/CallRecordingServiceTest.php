@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Bus;
 use Tests\TestCase;
 
 /**
- * Exercises the extension → tenant → platform fallback chain. The
+ * Exercises the extension → client → platform fallback chain. The
  * resolver is the linchpin for every recording decision: dialplan
  * emission, upload path, retention prune, and the Filament UI all
  * consume its output, so every branch here has to be covered.
@@ -62,7 +62,7 @@ class CallRecordingServiceTest extends TestCase
         $this->assertFalse($policy->enabled);
         $this->assertSame('mp3', $policy->format);
         $this->assertSame(30, $policy->retentionDays);
-        $this->assertSame('tenant', $policy->source);
+        $this->assertSame('client', $policy->source);
     }
 
     public function test_extension_always_mode_forces_recording_on(): void
@@ -122,14 +122,14 @@ class CallRecordingServiceTest extends TestCase
 
         $this->assertTrue($policy->enabled);
         $this->assertSame(14, $policy->retentionDays);
-        $this->assertSame('tenant', $policy->source);
+        $this->assertSame('client', $policy->source);
     }
 
     public function test_path_for_is_tenant_scoped(): void
     {
         $path = app(CallRecordingService::class)->pathFor(42, '1234567890.1', 'wav');
 
-        $this->assertStringStartsWith('tenants/42/', $path);
+        $this->assertStringStartsWith('clients/42/', $path);
         $this->assertStringEndsWith('.wav', $path);
         $this->assertStringNotContainsString('..', $path);
     }

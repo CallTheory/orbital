@@ -7,14 +7,14 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Tenant directory — the tenant's own phone book that AI agents and
+ * Client directory — the tenant's own phone book that AI agents and
  * live operators consult while handling a call. These are the people
  * the tenant's business interacts with: employees, patients, clients,
  * members. They never log in to Orbital and are not users.
  *
  * **Fully tenant-defined schema.** Like `contacts`, the directory
  * table stores every value in a single `values` JSONB column keyed
- * by the slug of a DirectoryFieldDefinition row. Tenants author
+ * by the slug of a DirectoryFieldDefinition row. Clients author
  * their own field set via the Directory Fields page — which fits
  * dog-walking rosters, medical patient lists, and employee phone
  * books equally well without the schema forcing any of them into a

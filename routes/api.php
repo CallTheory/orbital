@@ -73,7 +73,7 @@ Route::middleware('auth:sanctum')->group(function () {
 /**
  * Knowledge retrieval. Dual-auth: the agent worker uses its shared
  * bearer token (services.agent_worker.token); the operator UI uses its
- * Sanctum session. Tenant isolation is enforced inside the controller
+ * Sanctum session. Client isolation is enforced inside the controller
  * and again in RetrievalService::searchForTeam() before any vector
  * query runs.
  */
@@ -83,7 +83,7 @@ Route::post('/knowledge/search', [KnowledgeController::class, 'search']);
  * Call session state — shared between the AI agent worker and the
  * operator softphone. Worker POSTs field captures and step advances
  * with its bearer token; operators read with their Sanctum session.
- * Tenant isolation is enforced in CallSessionController::show() by
+ * Client isolation is enforced in CallSessionController::show() by
  * comparing current_team_id against the session's stored team_id.
  */
 Route::get('/call-sessions/{sessionKey}', [CallSessionController::class, 'show'])

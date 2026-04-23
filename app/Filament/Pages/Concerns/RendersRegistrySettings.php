@@ -77,12 +77,21 @@ trait RendersRegistrySettings
                 continue;
             }
 
-            $sections[] = Section::make($sectionMeta['label'])
+            $section = Section::make($sectionMeta['label'])
                 ->description($sectionMeta['description'])
                 ->icon($sectionMeta['icon'])
-                ->collapsible()
                 ->columns(2)
                 ->schema($fields);
+
+            // Pages with many sections (Platform Settings) want them
+            // collapsible so operators can focus on one card at a time.
+            // Single-section pages (Portal Branding) stay open — there's
+            // nothing to collapse to.
+            if (property_exists($this, 'collapsibleSections') ? $this->collapsibleSections : true) {
+                $section = $section->collapsible();
+            }
+
+            $sections[] = $section;
         }
 
         return $sections;

@@ -21,8 +21,8 @@ use InvalidArgumentException;
  * The parent KnowledgeStore stores its embedding_model in this format
  * so every query knows exactly which backend to talk to. This lets a
  * platform operator mix hosted and local embeddings across different
- * tenants — a cost-sensitive tenant can use Ollama, a high-accuracy
- * tenant can use OpenAI, all on the same server.
+ * clients — a cost-sensitive client can use Ollama, a high-accuracy
+ * client can use OpenAI, all on the same server.
  */
 class EmbeddingService
 {

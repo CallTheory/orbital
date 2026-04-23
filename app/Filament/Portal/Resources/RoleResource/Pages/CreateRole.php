@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Filament\Portal\Resources\RoleResource\Pages;
 
 use App\Filament\Portal\Resources\RoleResource;
-use App\Services\Tenancy\TenantPermissionGatekeeper;
+use App\Services\Clients\ClientPermissionGatekeeper;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Database\Eloquent\Model;
@@ -53,7 +53,7 @@ class CreateRole extends CreateRecord
             return;
         }
 
-        app(TenantPermissionGatekeeper::class)
+        app(ClientPermissionGatekeeper::class)
             ->syncRolePermissions($team, $record, $this->cachedPermissions);
 
         Notification::make()

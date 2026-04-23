@@ -16,7 +16,7 @@ use Spatie\Permission\PermissionRegistrar;
  *   - supervisor   — monitors operators (future; same perms as operator for now)
  *
  * Every role on this installation that represents "platform staff" lives here.
- * Tenant-scoped roles (`tenant_user`) are created per-tenant by TenantProvisioner.
+ * Tenant-scoped roles (`client_user`) are created per-tenant by ClientProvisioner.
  */
 class SuperAdminRoleSeeder extends Seeder
 {

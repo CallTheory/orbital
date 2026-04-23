@@ -35,14 +35,16 @@ class PlatformSettings extends Page implements HasForms
     use RendersRegistrySettings;
 
     /**
-     * Sections this page is responsible for. AI provider creds
-     * moved to ProvidersSettings (Conversational AI → Providers);
-     * the recording section moved to TelephonySettings.
+     * Sections this page is responsible for. Various sections have
+     * spun off into their own pages:
+     *   - branding       → System → Platform Branding
+     *   - portal_branding → Preferences → Portal Branding
+     *   - ai_providers   → Conversational AI → Providers
+     *   - recording      → Telephony → Settings
      *
      * @var array<int, string>
      */
     protected array $sectionKeys = [
-        'branding',
         'app',
         'mail',
         'inbound_mail',
@@ -62,7 +64,7 @@ class PlatformSettings extends Page implements HasForms
 
     protected static string|UnitEnum|null $navigationGroup = 'System';
 
-    protected static ?int $navigationSort = 1;
+    protected static ?int $navigationSort = 100;
 
     protected static ?string $navigationLabel = 'Settings';
 

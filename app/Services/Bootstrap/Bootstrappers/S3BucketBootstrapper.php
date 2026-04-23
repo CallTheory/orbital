@@ -110,7 +110,7 @@ class S3BucketBootstrapper implements Bootstrapper
 
         // Public read on the asset bucket so avatars / logos / etc can
         // be served directly without a signed URL. Recordings stay
-        // private because they're tenant-sensitive.
+        // private because they're client-sensitive.
         try {
             $client->putBucketPolicy([
                 'Bucket' => self::ASSET_BUCKET,

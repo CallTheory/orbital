@@ -9,9 +9,9 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Renders per-tenant voicemail-greeting TTS WAVs for Asterisk to play
+ * Renders per-client voicemail-greeting TTS WAVs for Asterisk to play
  * via `Playback()` before calling `VoiceMail(..., s)` (the `s` flag
- * suppresses Asterisk's stock intro so the tenant's custom greeting
+ * suppresses Asterisk's stock intro so the client's custom greeting
  * is the only thing the caller hears).
  *
  * Output path layout — shared with the existing disclosure-prompts
@@ -19,15 +19,15 @@ use Illuminate\Support\Facades\Log;
  *
  *     /var/spool/asterisk/prompts/voicemail-greetings/{team_id}.wav
  *
- * Keyed by team_id (not content hash) because a tenant changing their
+ * Keyed by team_id (not content hash) because a client changing their
  * greeting text should replace the file in place — there's no value
- * in sharing audio across tenants the way disclosure messages can.
+ * in sharing audio across clients the way disclosure messages can.
  *
- * Supported providers: OpenAI `tts-1` and ElevenLabs. Tenants pick
+ * Supported providers: OpenAI `tts-1` and ElevenLabs. Clients pick
  * via the admin UI; API keys come from the platform's service config
  * (shared with the existing OpenAI / ElevenLabs integrations) rather
- * than being stored per-tenant — the platform operator owns the
- * spend, tenants pick their voice.
+ * than being stored per-client — the platform operator owns the
+ * spend, clients pick their voice.
  */
 class VoicemailGreetingRenderer
 {
@@ -36,9 +36,9 @@ class VoicemailGreetingRenderer
     protected const RENDER_FORMAT = 'wav';
 
     /**
-     * Render the tenant's configured greeting to its on-disk WAV.
+     * Render the client's configured greeting to its on-disk WAV.
      * Returns the absolute path on success or null when:
-     *   - the tenant isn't on custom_tts mode
+     *   - the client isn't on custom_tts mode
      *   - the greeting text is empty
      *   - the required API key isn't configured
      *   - the provider call failed (logged as warning)
@@ -78,8 +78,8 @@ class VoicemailGreetingRenderer
     }
 
     /**
-     * Absolute on-disk path for the tenant's rendered WAV. Stable
-     * per tenant so dialplan generation can reference the same path
+     * Absolute on-disk path for the client's rendered WAV. Stable
+     * per client so dialplan generation can reference the same path
      * at Blade-render time without waiting for TTS to finish.
      */
     public function pathFor(Team $team): string
@@ -98,7 +98,7 @@ class VoicemailGreetingRenderer
     }
 
     /**
-     * True when there's an on-disk WAV for this tenant — used by
+     * True when there's an on-disk WAV for this client — used by
      * the dialplan generator to decide whether to emit the custom
      * Playback() branch or the stock VoiceMail() fallback.
      */
@@ -108,7 +108,7 @@ class VoicemailGreetingRenderer
     }
 
     /**
-     * Delete the rendered file — called when a tenant switches
+     * Delete the rendered file — called when a client switches
      * back to `asterisk_default` so a stale WAV doesn't get played
      * after the admin thought they'd turned the feature off.
      */

@@ -22,7 +22,7 @@ use Symfony\Component\HttpFoundation\Response;
  * Resolution chain (same as LoginResponse::defaultFor):
  *   super_admin              → /admin
  *   any other platform role  → /operator
- *   tenant_user / everyone   → /portal
+ *   client_user / everyone   → /portal
  */
 class PanelRedirect
 {

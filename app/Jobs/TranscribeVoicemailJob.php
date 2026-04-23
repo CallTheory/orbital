@@ -20,12 +20,12 @@ use Illuminate\Support\Facades\Storage;
  * Fired by the voicemail externnotify webhook once Asterisk finishes
  * writing a new message. Responsible for:
  *
- *   1. Running the tenant's configured transcription provider (or
- *      skipping it if the tenant picked `none`).
+ *   1. Running the client's configured transcription provider (or
+ *      skipping it if the client picked `none`).
  *   2. Uploading the WAV to SeaweedFS so the audio survives past
  *      Asterisk's spool retention.
  *   3. Sending the VoicemailReceived email with transcript inline
- *      + audio attached to the tenant's primary contact.
+ *      + audio attached to the client's primary contact.
  *   4. Deleting the Asterisk spool copy once the upload is safe.
  *
  * Retries on transcription-provider failure — three attempts with
@@ -99,7 +99,7 @@ class TranscribeVoicemailJob implements ShouldQueue
                 ]);
             } catch (\Throwable $e) {
                 // On final failure, record the error but still email
-                // the audio so the tenant gets their message.
+                // the audio so the client gets their message.
                 if ($this->attempts() >= $this->tries) {
                     $voicemail->update([
                         'transcription_status' => 'failed',
@@ -145,7 +145,7 @@ class TranscribeVoicemailJob implements ShouldQueue
     {
         $recipient = $voicemail->team->owner?->email;
         if (! $recipient) {
-            Log::warning('transcribe-voicemail: no recipient — tenant owner has no email', [
+            Log::warning('transcribe-voicemail: no recipient — client owner has no email', [
                 'voicemail_id' => $voicemail->id,
                 'team_id' => $voicemail->team_id,
             ]);

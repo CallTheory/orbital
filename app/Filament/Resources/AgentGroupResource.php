@@ -17,7 +17,7 @@ use UnitEnum;
 
 /**
  * Platform-level agent groups: pools of humans + devices that can take
- * inbound calls. Tenant queues reference these groups via FK.
+ * inbound calls. Client queues reference these groups via FK.
  */
 class AgentGroupResource extends Resource
 {

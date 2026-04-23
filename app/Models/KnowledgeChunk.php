@@ -15,7 +15,7 @@ use Pgvector\Laravel\Vector;
  * Never query this model directly from user input — always go through the
  * parent KnowledgeStore or RetrievalService. The store_id predicate is the
  * runtime half of our isolation story; without it, a bug in the caller
- * could leak one tenant's chunks to another.
+ * could leak one client's chunks to another.
  *
  * The `embedding` column is a raw pgvector `vector(1536)` — the
  * Pgvector\Laravel\Vector cast turns it into a Vector instance on read

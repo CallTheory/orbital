@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Http;
 /**
  * ElevenLabs Speech-to-Text (Scribe) driver.
  *
- * Expects `api_key` in the tenant's voicemail_transcription_config.
+ * Expects `api_key` in the client's voicemail_transcription_config.
  * Optional `model_id` (defaults to `scribe_v1`).
  *
  * Response shape (simplified):
@@ -29,7 +29,7 @@ class ElevenLabsDriver implements TranscriptionDriver
     {
         $apiKey = (string) ($this->config['api_key'] ?? '');
         if ($apiKey === '') {
-            throw new \RuntimeException('ElevenLabs driver requires api_key in the tenant config.');
+            throw new \RuntimeException('ElevenLabs driver requires api_key in the client config.');
         }
 
         $response = Http::timeout($this->timeoutSeconds)

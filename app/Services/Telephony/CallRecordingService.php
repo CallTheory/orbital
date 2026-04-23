@@ -9,14 +9,14 @@ use App\Models\Team;
 
 /**
  * Resolves "should this call be recorded?" and "what settings apply?"
- * by walking the extension → tenant → platform fallback chain.
+ * by walking the extension → client → platform fallback chain.
  *
  * Resolution order:
  *
  *   1. extension.recording_mode
- *        - `always` → record regardless of tenant/platform
- *        - `never`  → never record, regardless of tenant/platform
- *        - `inherit` → defer to tenant
+ *        - `always` → record regardless of client/platform
+ *        - `never`  → never record, regardless of client/platform
+ *        - `inherit` → defer to client
  *   2. team.recording_overrides (JSON, per-key)
  *        - `enabled` key present → that value wins for the master toggle
  *        - other keys (`format`, `retention_days`, etc) override individually
@@ -36,7 +36,7 @@ class CallRecordingService
     /**
      * Resolve the effective recording policy for a specific extension.
      * If the extension doesn't belong to a team (platform-wide staff
-     * extension), the tenant layer is skipped.
+     * extension), the client layer is skipped.
      */
     public function resolveForExtension(Extension $extension): CallRecordingPolicy
     {
@@ -80,7 +80,7 @@ class CallRecordingService
     }
 
     /**
-     * Resolve the effective policy for a whole team/tenant.
+     * Resolve the effective policy for a whole team/client.
      */
     public function resolveForTeam(Team $team): CallRecordingPolicy
     {
@@ -100,19 +100,19 @@ class CallRecordingService
             beepIntervalSeconds: $this->pickInt($overrides, 'beep_interval_seconds', $this->platformBeepInterval()),
             disclosureMessage: $disclosure,
             disclosurePromptPath: $this->disclosureRenderer->asteriskPromptPath($disclosure),
-            source: $overrides === [] ? 'platform' : 'tenant',
+            source: $overrides === [] ? 'platform' : 'client',
         );
     }
 
     /**
      * Build the storage path for a given call's recording, relative to
-     * the configured storage disk. Tenant-scoped so you can't clobber
-     * one tenant's recordings with another's even if the call ID
+     * the configured storage disk. Client-scoped so you can't clobber
+     * one client's recordings with another's even if the call ID
      * collides (which it won't, since unique_id is globally unique).
      *
-     * Pattern: tenants/{team_id}/{YYYY}/{MM}/{unique_id}.{ext}
+     * Pattern: clients/{team_id}/{YYYY}/{MM}/{unique_id}.{ext}
      *
-     * Tenant-scoped is defense in depth — enforcement of "can tenant X
+     * Client-scoped is defense in depth — enforcement of "can client X
      * read recording Y" still happens at the controller level against
      * the CallLog row's team_id.
      */
@@ -120,7 +120,7 @@ class CallRecordingService
     {
         $month = date('Y/m');
         $safeId = preg_replace('/[^a-zA-Z0-9_\-]/', '_', $uniqueId);
-        return "tenants/{$teamId}/{$month}/{$safeId}.{$format}";
+        return "clients/{$teamId}/{$month}/{$safeId}.{$format}";
     }
 
     protected function platformPolicy(string $source): CallRecordingPolicy

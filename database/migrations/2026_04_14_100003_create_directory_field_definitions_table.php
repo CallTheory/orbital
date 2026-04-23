@@ -7,7 +7,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Tenant-defined schema for the Directory page. Parallel to
+ * Client-defined schema for the Directory page. Parallel to
  * contact_field_definitions but intentionally a separate table —
  * directory routing needs a different vocabulary and the two lists
  * don't benefit from sharing a pool (same argument as contact_tags
@@ -20,7 +20,7 @@ return new class extends Migration
         Schema::create('directory_field_definitions', function (Blueprint $table) {
             $table->id();
 
-            // Tenant-private definitions get team_id set; definitions
+            // Client-private definitions get team_id set; definitions
             // belonging to a shared directory get shared_directory_id
             // set instead. DirectoryEntry::resolveFieldByRole() knows
             // which parent column to look up.

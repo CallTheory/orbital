@@ -13,13 +13,13 @@ namespace App\Services\Settings;
 final class TelephonySettingsKeys
 {
     // ─── Unmatched inbound calls ────────────────────────────────────────
-    /** What to do when an inbound DID does not match any tenant. */
+    /** What to do when an inbound DID does not match any client. */
     public const UNMATCHED_ACTION = 'telephony.unmatched.action';
     /** SIP response code used when action = reject. */
     public const UNMATCHED_REJECT_CODE = 'telephony.unmatched.reject_code';
     /** TTS message played when action = play_message. */
     public const UNMATCHED_MESSAGE = 'telephony.unmatched.message';
-    /** Tenant ID to forward to when action = route_to_tenant. */
+    /** Client ID to forward to when action = route_to_tenant. */
     public const UNMATCHED_CATCHALL_TENANT_ID = 'telephony.unmatched.catchall_tenant_id';
 
     // ─── Outage / holding behavior ──────────────────────────────────────

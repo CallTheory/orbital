@@ -11,9 +11,9 @@ use App\Services\Voicemail\Drivers\OpenAiWhisperDriver;
 use App\Services\Voicemail\Drivers\WhisperLocalDriver;
 
 /**
- * Facade that resolves a tenant's configured transcription provider
+ * Facade that resolves a client's configured transcription provider
  * and runs it against a local WAV path. Returns plain text transcript,
- * empty string if the tenant has transcription disabled (`provider=none`).
+ * empty string if the client has transcription disabled (`provider=none`).
  *
  * Throws on driver errors — the caller (queued job) is responsible
  * for catching and stamping `transcription_status=failed` on the
@@ -21,7 +21,7 @@ use App\Services\Voicemail\Drivers\WhisperLocalDriver;
  */
 class VoicemailTranscriber
 {
-    /** Provider IDs surfaced in the tenant admin UI + teams table. */
+    /** Provider IDs surfaced in the client admin UI + teams table. */
     public const PROVIDERS = [
         'none' => 'Disabled (no transcription)',
         'whisper_local' => 'Whisper (local — offline)',

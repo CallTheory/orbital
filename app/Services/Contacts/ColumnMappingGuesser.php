@@ -8,11 +8,11 @@ use App\Models\DirectoryFieldDefinition;
 use Illuminate\Support\Collection;
 
 /**
- * Header → tenant-defined field matcher for the CSV / Excel import
+ * Header → client-defined field matcher for the CSV / Excel import
  * flow. The Filament import action calls this twice per file:
  *
  *   1. {@see optionsForDirectory()} to build the dropdown list of
- *      valid mapping targets — sourced entirely from the tenant's
+ *      valid mapping targets — sourced entirely from the client's
  *      own directory field definitions.
  *
  *   2. {@see guessDirectory()} once per column header to seed each
@@ -20,7 +20,7 @@ use Illuminate\Support\Collection;
  *      uses two strategies: first an exact normalize-and-compare
  *      against every definition's label and key, then a role-based
  *      fallback so common header names ("Email Address", "Phone")
- *      still find the right field even when the tenant labeled it
+ *      still find the right field even when the client labeled it
  *      something idiosyncratic ("Patient Email", "Office Number").
  */
 class ColumnMappingGuesser
@@ -94,7 +94,7 @@ class ColumnMappingGuesser
 
         // Pass 2: alias-driven role match. If the header matches one
         // of the well-known aliases for a role, return the key of the
-        // tenant's field assigned to that role (if any).
+        // client's field assigned to that role (if any).
         foreach (self::ROLE_ALIASES as $role => $aliases) {
             if (! in_array($needle, $aliases, true)) {
                 continue;

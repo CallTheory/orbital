@@ -11,11 +11,11 @@ use Illuminate\Support\Facades\DB;
  * Translates a {@see CallQueue} into a row in the ARA `queues`
  * table, keyed by the Asterisk-side queue name (e.g. `t42_support`
  * — see {@see CallQueue::asteriskName()} for the prefix scheme that
- * makes per-tenant queue names collision-safe).
+ * makes per-client queue names collision-safe).
  *
  * The matching `queue_members` rows are managed separately by
  * {@see QueueMemberSyncer}, which computes operator membership from
- * skills + tenant tier + per-queue required skills.
+ * skills + client tier + per-queue required skills.
  *
  * Idempotent. The fields we sync here are the ones our domain
  * model actually carries — strategy, timeouts, capacity, music on

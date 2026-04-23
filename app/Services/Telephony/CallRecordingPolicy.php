@@ -6,11 +6,11 @@ namespace App\Services\Telephony;
 
 /**
  * Effective call recording policy after walking the
- * extension → tenant → platform fallback chain. Always fully
+ * extension → client → platform fallback chain. Always fully
  * populated — callers never have to check for nulls.
  *
  * The `source` field records where the *master toggle* came from
- * (extension override, tenant override, or platform default) for
+ * (extension override, client override, or platform default) for
  * audit display on the CallLog detail page.
  */
 final class CallRecordingPolicy

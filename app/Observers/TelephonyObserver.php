@@ -28,12 +28,12 @@ use Illuminate\Database\Eloquent\Model;
  *                       queue_members rows. **Zero AMI reload.**
  *   - **RoutingRule** → dispatches RegenerateTelephonyConfig with
  *                        the rule's team_id; the job writes only
- *                        that tenant's dialplan file plus the
+ *                        that client's dialplan file plus the
  *                        from-trunk dispatcher and triggers
  *                        `dialplan reload` (NOT `core reload`).
  *
  * The 90% reduction in reload churn comes from the first three
- * paths: at 1000 tenants, an Extension/Queue/Trunk edit no longer
+ * paths: at 1000 clients, an Extension/Queue/Trunk edit no longer
  * causes Asterisk to re-parse the whole world.
  */
 class TelephonyObserver
@@ -97,7 +97,7 @@ class TelephonyObserver
     protected function onRoutingRuleChange(RoutingRule $rule): void
     {
         // Routing rules still touch the dialplan, so we go through
-        // the queue job (deduped + per-tenant). The job calls
+        // the queue job (deduped + per-client). The job calls
         // writeDialplanForTenant() and reloadDialplan() — never
         // a full core reload.
         $teamId = $rule->team_id ?? null;

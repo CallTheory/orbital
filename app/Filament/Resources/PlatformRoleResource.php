@@ -21,7 +21,7 @@ use UnitEnum;
 
 /**
  * Manages team-less Spatie roles — the platform-staff roles like
- * operator, supervisor, etc. Tenant-scoped roles (tenant_user) are
+ * operator, supervisor, etc. Client-scoped roles (client_user) are
  * managed elsewhere.
  *
  * `super_admin` is built-in and locked: renaming or deleting it would

@@ -36,7 +36,7 @@ class CallLogPolicy
         }
 
         // Operators see only their own extension's logs.
-        if ($user->hasRole('operator') && ! $user->hasAnyRole(['tenant_admin', 'supervisor'])) {
+        if ($user->hasRole('operator') && ! $user->hasAnyRole(['client_admin', 'supervisor'])) {
             if (! $record->extension) {
                 return false;
             }

@@ -23,7 +23,7 @@ use Illuminate\Support\Facades\Storage;
 use UnitEnum;
 
 /**
- * Platform cross-tenant editor for knowledge stores. Stores themselves
+ * Platform cross-client editor for knowledge stores. Stores themselves
  * are tenant-scoped (BelongsToTeam) but super-admin sees the whole set
  * across every customer from this single resource.
  *
@@ -78,12 +78,12 @@ class KnowledgeStoreResource extends Resource
     {
         return $schema->schema([
             Section::make('Store')
-                ->description('Core metadata. Tenant ownership is fixed after creation.')
+                ->description('Core metadata. Client ownership is fixed after creation.')
                 ->icon('heroicon-o-identification')
                 ->columns(2)
                 ->schema([
                     Forms\Components\Select::make('team_id')
-                        ->label('Tenant')
+                        ->label('Client')
                         ->relationship('team', 'name')
                         ->required()
                         ->searchable()
@@ -138,7 +138,7 @@ class KnowledgeStoreResource extends Resource
                     ->sortable()
                     ->weight('medium'),
                 Tables\Columns\TextColumn::make('team.name')
-                    ->label('Tenant')
+                    ->label('Client')
                     ->sortable(),
                 Tables\Columns\TextColumn::make('embedding_model')
                     ->badge()
@@ -161,7 +161,7 @@ class KnowledgeStoreResource extends Resource
             ->defaultSort('name')
             ->filters([
                 Tables\Filters\SelectFilter::make('team_id')
-                    ->label('Tenant')
+                    ->label('Client')
                     ->relationship('team', 'name', fn ($query) => $query->where('personal_team', false)),
             ])
             ->actions([

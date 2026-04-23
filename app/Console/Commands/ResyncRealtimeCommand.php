@@ -19,7 +19,7 @@ use Illuminate\Console\Command;
  *
  *   - **after `migrate:fresh --seed`** to populate the empty ARA
  *     tables from whatever the seeders created. Called from
- *     DemoTenantSeeder so the dev walkthrough always has live
+ *     DemoClientSeeder so the dev walkthrough always has live
  *     endpoints.
  *
  *   - **as a recovery tool** if you suspect drift between the

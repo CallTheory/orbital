@@ -19,13 +19,15 @@ use Illuminate\Database\Eloquent\Builder;
 use UnitEnum;
 
 /**
- * Cross-tenant intake flow editor for super-admins. Flows themselves are
+ * Cross-client intake flow editor for super-admins. Flows themselves are
  * tenant-scoped, but super-admins need a single place to browse and
- * author them across every customer. Per-tenant authoring also exists as
- * a child page of TenantResource (ManageTenantFlows).
+ * author them across every customer. Per-client authoring also exists as
+ * a child page of ClientResource (ManageClientFlows).
  */
 class IntakeFlowResource extends Resource
 {
+    use \App\Filament\Resources\Concerns\RendersStepParamsForm;
+
     protected static ?string $model = IntakeFlow::class;
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-list-bullet';
@@ -63,8 +65,8 @@ class IntakeFlowResource extends Resource
     }
 
     /**
-     * Super-admin bypasses the team global scope so every tenant's flows
-     * are visible from this single cross-tenant view.
+     * Super-admin bypasses the team global scope so every client's flows
+     * are visible from this single cross-client view.
      */
     public static function getEloquentQuery(): Builder
     {
@@ -75,12 +77,12 @@ class IntakeFlowResource extends Resource
     {
         return $schema->schema([
             Section::make('Flow')
-                ->description('Core metadata. The tenant that owns this flow is required and immutable after creation.')
+                ->description('Core metadata. The client that owns this flow is required and immutable after creation.')
                 ->icon('heroicon-o-identification')
                 ->columns(2)
                 ->schema([
                     Forms\Components\Select::make('team_id')
-                        ->label('Tenant')
+                        ->label('Client')
                         ->relationship('team', 'name')
                         ->required()
                         ->searchable()
@@ -115,33 +117,49 @@ class IntakeFlowResource extends Resource
                         ->relationship('steps')
                         ->schema([
                             Forms\Components\Select::make('intake_goal_id')
-                                ->label('Goal')
-                                ->options(fn () => IntakeGoal::withoutGlobalScope('team')
-                                    ->whereNull('team_id')
-                                    ->whereNull('template_id')
+                                ->label('Primitive')
+                                ->options(fn () => IntakeGoal::query()
                                     ->where('is_active', true)
                                     ->orderBy('category')
                                     ->orderBy('name')
                                     ->get()
-                                    ->pluck('name', 'id'))
+                                    ->groupBy('category')
+                                    ->map(fn ($group) => $group->pluck('name', 'id'))
+                                    ->toArray())
                                 ->searchable()
                                 ->required()
+                                ->live()
                                 ->columnSpan(2),
                             Forms\Components\Toggle::make('is_required')
                                 ->default(true)
                                 ->inline(false),
+                            self::stepParamsGroup(),
                         ])
                         ->columns(3)
                         ->reorderable()
                         ->orderColumn('position')
                         ->collapsible()
                         ->cloneable()
+                        ->deleteAction(fn (\Filament\Actions\Action $action) => $action
+                            ->requiresConfirmation()
+                            ->modalHeading('Delete this step?')
+                            ->modalDescription('The step is removed from the flow as soon as you click Save. You can cancel this dialog to keep it.'))
                         ->itemLabel(function (array $state): ?string {
-                            if (empty($state['intake_goal_id'])) {
+                            $goal = ! empty($state['intake_goal_id'])
+                                ? IntakeGoal::find($state['intake_goal_id'])
+                                : null;
+                            if (! $goal) {
                                 return null;
                             }
-                            return IntakeGoal::withoutGlobalScope('team')
-                                ->find($state['intake_goal_id'])?->name;
+                            // Prefer the per-step slot / label when the author
+                            // has set one — makes "gather_detail(caller_name)"
+                            // distinguishable from "gather_detail(phone)" in the
+                            // collapsed list.
+                            $params = $state['step_params'] ?? [];
+                            $hint = $params['slot'] ?? $params['label'] ?? null;
+                            return $hint
+                                ? "{$goal->name} · {$hint}"
+                                : $goal->name;
                         })
                         ->addActionLabel('Add step'),
                 ]),
@@ -156,7 +174,7 @@ class IntakeFlowResource extends Resource
                     ->searchable()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('team.name')
-                    ->label('Tenant')
+                    ->label('Client')
                     ->sortable(),
                 Tables\Columns\TextColumn::make('steps_count')
                     ->counts('steps')
@@ -170,7 +188,7 @@ class IntakeFlowResource extends Resource
             ->defaultSort('name')
             ->filters([
                 Tables\Filters\SelectFilter::make('team_id')
-                    ->label('Tenant')
+                    ->label('Client')
                     ->relationship('team', 'name', fn ($query) => $query->where('personal_team', false)),
             ])
             ->actions([

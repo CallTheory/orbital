@@ -31,7 +31,7 @@ return [
 
         /*
         | Internal DID simulation. When enabled, an operator's
-        | softphone can dial a tenant's external DID number (e.g.
+        | softphone can dial a client's external DID number (e.g.
         | `15550000001`) and land in the same from-trunk dispatcher
         | a real inbound SIP call would take. Useful for testing
         | routing rules, voicemail mailboxes, and AI-agent flows
@@ -87,11 +87,11 @@ return [
     | Call Recording
     |--------------------------------------------------------------------------
     |
-    | Platform-wide defaults for call recording. Individual tenants can
+    | Platform-wide defaults for call recording. Individual clients can
     | override any of these via `teams.recording_overrides` JSON, and
     | individual extensions can force recording on/off via
     | `extensions.recording_mode`. See CallRecordingService for the
-    | resolution order: extension → tenant → platform default.
+    | resolution order: extension → client → platform default.
     |
     */
     'recording' => [
@@ -123,7 +123,7 @@ return [
         // Optional TTS disclosure message played to the caller at the
         // very start of a recorded call — e.g. "This call may be
         // monitored or recorded for quality assurance purposes."
-        // Empty string = no disclosure played. Tenants may override.
+        // Empty string = no disclosure played. Clients may override.
         'disclosure_message' => env('RECORDING_DISCLOSURE_MESSAGE', ''),
     ],
 

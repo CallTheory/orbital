@@ -40,7 +40,7 @@ class SendTestEmail extends Command
     {
         $domain = (string) config('services.inbound_mail.domain', 'inbound.orbital.test');
 
-        // Default recipient: first tenant with an account_number.
+        // Default recipient: first client with an account_number.
         $to = $this->option('to');
         if (! $to) {
             $team = Team::whereNotNull('account_number')->first();
@@ -50,7 +50,7 @@ class SendTestEmail extends Command
                 return self::FAILURE;
             }
             $to = "{$team->account_number}@{$domain}";
-            $this->line("Routing to tenant: <info>{$team->name}</info> ({$to})");
+            $this->line("Routing to client: <info>{$team->name}</info> ({$to})");
         }
 
         $from = $this->option('from');
@@ -264,7 +264,7 @@ class SendTestEmail extends Command
     /**
      * Create a failed message record directly in the DB with a
      * deliberately malformed raw MIME blob in S3. Simulates a
-     * parse failure on a valid tenant for demo/testing purposes.
+     * parse failure on a valid client for demo/testing purposes.
      */
     private function simulateFailure(string $from, string $fromName, string $to, string $subject): void
     {
@@ -293,7 +293,7 @@ class SendTestEmail extends Command
             ."\r\n"
             .'-- truncated at '.now()->format('r')." --\r\n";
 
-        // Parse the account number from the "to" address to find the tenant.
+        // Parse the account number from the "to" address to find the client.
         $localPart = explode('@', $to)[0] ?? '';
         $accountNumber = preg_replace('/\D/', '', explode('.', $localPart)[0]);
         $team = $accountNumber

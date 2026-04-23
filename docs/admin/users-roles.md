@@ -1,10 +1,10 @@
 # Users & Roles
 
-Orbital has two distinct user populations: **platform staff** (operators, supervisors, admins) who work in the system, and **tenant contacts** (customers) who view their own data in the portal.
+Orbital has two distinct user populations: **platform staff** (operators, supervisors, admins) who work in the system, and **client contacts** (customers) who view their own data in the portal.
 
 ## Platform Roles
 
-Platform roles are team-less — they grant access to the admin and operator panels regardless of which tenant the user is viewing.
+Platform roles are team-less — they grant access to the admin and operator panels regardless of which client the user is viewing.
 
 | Role | Access | Purpose |
 |------|--------|---------|
@@ -12,13 +12,13 @@ Platform roles are team-less — they grant access to the admin and operator pan
 | `operator` | Operator panel | Day-to-day call and email handling |
 | `supervisor` | Operator panel | Monitoring, queue management, escalation |
 
-## Tenant Roles
+## Client Roles
 
-Tenant roles are scoped to a specific team. They grant access to the customer portal for that tenant only.
+Client roles are scoped to a specific team. They grant access to the customer portal for that client only.
 
 | Role | Access | Purpose |
 |------|--------|---------|
-| `tenant_user` | Portal | View messages, calls, recordings for their tenant |
+| `client_user` | Portal | View messages, calls, recordings for their client |
 
 ## Managing Staff
 

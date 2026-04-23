@@ -76,9 +76,9 @@ class CallQueue extends Model
     }
 
     /**
-     * The canonical Asterisk-side queue name. Tenant queues collide
-     * if two tenants both name a queue "support" — Asterisk's queue
-     * namespace is global. We prefix every tenant queue with
+     * The canonical Asterisk-side queue name. Client queues collide
+     * if two clients both name a queue "support" — Asterisk's queue
+     * namespace is global. We prefix every client queue with
      * `t{team_id}_` so Filament can show "Support" while Asterisk
      * stores `t42_support`. Null-team platform queues stay
      * unprefixed because there's only one of them per slug.

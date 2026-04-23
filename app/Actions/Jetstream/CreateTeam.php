@@ -4,7 +4,7 @@ namespace App\Actions\Jetstream;
 
 use App\Models\Team;
 use App\Models\User;
-use App\Services\Tenancy\TenantProvisioner;
+use App\Services\Clients\ClientProvisioner;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Validator;
 use Laravel\Jetstream\Contracts\CreatesTeams;
@@ -33,8 +33,8 @@ class CreateTeam implements CreatesTeams
             'personal_team' => false,
         ]));
 
-        // Provision tenant: default allow-list, per-tenant roles, initial tenant_admin.
-        app(TenantProvisioner::class)->provision($team, $user);
+        // Provision client: default allow-list, per-client roles, initial client_admin.
+        app(ClientProvisioner::class)->provision($team, $user);
 
         return $team;
     }

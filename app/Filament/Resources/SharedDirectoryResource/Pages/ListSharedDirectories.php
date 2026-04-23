@@ -12,7 +12,7 @@ class ListSharedDirectories extends ListRecords
 {
     protected static string $resource = SharedDirectoryResource::class;
 
-    protected ?string $subheading = 'Directories sharable across multiple tenants.';
+    protected ?string $subheading = 'Directories sharable across multiple clients.';
 
     protected function getHeaderActions(): array
     {

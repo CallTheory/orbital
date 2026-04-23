@@ -20,7 +20,7 @@ use Illuminate\Database\Eloquent\Builder;
 use UnitEnum;
 
 /**
- * Platform-library intake goal editor. Tenants compose flows from this
+ * Platform-library intake goal editor. Clients compose flows from this
  * library but cannot create goals themselves.
  *
  * The form is structured around the five JSON columns that every surface
@@ -66,16 +66,9 @@ class IntakeGoalResource extends Resource
         return auth()->user()?->isSuperAdmin() ?? false;
     }
 
-    /**
-     * Only show platform-library rows in this resource. Tenant instances
-     * are surfaced through the TenantResource child page.
-     */
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()
-            ->withoutGlobalScope('team')
-            ->whereNull('team_id')
-            ->whereNull('template_id');
+        return parent::getEloquentQuery();
     }
 
     public static function form(Schema $schema): Schema
@@ -280,9 +273,6 @@ class IntakeGoalResource extends Resource
                     ->weight('medium'),
                 Tables\Columns\TextColumn::make('category')
                     ->badge(),
-                Tables\Columns\TextColumn::make('instances_count')
-                    ->counts('instances')
-                    ->label('Used by'),
                 Tables\Columns\IconColumn::make('is_active')
                     ->boolean(),
             ])

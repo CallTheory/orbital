@@ -14,13 +14,13 @@ use Filament\Tables\Table;
 use UnitEnum;
 
 /**
- * Tenant-scoped call history. Read-only — the portal is a view of
+ * Client-scoped call history. Read-only — the portal is a view of
  * what the platform has captured on the customer's behalf.
  *
  * The table query explicitly filters on `current_team_id` rather than
  * relying on BelongsToTeam's global scope. Portal auth context doesn't
  * share state with the admin panel's team scope, and "filter explicitly"
- * beats "hope the global scope is configured right" for a page a tenant
+ * beats "hope the global scope is configured right" for a page a client
  * user can view.
  */
 class CallHistory extends Page implements HasTable

@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
- * Per-tenant email queue — a named bucket that routed inbound
+ * Per-client email queue — a named bucket that routed inbound
  * threads land in, to be picked up by operators or an assigned
  * AI persona.
  *

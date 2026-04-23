@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
- * Tenant-scoped knowledge namespace. Holds all chunks that belong to a
+ * Client-scoped knowledge namespace. Holds all chunks that belong to a
  * single "collection" the platform operator has set up for one of their
  * customers — e.g. "ACME Insurance FAQ", "Downtown Legal handbook".
  *

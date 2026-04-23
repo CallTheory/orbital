@@ -18,17 +18,17 @@ use UnitEnum;
 
 /**
  * Unified admin view of every User in the system — platform staff,
- * tenant portal users, and staff assigned as account managers.
+ * client portal users, and staff assigned as account managers.
  *
  * Complements:
  *   - **Staff** (UsersResource, slug `staff`) — filtered to team-less
  *     platform-role holders only; has the softphone provisioning UI.
- *   - **Tenants → Contacts** — per-tenant view of that tenant's people.
+ *   - **Clients → Contacts** — per-client view of that client's people.
  *
  * This page is the cross-cutting "who has a login account anywhere"
  * audit surface. Edits here touch the User row directly (name, email,
- * password reset); role and tenant-membership changes happen via the
- * originating surfaces (Staff or Tenants → Contacts).
+ * password reset); role and client-membership changes happen via the
+ * originating surfaces (Staff or Clients → Contacts).
  */
 class AllUsersResource extends Resource
 {
@@ -54,7 +54,7 @@ class AllUsersResource extends Resource
     }
 
     /**
-     * "Users" means tenant-associated logins with NO platform role.
+     * "Users" means client-associated logins with NO platform role.
      * Staff lives in its own admin page (UsersResource, slug
      * `staff`). Filtering them out here keeps the two surfaces
      * strictly non-overlapping so the nav entries mean what they
@@ -63,8 +63,8 @@ class AllUsersResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
-            // Attached to at least one tenant via Jetstream's
-            // team_user pivot — the definition of a tenant user.
+            // Attached to at least one client via Jetstream's
+            // team_user pivot — the definition of a client user.
             ->whereExists(function ($q) {
                 $q->select(\DB::raw(1))
                     ->from('team_user')
@@ -97,7 +97,7 @@ class AllUsersResource extends Resource
 
     public static function canCreate(): bool
     {
-        return false;  // creation happens via Staff / Tenant invite / etc.
+        return false;  // creation happens via Staff / Client invite / etc.
     }
 
     public static function canEdit($record): bool
@@ -114,8 +114,8 @@ class AllUsersResource extends Resource
     {
         return $schema->schema([
             // Three-column grid: Account + Audit stack in the left
-            // two-thirds, Tenant memberships owns the right third so
-            // it can grow as the user gains tenant rows without
+            // two-thirds, Client memberships owns the right third so
+            // it can grow as the user gains client rows without
             // pushing Audit further down the page. `columnSpanFull`
             // is load-bearing here — without it, the Grid renders
             // inside a single column unit of the form's outer schema
@@ -176,17 +176,17 @@ class AllUsersResource extends Resource
                     ])
                         ->columnSpan(2),
 
-                    \Filament\Schemas\Components\Section::make('Tenant memberships')
-                        ->description('Tenants this user is attached to.')
+                    \Filament\Schemas\Components\Section::make('Client memberships')
+                        ->description('Clients this user is attached to.')
                         ->schema([
-                            Forms\Components\Placeholder::make('tenants')
+                            Forms\Components\Placeholder::make('clients')
                                 ->hiddenLabel()
                                 ->content(function (User $record) {
                                     // Exclude Jetstream personal teams —
                                     // keeps the list to actual customer
-                                    // tenants only, not Platform / per-user
+                                    // clients only, not Platform / per-user
                                     // personal teams.
-                                    $tenants = \App\Models\Team::query()
+                                    $clients = \App\Models\Team::query()
                                         ->where('personal_team', false)
                                         ->whereIn('id', \DB::table('team_user')
                                             ->where('user_id', $record->id)
@@ -194,18 +194,18 @@ class AllUsersResource extends Resource
                                         ->orderBy('name')
                                         ->get(['id', 'name', 'account_number']);
 
-                                    if ($tenants->isEmpty()) {
+                                    if ($clients->isEmpty()) {
                                         return new \Illuminate\Support\HtmlString(
-                                            '<span class="text-sm text-gray-500 dark:text-gray-400">Not attached to any tenant.</span>'
+                                            '<span class="text-sm text-gray-500 dark:text-gray-400">Not attached to any client.</span>'
                                         );
                                     }
 
-                                    $rows = $tenants->map(function ($t) {
+                                    $rows = $clients->map(function ($t) {
                                         $name = e($t->name);
                                         $acct = $t->account_number
                                             ? ' <span class="text-gray-500 dark:text-gray-400">· #'.e($t->account_number).'</span>'
                                             : '';
-                                        $url = \App\Filament\Resources\TenantResource::getUrl('users', ['record' => $t->id]);
+                                        $url = \App\Filament\Resources\ClientResource::getUrl('users', ['record' => $t->id]);
                                         // Inline `display: list-item` + the
                                         // margin on the <ul> bypass Filament's
                                         // global list reset, which neuters
@@ -234,10 +234,10 @@ class AllUsersResource extends Resource
                     ->searchable()
                     ->sortable()
                     ->copyable(),
-                // One tenant per line so wide tenant membership doesn't
+                // One client per line so wide client membership doesn't
                 // smear across the row. Driven by the team_user pivot.
                 Tables\Columns\TextColumn::make('tenants_list')
-                    ->label('Tenants')
+                    ->label('Clients')
                     ->state(fn (User $record): array => $record->allTeams()
                         ->sortBy('name')
                         ->pluck('name')
@@ -278,9 +278,9 @@ class AllUsersResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             // Kind filter dropped — the query already restricts to
-            // tenant users only. Filter by tenant (membership) via
-            // the table search (tenant name is searchable on the
-            // Tenants column).
+            // client users only. Filter by client (membership) via
+            // the table search (client name is searchable on the
+            // Clients column).
             // No per-row actions column — clicking the row opens the
             // edit page instead. Keeps the table clean and makes the
             // Name and Email columns (the obvious click targets) do
@@ -295,7 +295,7 @@ class AllUsersResource extends Resource
     }
 
     // classifyUser() removed — the scoped query on this page
-    // already excludes everyone but tenant portal users, so no
+    // already excludes everyone but client portal users, so no
     // per-row classification is needed. ContactClassifier is the
     // canonical place when a per-row badge is needed elsewhere.
 

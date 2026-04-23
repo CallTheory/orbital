@@ -16,7 +16,7 @@ use Illuminate\Auth\Events\Login;
  * to leave the tab open on "Available" last time.
  *
  * Gated to platform-role users (operators / supervisors / admins
- * who actually use the operator panel). Tenant-only users have no
+ * who actually use the operator panel). Client-only users have no
  * availability state to reset — the field is ignored for them —
  * so we skip the work entirely.
  *

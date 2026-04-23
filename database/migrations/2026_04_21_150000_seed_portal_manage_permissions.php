@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use App\Services\Tenancy\TenantProvisioner;
+use App\Services\Clients\ClientProvisioner;
 use Database\Seeders\PermissionCatalogSeeder;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\Artisan;
@@ -14,9 +14,9 @@ use Illuminate\Support\Facades\Artisan;
  *   - portal.manage_roles — gates the portal Roles page.
  *
  * Ensures they exist in the catalog, adds them to every existing
- * tenant's allow-list, and re-syncs the tenant_admin role so the
+ * tenant's allow-list, and re-syncs the client_admin role so the
  * admin surface picks up the new perms without waiting for the
- * next manual provision. Doesn't touch tenant_user roles — the
+ * next manual provision. Doesn't touch client_user roles — the
  * view-only seed subset stays unchanged.
  */
 return new class extends Migration
@@ -25,7 +25,7 @@ return new class extends Migration
     {
         Artisan::call('db:seed', ['--class' => PermissionCatalogSeeder::class, '--force' => true]);
 
-        $provisioner = app(TenantProvisioner::class);
+        $provisioner = app(ClientProvisioner::class);
 
         \App\Models\Team::query()
             ->where('personal_team', false)

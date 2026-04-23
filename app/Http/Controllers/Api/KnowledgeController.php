@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\Cache;
  * Two auth modes:
  *   - `Authorization: Bearer <worker_token>` — the agent worker shared
  *     secret from services.agent_worker.token. Worker searches on behalf
- *     of a specific tenant identified by store_ids + team_id check.
+ *     of a specific client identified by store_ids + team_id check.
  *   - Sanctum session — the operator UI, which inherits the authed
  *     user's team context.
  */
@@ -62,7 +62,7 @@ class KnowledgeController extends Controller
      * If the caller is the agent worker (bearer token = services.agent_worker.token),
      * we derive the team from the first requested store — and then the
      * retrieval service re-validates every store_id against that team,
-     * so a worker can't fan out across tenants in one request.
+     * so a worker can't fan out across clients in one request.
      *
      * If the caller is a session user, we use their current_team_id.
      */

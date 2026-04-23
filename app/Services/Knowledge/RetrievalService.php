@@ -12,7 +12,7 @@ use Pgvector\Laravel\Vector;
 /**
  * Vector-search front-end for a knowledge store. The service is the
  * only place that issues SELECT queries against knowledge_chunks outside
- * of model relations — every call comes through here so tenant isolation
+ * of model relations — every call comes through here so client isolation
  * can be enforced in one spot.
  *
  * Caller responsibilities:
@@ -92,7 +92,7 @@ class RetrievalService
     }
 
     /**
-     * Convenience wrapper that also enforces tenant ownership up front.
+     * Convenience wrapper that also enforces client ownership up front.
      * The API controller delegates here so the guard and the query are
      * always co-located.
      *

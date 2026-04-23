@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\DB;
 /**
  * Aggregates `queue_log` events for a given date into one row per
  * queue per day in `queue_metrics_daily`. The dashboard reads from
- * the aggregate table — never from the raw firehose — so per-tenant
+ * the aggregate table — never from the raw firehose — so per-client
  * per-day stats stay cheap regardless of call volume.
  *
  * Idempotent. Re-running for the same date wipes that day's

@@ -37,7 +37,7 @@ class SmartIngestClient
     /**
      * Top-level instructions to the model. Applies to both the first
      * parse and all subsequent revisions. The schema block is built
-     * from the tenant's own field definitions — no fixed shape is
+     * from the client's own field definitions — no fixed shape is
      * baked in here so the same client serves dog walkers, lawyers,
      * and clinics with their wildly different directory schemas.
      * See {@see formatSchemaForPrompt()} for the block shape.
@@ -45,9 +45,9 @@ class SmartIngestClient
     protected function systemPrompt(string $schemaBlock): string
     {
         return <<<PROMPT
-You are a contact-parsing assistant for an answering-service platform. The operator will hand you raw input — CSV rows, an Excel sheet, a PDF, an image of a business card, an email forward, or free-text pasted from somewhere — and you extract it into structured directory entries for *this specific tenant*.
+You are a contact-parsing assistant for an answering-service platform. The operator will hand you raw input — CSV rows, an Excel sheet, a PDF, an image of a business card, an email forward, or free-text pasted from somewhere — and you extract it into structured directory entries for *this specific client*.
 
-The target schema is defined by the tenant. Use ONLY these field keys:
+The target schema is defined by the client. Use ONLY these field keys:
 
 {$schemaBlock}
 
@@ -67,7 +67,7 @@ PROMPT;
     }
 
     /**
-     * Build the per-tenant schema block injected into the system
+     * Build the per-client schema block injected into the system
      * prompt. Each definition becomes one bullet line:
      *
      *     - {key} ({type}, role: {role}, required): {label}{help text}
@@ -110,7 +110,7 @@ PROMPT;
      * extracted PDF/email text, or stringified spreadsheet rows). If
      * `$imageBase64` is set, the image is attached as a multimodal
      * block so the model can OCR it — e.g. a photographed business
-     * card or a scanned address list. `$schemaBlock` is the tenant's
+     * card or a scanned address list. `$schemaBlock` is the client's
      * field schema, formatted via {@see formatSchemaForPrompt()}.
      *
      * @return array{rows: array<int, array<string, mixed>>, notes: string}

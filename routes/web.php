@@ -57,9 +57,9 @@ Route::middleware(['auth', config('jetstream.auth_session')])->group(function ()
 });
 
 // Email attachment download + raw MIME viewer. Authed via the
-// default web guard; tenant-access checks live in the controller.
+// default web guard; client-access checks live in the controller.
 // Signed URLs aren't used here because the audience is logged-in
-// platform staff; if we later expose attachments to tenants, we
+// platform staff; if we later expose attachments to clients, we
 // can switch this to a signed route without breaking the shape.
 Route::middleware(['auth', config('jetstream.auth_session')])->group(function () {
     Route::get('/mail/attachments/{attachment}/download', [AttachmentDownloadController::class, 'download'])
@@ -72,11 +72,11 @@ Route::middleware(['auth', config('jetstream.auth_session')])->group(function ()
 // OperatorPanelProvider and PortalPanelProvider. Filament registers
 // their routes on boot; no web.php entries needed.
 
-// Public chat surface — anonymous text conversation with a tenant's
+// Public chat surface — anonymous text conversation with a client's
 // agent persona. The session is anchored by a random public_token
 // stashed in the browser session so refreshes preserve the transcript.
 // No auth: the URL itself is the shared secret.
-Route::get('/chat/{tenant}/{persona}', [ChatController::class, 'show'])
+Route::get('/chat/{client}/{persona}', [ChatController::class, 'show'])
     ->name('chat.show');
 
 // ──────────────────────────────────────────────────────────────────
@@ -163,13 +163,13 @@ Route::get('oauth/userinfo', OidcUserinfoController::class)
     ->name('oidc.userinfo');
 
 // ──────────────────────────────────────────────────────────────────
-// Tenant invitation acceptance — public (no auth middleware). One
+// Client invitation acceptance — public (no auth middleware). One
 // page handles four auth states: brand-new user, existing user,
 // already signed in as the invited email, signed in as the wrong
 // email. The controller resolves which; the view branches.
 // ──────────────────────────────────────────────────────────────────
-Route::get('/invite/{token}', [\App\Http\Controllers\TenantInvitationController::class, 'show'])
+Route::get('/invite/{token}', [\App\Http\Controllers\ClientInvitationController::class, 'show'])
     ->name('invitation.show');
-Route::post('/invite/{token}', [\App\Http\Controllers\TenantInvitationController::class, 'accept'])
+Route::post('/invite/{token}', [\App\Http\Controllers\ClientInvitationController::class, 'accept'])
     ->name('invitation.accept');
 

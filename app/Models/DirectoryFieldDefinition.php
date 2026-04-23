@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 
 /**
  * Schema entry for a DirectoryEntry field. Directory fields drive
- * call-time routing — the tenant's phone book used by AI agents and
+ * call-time routing — the client's phone book used by AI agents and
  * live operators while handling a call.
  */
 class DirectoryFieldDefinition extends Model

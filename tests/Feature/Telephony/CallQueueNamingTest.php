@@ -14,11 +14,11 @@ use Tests\TestCase;
 
 /**
  * The Asterisk side of the system has a global queue/context
- * namespace — two tenants both naming a queue "support" would
+ * namespace — two clients both naming a queue "support" would
  * collide and one of them would silently win. CallQueue::asteriskName()
  * fixes that with a `t{team_id}_{slug}` prefix and is the canonical
  * name everywhere downstream (the legacy generator, the new ARA
- * sync layer, the per-tenant dialplan blade, and the Realtime
+ * sync layer, the per-client dialplan blade, and the Realtime
  * QueueMemberSyncer).
  *
  * This suite locks in the naming rules so a future refactor of the

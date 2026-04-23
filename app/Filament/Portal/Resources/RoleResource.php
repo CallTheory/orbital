@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Filament\Portal\Resources;
 
 use App\Filament\Portal\Resources\RoleResource\Pages;
-use App\Services\Tenancy\TenantPermissionGatekeeper;
-use App\Services\Tenancy\TenantProvisioner;
+use App\Services\Clients\ClientPermissionGatekeeper;
+use App\Services\Clients\ClientProvisioner;
 use BackedEnum;
 use Filament\Forms;
 use Filament\Resources\Resource;
@@ -18,20 +18,20 @@ use Spatie\Permission\Models\Role;
 use UnitEnum;
 
 /**
- * Portal-side Role management for tenant admins.
+ * Portal-side Role management for client admins.
  *
- * Scoped to the current tenant (team_id = current_team_id). Admins
+ * Scoped to the current client (team_id = current_team_id). Admins
  * can create, rename, and delete custom roles for their staff, and
  * pick which permissions each role carries — limited to the
- * permissions the platform operator has included on this tenant's
- * allow-list (`tenant_permission_grants`).
+ * permissions the platform operator has included on this client's
+ * allow-list (`client_permission_grants`).
  *
  * Two seeded roles are protected from deletion:
- *   - tenant_admin — always holds the full allow-list; deleting it
- *     would leave the tenant with nobody who can manage users.
- *   - tenant_user  — fallback role assigned to every invitee.
+ *   - client_admin — always holds the full allow-list; deleting it
+ *     would leave the client with nobody who can manage users.
+ *   - client_user  — fallback role assigned to every invitee.
  *
- * Every permission write goes through TenantPermissionGatekeeper,
+ * Every permission write goes through ClientPermissionGatekeeper,
  * which is the single sanctioned write path for tenant-scoped
  * role/permission mutations.
  */
@@ -55,9 +55,9 @@ class RoleResource extends Resource
 
     /**
      * Gated on the `portal.manage_roles` permission. Every user
-     * carrying `tenant_admin` has it by default; a tenant admin can
+     * carrying `client_admin` has it by default; a client admin can
      * also grant it through a custom role via this very page. Team
-     * owners (Team.user_id) stay a hard-coded safety net so a tenant
+     * owners (Team.user_id) stay a hard-coded safety net so a client
      * can't accidentally paint itself into a corner where nobody can
      * reach the management surface.
      */
@@ -88,9 +88,9 @@ class RoleResource extends Resource
     }
 
     /**
-     * Scope to the current tenant's roles. Returns empty for users
+     * Scope to the current client's roles. Returns empty for users
      * with no current team — defense in depth so a broken session
-     * can't leak roles from an unrelated tenant.
+     * can't leak roles from an unrelated client.
      */
     public static function getEloquentQuery(): Builder
     {
@@ -115,7 +115,7 @@ class RoleResource extends Resource
                 ]),
 
             \Filament\Schemas\Components\Section::make('Permissions')
-                ->description('The set of capabilities this role grants. Options reflect what your platform operator has enabled for this tenant.')
+                ->description('The set of capabilities this role grants. Options reflect what your platform operator has enabled for this client.')
                 ->schema([
                     Forms\Components\CheckboxList::make('permissions')
                         ->label('Permissions')
@@ -168,8 +168,8 @@ class RoleResource extends Resource
     }
 
     /**
-     * Can the current user manage roles in this tenant? Team owner
-     * always counts (safety net against a tenant locking itself out
+     * Can the current user manage roles in this client? Team owner
+     * always counts (safety net against a client locking itself out
      * by revoking portal.manage_roles from every custom role); every
      * other user needs the permission explicitly.
      */
@@ -191,15 +191,15 @@ class RoleResource extends Resource
     public static function isProtectedRole($record): bool
     {
         return in_array($record->name ?? '', [
-            TenantProvisioner::ROLE_TENANT_ADMIN,
-            TenantProvisioner::ROLE_TENANT_USER,
+            ClientProvisioner::ROLE_CLIENT_ADMIN,
+            ClientProvisioner::ROLE_CLIENT_USER,
         ], true);
     }
 
     /**
      * Permission name => human label map for the CheckboxList.
-     * Sourced from the tenant's allow-list so only permissions the
-     * platform operator has enabled for this tenant show up.
+     * Sourced from the client's allow-list so only permissions the
+     * platform operator has enabled for this client show up.
      *
      * @return array<string, string>
      */
@@ -210,7 +210,7 @@ class RoleResource extends Resource
             return [];
         }
 
-        return \DB::table('tenant_permission_grants as g')
+        return \DB::table('client_permission_grants as g')
             ->join('permissions as p', 'p.id', '=', 'g.permission_id')
             ->where('g.team_id', $teamId)
             ->orderBy('p.name')
@@ -230,10 +230,10 @@ class RoleResource extends Resource
         $copy = [
             'portal.view_home' => 'See the portal dashboard with the recent activity summary.',
             'portal.view_calls' => 'See the call history, durations, and routing outcomes.',
-            'portal.view_messages' => 'Read messages taken on behalf of the tenant.',
+            'portal.view_messages' => 'Read messages taken on behalf of the client.',
             'portal.view_recordings' => 'Listen to recorded call audio.',
             'portal.manage_users' => 'Invite users, remove users, and change which roles each user carries.',
-            'portal.manage_roles' => 'Create, edit, and delete the roles available inside this tenant.',
+            'portal.manage_roles' => 'Create, edit, and delete the roles available inside this client.',
         ];
 
         return $copy;

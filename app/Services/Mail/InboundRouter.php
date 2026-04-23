@@ -10,7 +10,7 @@ use App\Models\Team;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Matches an inbound email to a tenant + destination.
+ * Matches an inbound email to a client + destination.
  *
  * Flow (called from ProcessInboundEmailJob after the MIME
  * parse has populated header + body fields on the message):
@@ -20,9 +20,9 @@ use Illuminate\Support\Facades\Log;
  *   2. For each recipient, parse the local-part into
  *      account_number + function via LocalPartParser
  *   3. First recipient whose account_number resolves to a
- *      real tenant wins. The resolved `Team` becomes the
+ *      real client wins. The resolved `Team` becomes the
  *      message's `team_id`.
- *   4. Evaluate that tenant's active `EmailRoutingRule` rows:
+ *   4. Evaluate that client's active `EmailRoutingRule` rows:
  *      - `function` rules first (highest specificity) when
  *        the local-part had a function suffix
  *      - `from_pattern` and `subject_pattern` rules apply
@@ -45,7 +45,7 @@ class InboundRouter
     /**
      * Result shape returned to the job:
      *
-     *   team_id          — resolved tenant, or null if unrouted
+     *   team_id          — resolved client, or null if unrouted
      *   destination_type — queue/operator/agent_persona/discard/null
      *   destination_id   — pointer, or null
      *   matched_rule_id  — the EmailRoutingRule that fired
@@ -64,7 +64,7 @@ class InboundRouter
         }
 
         // Walk every recipient and take the first one whose
-        // account_number maps to a real tenant. The rest of the
+        // account_number maps to a real client. The rest of the
         // recipients (Cc, Bcc, group aliases) are informational.
         foreach ($envelope as $address) {
             $parts = $this->parser->parse($address);
@@ -96,10 +96,10 @@ class InboundRouter
     }
 
     /**
-     * Route a message into a specific tenant's rules — used by the
-     * admin "Assign to Tenant" action when manually routing an
-     * unrouted message. Skips tenant resolution (the admin already
-     * chose the tenant) and goes straight to rule matching.
+     * Route a message into a specific client's rules — used by the
+     * admin "Assign to Client" action when manually routing an
+     * unrouted message. Skips client resolution (the admin already
+     * chose the client) and goes straight to rule matching.
      *
      * @return array{destination_type: ?string, destination_id: ?int, matched_rule_id: ?int}
      */
@@ -142,7 +142,7 @@ class InboundRouter
     }
 
     /**
-     * Walk a tenant's active routing rules in priority order and
+     * Walk a client's active routing rules in priority order and
      * return the first one that matches this message. Returns
      * null if nothing matches.
      */

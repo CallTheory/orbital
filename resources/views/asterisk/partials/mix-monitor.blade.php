@@ -13,7 +13,7 @@
     accuracy and cost.
 
     Output directory convention:
-        /var/spool/asterisk/monitor/tenants/{team_id}/{YYYY}/{MM}/
+        /var/spool/asterisk/monitor/clients/{team_id}/{YYYY}/{MM}/
     ...and the per-call filename is the call's unique_id (UNIQUEID
     at dialplan evaluation time). A companion uploader job watches
     that directory and moves completed files to MinIO under the
@@ -49,7 +49,7 @@
     // Asterisk variable expansion — ${UNIQUEID} gets replaced at runtime
     // with the per-call unique id. We build the directory path at
     // generation time and embed the UNIQUEID ref verbatim.
-    $dir = "/var/spool/asterisk/monitor/tenants/{$teamId}/\${STRFTIME(\${EPOCH},,%Y/%m)}";
+    $dir = "/var/spool/asterisk/monitor/clients/{$teamId}/\${STRFTIME(\${EPOCH},,%Y/%m)}";
     $mixFile = $dir.'/${UNIQUEID}-mix.'.$format;
     $rxFile = $dir.'/${UNIQUEID}-rx.'.$format;
     $txFile = $dir.'/${UNIQUEID}-tx.'.$format;

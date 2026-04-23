@@ -9,10 +9,10 @@ use App\Models\Team;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * Enforces the suspended-tenant block at model creation time.
+ * Enforces the suspended-client block at model creation time.
  *
- * Super-admins always bypass. Tenant quotas for SIP trunks and
- * extensions are gone — tenants are read-only customer accounts and
+ * Super-admins always bypass. Client quotas for SIP trunks and
+ * extensions are gone — clients are read-only customer accounts and
  * never create those resources themselves. Only the suspension guard
  * remains; billing-relevant ceilings live elsewhere (max_concurrent
  * calls is enforced at call-start time, not at model creation).
@@ -38,12 +38,12 @@ class QuotaObserver
             return;
         }
 
-        // Suspended tenants can't create anything.
+        // Suspended clients can't create anything.
         if ($team->suspended_at !== null) {
             throw new QuotaExceededException(
                 resource: 'operations',
                 limit: 0,
-                message: 'This tenant is suspended. '.config('orbital.support_message').' to reactivate.',
+                message: 'This client is suspended. '.config('orbital.support_message').' to reactivate.',
             );
         }
     }

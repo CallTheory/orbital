@@ -6,14 +6,14 @@ and (where relevant) why it matters to the buyer.
 
 The buyer is a **platform operator** — a call-center company that
 wants to run Orbital to take calls on behalf of their customers.
-Their customers are **tenants** — businesses that want an answering
+Their customers are **clients** — businesses that want an answering
 service but don't want to run the infrastructure themselves.
 
 Two customer journeys need to show up on the site:
 
 - **Platform operator journey**: "I want to stand up an answering
   service and resell it to my own clients."
-- **End-customer journey (tenant)**: "I want a professional answering
+- **End-customer journey (client)**: "I want a professional answering
   service for my business, with a modern portal and AI-enabled
   routing options."
 
@@ -25,17 +25,17 @@ Two customer journeys need to show up on the site:
 
 **Pitch**: Orbital is installable software that turns your call-center
 operation into a multi-tenant SaaS. Each of your clients becomes a
-tenant with their own portal, their own message history, their own
+client with their own portal, their own message history, their own
 DIDs, their own AI personas. You keep the operator seats, the
 infrastructure, and the billing relationship. Nothing routes through
 a vendor cloud — the whole stack runs on your hardware or your cloud.
 
 **Key differentiators**:
 - Self-hosted, no SaaS middleman; data never leaves your stack
-- Multi-tenant from the ground up; one install serves all your clients
+- Multi-client from the ground up; one install serves all your clients
 - Both AI agents and human operators handle calls side-by-side
 - Open telephony (Asterisk + Kamailio + LiveKit), not a proprietary PBX
-- Deterministic billing — you meter usage against tenants with no
+- Deterministic billing — you meter usage against clients with no
   per-minute fee paid to anyone upstream
 
 ---
@@ -46,12 +46,12 @@ a vendor cloud — the whole stack runs on your hardware or your cloud.
 
 **Capability bullets**:
 - Inbound SIP trunks from any carrier (Twilio, Bandwidth, your own)
-- Per-tenant DIDs with pattern-based routing rules
+- Per-client DIDs with pattern-based routing rules
 - Time-of-day conditions (business hours, after-hours, weekends,
   holidays)
 - Queue-based overflow between AI agents and human operators
-- Call recording to tenant-isolated storage with retention controls
-- Message intake flows defined per-tenant, per-script
+- Call recording to client-isolated storage with retention controls
+- Message intake flows defined per-client, per-script
 - Email-to-message for callers who hit voicemail
 - Inbound email handling alongside calls — same workspace
 
@@ -62,14 +62,14 @@ a vendor cloud — the whole stack runs on your hardware or your cloud.
 **Headline**: Conversational AI that sounds human, follows your script,
 and knows when to hand off.
 
-**Pitch**: Build agent personas once; deploy them per-tenant with
-tenant-specific knowledge, voice, and personality. Powered by LiveKit
+**Pitch**: Build agent personas once; deploy them per-client with
+client-specific knowledge, voice, and personality. Powered by LiveKit
 for low-latency audio, Anthropic for reasoning, ElevenLabs for voice.
 Every agent is bounded by a script so it doesn't go off-rails.
 
 **Capability bullets**:
 - Persona-based configuration: name, voice, personality, backing LLM
-- Per-tenant knowledge bases for grounded answers
+- Per-client knowledge bases for grounded answers
 - Unified scripts: the same script drives AI *and* human operators so
   behavior is consistent whichever path a call takes
 - Structured intake goals — collect name, number, reason for call,
@@ -97,7 +97,7 @@ required.
 **Capability bullets**:
 - WebRTC softphone in the browser — no desktop app
 - Call queue with skill-based routing
-- One-screen workspace: caller ID, tenant context, script, intake
+- One-screen workspace: caller ID, client context, script, intake
   form, and history
 - Automatic call recording
 - Operator availability states with mandatory reason on sign-out
@@ -115,13 +115,13 @@ required.
 
 **Capability bullets**:
 - Every domain model is tenant-scoped via the `BelongsToTeam` trait
-- Tenant portal: customers see their own call history, messages,
+- Client portal: customers see their own call history, messages,
   recordings, agents, stats — nothing else
-- Platform staff can impersonate into any tenant for support
-- Per-tenant: branding in the portal, AI persona config, knowledge
+- Platform staff can impersonate into any client for support
+- Per-client: branding in the portal, AI persona config, knowledge
   base, scripts, intake goals, DIDs, trunks, routing rules, queue
   config, operator assignments
-- Tenants can grant portal access to their own users with
+- Clients can grant portal access to their own users with
   role-scoped permissions
 
 ---
@@ -130,14 +130,14 @@ required.
 
 **Headline**: One pane of glass for everything you run.
 
-**Pitch**: Filament-based admin panel with deep per-tenant control,
+**Pitch**: Filament-based admin panel with deep per-client control,
 live telephony state, and a Failover Central page for infrastructure
 operations.
 
 **Capability bullets**:
 - Three distinct panels: Admin (platform staff), Operator (the people
-  answering calls), Portal (tenant users)
-- Tenant CRUD with cloning + template provisioning
+  answering calls), Portal (client users)
+- Client CRUD with cloning + template provisioning
 - AI persona CRUD with live voice preview
 - Script editor with versioning
 - Intake goal + flow editor
@@ -266,7 +266,7 @@ Shipped:
 Coming:
 - Infrastructure dashboard (LiveKit, Postgres, Valkey, SeaweedFS
   metrics)
-- Orbital App dashboard (request rate, queue depth, per-tenant call
+- Orbital App dashboard (request rate, queue depth, per-client call
   counts)
 - Telephony dashboard (active channels, dispatcher state, AMI
   polling)
@@ -281,15 +281,15 @@ Not shipped yet; should be in the "coming soon" list for the
 marketing site.
 
 Planned:
-- Per-tenant call-minute counters (AI vs human)
-- Per-tenant message volume (inbound + outbound email)
-- Per-tenant recording storage usage
+- Per-client call-minute counters (AI vs human)
+- Per-client message volume (inbound + outbound email)
+- Per-client recording storage usage
 - Exportable billing CSV for month-end invoicing
-- Optional Stripe integration for direct invoicing of tenants
+- Optional Stripe integration for direct invoicing of clients
 
 ---
 
-## 13. Template tenants (roadmap)
+## 13. Template clients (roadmap)
 
 Planned starter configurations that ship with every install:
 
@@ -302,7 +302,7 @@ Planned starter configurations that ship with every install:
 - **Call center queue** — classic skill-based routing to operator pools
 
 Every template seeds working routing rules, queues, scripts, and
-(where relevant) an AI persona, so a new tenant is usable in minutes
+(where relevant) an AI persona, so a new client is usable in minutes
 without manual configuration.
 
 ---
@@ -338,8 +338,8 @@ themselves. Recommended captures, with the URL path under `/admin/`:
 | **System Status bar** | top of any admin page | "Every component. Every page. Never surprised." |
 | **Operator workspace** with active call + intake form | `/operator` during a test call | "One screen. Every answer in reach." |
 | **Softphone widget** with availability pill | `/operator` | "Browser-native calling. No desk phone. No installer." |
-| **Tenant portal** inbox | `/portal/messages` as a tenant user | "Your clients get a portal, not a phone number." |
-| **AI persona editor** | `/admin/resources/agent-personas/{id}/edit` | "Configure an AI once. Reuse it per tenant." |
+| **Client portal** inbox | `/portal/messages` as a client user | "Your clients get a portal, not a phone number." |
+| **AI persona editor** | `/admin/resources/agent-personas/{id}/edit` | "Configure an AI once. Reuse it per client." |
 | **Intake flow editor** | `/admin/resources/intake-flows/{id}/edit` | "Same script. AI follows it. Human follows it." |
 | **Call recording player** | a CallLog detail page | "Every call. Recorded. Playable. Searchable." |
 | **Dark mode** | any admin page with dark toggled | "Works how your team works." |
@@ -365,6 +365,6 @@ are deterministic once a demo dataset is seeded via
   Smith.ai.
 - **Two audiences, one site**: lead with the platform operator
   story on the home page; have a sub-page for the end-customer
-  (tenant) story that talks about the portal experience.
+  (client) story that talks about the portal experience.
 - **Don't oversell AI**: AI voice agents are a capability, not the
   whole product. The HA + multi-tenant story is the moat.

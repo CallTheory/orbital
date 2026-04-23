@@ -10,10 +10,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
- * A tenant-authored composition of intake goals — the ordered sequence of
+ * A client-authored composition of intake goals — the ordered sequence of
  * small objectives the agent (or operator) walks through during a call.
  *
- * Flows are always tenant-scoped (team_id not null). Tenants compose
+ * Flows are always tenant-scoped (team_id not null). Clients compose
  * library goals by adding them as ordered steps; the AgentFlowCompiler
  * resolves a flow onto concrete LLM instructions + function schemas.
  */

@@ -22,7 +22,7 @@ class IntakeFlowStep extends Model
         'intake_goal_id',
         'position',
         'branches',
-        'step_overrides',
+        'step_params',
         'is_required',
     ];
 
@@ -31,7 +31,7 @@ class IntakeFlowStep extends Model
         return [
             'position' => 'integer',
             'branches' => 'array',
-            'step_overrides' => 'array',
+            'step_params' => 'array',
             'is_required' => 'boolean',
         ];
     }

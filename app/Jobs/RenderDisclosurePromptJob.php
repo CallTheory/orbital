@@ -17,8 +17,8 @@ use Illuminate\Queue\SerializesModels;
  * play it back at the start of a recorded call.
  *
  * Idempotent: no-op if the file already exists. Safe to dispatch on
- * every tenant save — DisclosureRenderer short-circuits by content
- * hash. Dispatched from the tenant create/edit pages and from the
+ * every client save — DisclosureRenderer short-circuits by content
+ * hash. Dispatched from the client create/edit pages and from the
  * `orbital:render-disclosures` artisan command.
  */
 class RenderDisclosurePromptJob implements ShouldQueue

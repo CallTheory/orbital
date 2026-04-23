@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Per-tenant custom voicemail greeting.
  *
- * Tenants with `voicemail_greeting_mode = 'custom_tts'` render the
+ * Clients with `voicemail_greeting_mode = 'custom_tts'` render the
  * configured `voicemail_greeting_text` through the chosen voice
  * provider. The generated WAV lands in the shared asterisk-prompts
  * volume and gets played back via `Playback()` right before the

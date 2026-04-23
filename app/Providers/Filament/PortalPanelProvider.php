@@ -22,9 +22,9 @@ use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 /**
- * Customer portal — the read-only view tenant users land on when they
+ * Customer portal — the read-only view client users land on when they
  * log in. Same Filament shell as admin and operator, scoped to the
- * tenant user's `current_team_id`.
+ * client user's `current_team_id`.
  *
  * Super-admins can also access the portal via impersonation so they
  * can see what a customer sees.
@@ -43,7 +43,7 @@ class PortalPanelProvider extends PanelProvider
             ->brandLogoHeight('2rem')
             ->favicon(fn () => \App\Support\Branding::portalFaviconUrl())
             ->colors([
-                'primary' => Color::Sky,
+                'primary' => \App\Support\Branding::portalPrimaryColor(),
                 'danger' => Color::Red,
                 'warning' => Color::Amber,
                 'success' => Color::Emerald,

@@ -76,7 +76,7 @@ class ProcessEmailWithAgentJob implements ShouldQueue
             return;
         }
 
-        // Compile the flow fresh so we pick up any tenant-side
+        // Compile the flow fresh so we pick up any client-side
         // changes to intake goals / talking points between turns.
         $compiled = $compiler->compile($persona);
 
@@ -136,7 +136,7 @@ class ProcessEmailWithAgentJob implements ShouldQueue
     /**
      * Wrap the persona's voice/intake LLM instructions with an
      * email-medium preamble. Keeps the persona's behavior rules
-     * and tenant context while making sure the output is
+     * and client context while making sure the output is
      * email-shaped (no spoken-word artifacts, no stage directions).
      */
     private function buildEmailSystemPrompt(string $compiledInstructions, AgentPersona $persona, EmailThread $thread): string

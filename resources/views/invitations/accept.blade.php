@@ -1,5 +1,5 @@
 @php
-    /** @var \App\Models\TenantInvitation $invitation */
+    /** @var \App\Models\ClientInvitation $invitation */
     /** @var ?\App\Models\User $authed */
     /** @var bool $emailMatches */
     /** @var bool $userExists */

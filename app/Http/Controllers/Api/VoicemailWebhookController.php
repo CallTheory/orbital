@@ -43,14 +43,14 @@ class VoicemailWebhookController extends Controller
             'caller_id_name' => 'nullable|string',
         ]);
 
-        // Mailbox number = tenant account_number (set by
+        // Mailbox number = client account_number (set by
         // AsteriskConfigService::generateVoicemail()).
         $team = Team::query()
             ->where('account_number', (int) $data['mailbox'])
             ->first();
 
         if (! $team) {
-            Log::warning('voicemail-webhook: no tenant matches mailbox', [
+            Log::warning('voicemail-webhook: no client matches mailbox', [
                 'mailbox' => $data['mailbox'],
             ]);
             // 202: we accept the webhook to keep Asterisk happy, but

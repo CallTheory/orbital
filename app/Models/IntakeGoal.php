@@ -4,20 +4,18 @@ declare(strict_types=1);
 
 namespace App\Models;
 
-use App\Models\Concerns\BelongsToTeam;
-use App\Services\Tenancy\TemplateResolver;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * A single structured objective inside a call flow.
  *
- * Platform library rows (team_id = null, template_id = null) form the
- * authoritative vocabulary. Tenants can clone them into instances that
- * point at the template and store only their field-level overrides,
- * same pattern as AgentPersona.
+ * Intake goals are a flat, platform-wide catalog — the vocabulary of
+ * "things an AI agent can do" that flows compose into ordered scripts.
+ * There's no per-client scoping: every tenant picks from the same
+ * library, and any tenant-specific nuance lives on the flow step
+ * itself (`intake_flow_steps.step_params`), not on a duplicated
+ * goal row.
  *
  * Intake goals are read by three compilers (AI voice, operator UI,
  * chat) that each render the same structured fields — talking_points,
@@ -25,12 +23,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  */
 class IntakeGoal extends Model
 {
-    use BelongsToTeam;
     use SoftDeletes;
 
     protected $fillable = [
-        'team_id',
-        'template_id',
         'key',
         'name',
         'description',
@@ -65,44 +60,24 @@ class IntakeGoal extends Model
     }
 
     /**
-     * Template this goal instance is linked to (null = standalone or template itself).
-     */
-    public function template(): BelongsTo
-    {
-        return $this->belongsTo(self::class, 'template_id');
-    }
-
-    /**
-     * Tenant instances linked to this template.
-     */
-    public function instances(): HasMany
-    {
-        return $this->hasMany(self::class, 'template_id');
-    }
-
-    /**
-     * Is this row a platform-library template?
-     */
-    public function isTemplate(): bool
-    {
-        return $this->team_id === null && $this->template_id === null;
-    }
-
-    /**
-     * Return all effective attribute values with template + overrides merged.
+     * Return the goal's attributes as a plain array. Kept for API
+     * parity with other flow-compilable models that used to inherit
+     * template + override merging; for intake goals there are no
+     * templates to walk, so this is just the row itself.
      *
      * @return array<string, mixed>
      */
     public function effective(): array
     {
-        return app(TemplateResolver::class)->effective($this);
+        return $this->attributesToArray();
     }
 
     /**
-     * Convenience: resolve a single field through the template.
+     * Convenience accessor used by the flow compiler. No template
+     * chain to resolve anymore, so it just reads the field directly.
      */
     public function effectiveField(string $field): mixed
     {
-        return app(TemplateResolver::class)->resolve($this, $field);
+        return $this->{$field};
     }
 }

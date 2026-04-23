@@ -110,7 +110,7 @@ class UploadCallRecordingJob implements ShouldQueue
 
     /**
      * Match the directory pattern the Asterisk dialplan writes to:
-     *   /var/spool/asterisk/monitor/tenants/{team_id}/{YYYY}/{MM}/
+     *   /var/spool/asterisk/monitor/clients/{team_id}/{YYYY}/{MM}/
      *
      * The dialplan uses `${STRFTIME(${EPOCH},,%Y/%m)}` at call time,
      * which resolves to the year/month the call STARTED on. We use
@@ -121,6 +121,6 @@ class UploadCallRecordingJob implements ShouldQueue
     {
         $when = $call->started_at ?? now();
         $ym = $when->format('Y/m');
-        return "/var/spool/asterisk/monitor/tenants/{$call->team_id}/{$ym}";
+        return "/var/spool/asterisk/monitor/clients/{$call->team_id}/{$ym}";
     }
 }

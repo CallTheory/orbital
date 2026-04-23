@@ -19,9 +19,9 @@ use Illuminate\Http\Request;
  * token. The operator Livewire UI calls `show` through the Sanctum
  * session to hydrate its form state.
  *
- * Tenant isolation lives in two places:
+ * Client isolation lives in two places:
  *   1. The worker only knows a session_key + the fields it has collected;
- *      it can't read another tenant's session because the path is scoped
+ *      it can't read another client's session because the path is scoped
  *      to a single key it controls.
  *   2. Operator reads go through the session user's current team and we
  *      cross-check CallSessionState.team_id before returning data.
@@ -139,7 +139,7 @@ class CallSessionController extends Controller
 
     /**
      * If the session has caller_name, caller_phone, and reason captured,
-     * persist them as a Message record linked to the tenant. Idempotent —
+     * persist them as a Message record linked to the client. Idempotent —
      * checks for an existing message with this session key in metadata
      * to prevent duplicates on retry.
      */

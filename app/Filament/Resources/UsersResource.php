@@ -23,8 +23,8 @@ use UnitEnum;
 /**
  * Platform staff only — super_admin, operator, supervisor.
  *
- * Tenant contacts (customer-side users with the per-tenant `tenant_user` role)
- * are managed inside their tenant via TenantResource → Contacts. They never
+ * Client contacts (customer-side users with the per-client `client_user` role)
+ * are managed inside their client via ClientResource → Contacts. They never
  * appear in this list.
  */
 class UsersResource extends Resource
@@ -66,9 +66,9 @@ class UsersResource extends Resource
     }
 
     /**
-     * Only users who hold any team-less platform role. Tenant contacts
-     * (team-scoped tenant_user role) are excluded — they live under their
-     * tenant in TenantResource → Contacts.
+     * Only users who hold any team-less platform role. Client contacts
+     * (team-scoped client_user role) are excluded — they live under their
+     * client in ClientResource → Contacts.
      *
      * Uses a raw whereExists against model_has_roles instead of going
      * through Spatie's `roles` relationship, because that relationship
@@ -95,7 +95,7 @@ class UsersResource extends Resource
         return $schema
             ->schema([
                 // Three-column grid mirrors AllUsersResource: Account
-                // and Softphone stack in the left two-thirds, Tenant
+                // and Softphone stack in the left two-thirds, Client
                 // memberships sits in the right third and grows
                 // independently as staff get attached to more
                 // customers (account managers, impersonation testing).
@@ -178,22 +178,22 @@ class UsersResource extends Resource
                         ])
                             ->columnSpan(2),
 
-                        \Filament\Schemas\Components\Section::make('Tenant memberships')
-                            ->description('Tenants this staff member is attached to.')
+                        \Filament\Schemas\Components\Section::make('Client memberships')
+                            ->description('Clients this staff member is attached to.')
                             ->schema([
-                                Forms\Components\Placeholder::make('tenants')
+                                Forms\Components\Placeholder::make('clients')
                                     ->hiddenLabel()
                                     ->content(function (?User $record) {
                                         if (! $record) {
                                             return new \Illuminate\Support\HtmlString(
-                                                '<span class="text-sm text-gray-500 dark:text-gray-400">Tenant memberships appear after the account is created.</span>'
+                                                '<span class="text-sm text-gray-500 dark:text-gray-400">Client memberships appear after the account is created.</span>'
                                             );
                                         }
 
                                         // Exclude Jetstream personal teams — the Platform
                                         // and user-specific personal teams aren't real
                                         // customers and would just be noise on this list.
-                                        $tenants = \App\Models\Team::query()
+                                        $clients = \App\Models\Team::query()
                                             ->where('personal_team', false)
                                             ->whereIn('id', \DB::table('team_user')
                                                 ->where('user_id', $record->id)
@@ -201,18 +201,18 @@ class UsersResource extends Resource
                                             ->orderBy('name')
                                             ->get(['id', 'name', 'account_number']);
 
-                                        if ($tenants->isEmpty()) {
+                                        if ($clients->isEmpty()) {
                                             return new \Illuminate\Support\HtmlString(
-                                                '<span class="text-sm text-gray-500 dark:text-gray-400">Not attached to any tenant.</span>'
+                                                '<span class="text-sm text-gray-500 dark:text-gray-400">Not attached to any client.</span>'
                                             );
                                         }
 
-                                        $rows = $tenants->map(function ($t) {
+                                        $rows = $clients->map(function ($t) {
                                             $name = e($t->name);
                                             $acct = $t->account_number
                                                 ? ' <span class="text-gray-500 dark:text-gray-400">· #'.e($t->account_number).'</span>'
                                                 : '';
-                                            $url = \App\Filament\Resources\TenantResource::getUrl('users', ['record' => $t->id]);
+                                            $url = \App\Filament\Resources\ClientResource::getUrl('users', ['record' => $t->id]);
                                             return '<li style="display: list-item; list-style-type: disc;"><a href="'.$url.'" class="text-primary-600 hover:underline dark:text-primary-400">'.$name.'</a>'.$acct.'</li>';
                                         })->implode('');
 

@@ -26,7 +26,7 @@ use UnitEnum;
  *
  * Two sections:
  *   1. Unmatched Inbound Calls — what to do with calls whose dialed
- *      number doesn't match any tenant DID.
+ *      number doesn't match any client DID.
  *   2. Outage Handling — last-resort behavior when normal call paths
  *      can't be reached (LiveKit down, no operators, agent worker dead).
  *
@@ -98,14 +98,14 @@ class TelephonySettings extends Page implements HasForms
             ->components([
                 Section::make('Unmatched Inbound Calls')
                     ->icon('heroicon-o-question-mark-circle')
-                    ->description('What happens when an inbound call arrives on a DID that does not match any tenant.')
+                    ->description('What happens when an inbound call arrives on a DID that does not match any client.')
                     ->schema([
                         Forms\Components\Select::make('unmatched_action')
                             ->label('Action')
                             ->options([
                                 'reject' => 'Reject the call with a SIP code',
                                 'play_message' => 'Play a message and hang up',
-                                'route_to_tenant' => 'Forward to a specific tenant',
+                                'route_to_tenant' => 'Forward to a specific client',
                             ])
                             ->required()
                             ->live(),
@@ -114,7 +114,7 @@ class TelephonySettings extends Page implements HasForms
                             ->options(Keys::clientRejectCodeOptions())
                             ->default(Keys::DEFAULTS[Keys::UNMATCHED_REJECT_CODE])
                             ->required()
-                            ->helperText('Code returned to the carrier when a dialed number does not match any tenant DID.')
+                            ->helperText('Code returned to the carrier when a dialed number does not match any client DID.')
                             ->visible(fn (callable $get) => $get('unmatched_action') === 'reject'),
                         Forms\Components\Textarea::make('unmatched_message')
                             ->label('Message (TTS)')
@@ -122,14 +122,14 @@ class TelephonySettings extends Page implements HasForms
                             ->columnSpanFull()
                             ->visible(fn (callable $get) => $get('unmatched_action') === 'play_message'),
                         Forms\Components\Select::make('unmatched_catchall_tenant_id')
-                            ->label('Catchall Tenant')
+                            ->label('Catchall Client')
                             ->options(fn () => Team::query()
                                 ->where('personal_team', false)
                                 ->orderBy('name')
                                 ->pluck('name', 'id'))
                             ->searchable()
                             ->visible(fn (callable $get) => $get('unmatched_action') === 'route_to_tenant')
-                            ->helperText('All unmatched inbound calls will be treated as belonging to this tenant.'),
+                            ->helperText('All unmatched inbound calls will be treated as belonging to this client.'),
                     ])
                     ->columns(2),
 

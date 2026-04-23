@@ -25,7 +25,7 @@ use Illuminate\Support\Facades\DB;
  *     getting rejected as anonymous.
  *
  * Endpoint id is `trunk_{id}` — globally unique because trunks
- * have a global integer PK (no per-tenant numbering). Tenant
+ * have a global integer PK (no per-client numbering). Client
  * association is implicit via routing rules in the dialplan, not
  * via the trunk endpoint itself.
  */

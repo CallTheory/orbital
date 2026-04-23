@@ -29,7 +29,7 @@ use Illuminate\Support\Str;
  * SMTP connection quickly: save the raw blob to MinIO, create a
  * stub `EmailMessage` row with `routing_status=pending`, and
  * dispatch `ProcessInboundEmailJob` onto the dedicated
- * `inbound-mail` queue. All parsing, header extraction, tenant
+ * `inbound-mail` queue. All parsing, header extraction, client
  * routing, threading, and attachment storage happens in the job.
  *
  * Auth is the shared-secret bearer token in
@@ -91,12 +91,12 @@ class InboundMailController extends Controller
      * RCPT-TO validation endpoint. Haraka's plugin calls this
      * during the SMTP conversation to decide whether to accept a
      * recipient before the sender DATA's the message body. If
-     * the address doesn't resolve to a known tenant, we 404 and
+     * the address doesn't resolve to a known client, we 404 and
      * Haraka responds 550 to the sender — we never even see the
      * payload.
      *
      * Input:  `?address={local-part}@{domain}`
-     * Output: 200 {"ok":true,"team_id":N} on known tenants
+     * Output: 200 {"ok":true,"team_id":N} on known clients
      *         404 {"ok":false} on unknown account_number
      *
      * Results are cached for 60 seconds per address so a sender

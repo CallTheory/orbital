@@ -8,7 +8,7 @@
 
     {{-- Thread meta --}}
     <div class="text-xs text-gray-500 dark:text-gray-400" style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; padding-bottom: 0.75rem;">
-        <span>Tenant: <strong class="text-gray-700 dark:text-gray-200">{{ $thread->team->name ?? 'Unknown' }}</strong></span>
+        <span>Client: <strong class="text-gray-700 dark:text-gray-200">{{ $thread->team->name ?? 'Unknown' }}</strong></span>
         <span>&middot;</span>
         <span>{{ $thread->messages->count() }} message(s)</span>
         @if ($thread->emailQueue)
@@ -17,7 +17,7 @@
         @endif
         @if ($showBothTz)
             <span>&middot;</span>
-            <span>Tenant tz: <strong class="text-gray-700 dark:text-gray-200">{{ $tenantTz }}</strong></span>
+            <span>Client tz: <strong class="text-gray-700 dark:text-gray-200">{{ $tenantTz }}</strong></span>
         @endif
     </div>
 
@@ -41,7 +41,7 @@
                 <div class="text-xs text-gray-500 dark:text-gray-400" style="white-space: nowrap; display: flex; align-items: center; gap: 0.5rem;">
                     <span title="{{ $operatorTz }}">{{ $msg->received_at?->timezone($operatorTz)->format('M j, g:i a T') }}</span>
                     @if ($showBothTz)
-                        <span title="Tenant timezone ({{ $tenantTz }})">/ {{ $msg->received_at?->timezone($tenantTz)->format('g:i a T') }}</span>
+                        <span title="Client timezone ({{ $tenantTz }})">/ {{ $msg->received_at?->timezone($tenantTz)->format('g:i a T') }}</span>
                     @endif
                     @if (auth()->user()?->isSuperAdmin() && $msg->direction === 'inbound')
                         <a

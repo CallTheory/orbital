@@ -54,7 +54,7 @@ class AdminPanelProvider extends PanelProvider
             ->brandLogoHeight('2rem')
             ->favicon(fn () => \App\Support\Branding::platformFaviconUrl())
             ->colors([
-                'primary' => Color::Indigo,
+                'primary' => \App\Support\Branding::adminPrimaryColor(),
                 'danger' => Color::Red,
                 'warning' => Color::Amber,
                 'success' => Color::Emerald,
@@ -131,9 +131,9 @@ class AdminPanelProvider extends PanelProvider
                     ->icon('heroicon-o-globe-alt')
                     ->sort(12)
                     // Only visible when the current user is attached to
-                    // at least one real tenant team (dog-fooding). Super
-                    // admin alone isn't enough — the portal is a tenant
-                    // surface and a super-admin with no tenant membership
+                    // at least one real client team (dog-fooding). Super
+                    // admin alone isn't enough — the portal is a client
+                    // surface and a super-admin with no client membership
                     // has nothing meaningful to see there.
                     ->visible(fn () => auth()->user()?->belongsToAnyTenant() ?? false),
             ])
@@ -288,11 +288,11 @@ class AdminPanelProvider extends PanelProvider
                 // supervisor). The login page renders through this
                 // same panel context (see layouts.filament-simple),
                 // so without an auth check the bar leaks onto
-                // /login. Tenant portal users hitting an admin
+                // /login. Client portal users hitting an admin
                 // route would get bounced by PanelRedirect anyway,
                 // but we don't want a colored bar flashing during
                 // the redirect either — `hasAnyPlatformRole()`
-                // returns false for tenant-only users.
+                // returns false for client-only users.
                 fn (): string => auth()->user()?->hasAnyPlatformRole()
                     ? Blade::render('@livewire(\App\Livewire\SystemStatusBar::class)')
                     : '',

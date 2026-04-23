@@ -18,7 +18,7 @@ use UnitEnum;
  * Replaces Filament's stock dashboard with a system status board.
  *
  * Lives under the "Dashboards" nav group so we can grow other
- * dashboards (call volume, AI usage, per-tenant views) alongside
+ * dashboards (call volume, AI usage, per-client views) alongside
  * it in the future. Routed at `/` so it's still the panel home.
  *
  * Nav icon + badge reflect the cached health state — green icon +

@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 /**
  * A platform-level pool of human agents and devices that can take calls.
  *
- * Tenant call queues reference one of these via call_queues.agent_group_id
+ * Client call queues reference one of these via call_queues.agent_group_id
  * — the queue determines the strategy and timing, the group determines
  * who actually rings.
  *

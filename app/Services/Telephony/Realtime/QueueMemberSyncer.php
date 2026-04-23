@@ -102,7 +102,7 @@ class QueueMemberSyncer
      *      allocated softphone extension is checked against those
      *      skills. An operator who carries a required skill becomes
      *      a member with a penalty derived from their skill levels
-     *      and the queue tenant's tier.
+     *      and the queue client's tier.
      *
      *   2. **AgentGroup fallback** (legacy). If the queue has no
      *      required skills declared, fall back to the explicit
@@ -136,7 +136,7 @@ class QueueMemberSyncer
      * least one required skill is present.
      *
      * Penalty math (lower = ring first):
-     *   - tenant tier base: enterprise 0 / pro 5 / free 10
+     *   - client tier base: enterprise 0 / pro 5 / free 10
      *   - skill match bonus: subtract up to 4 for very strong matches
      *
      * @param  array<int, int>  $required  skill_id => weight

@@ -8,7 +8,7 @@ use App\Filament\Resources\UsersResource;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Telephony\PlatformExtensionAllocator;
-use App\Services\Tenancy\TenantProvisioner;
+use App\Services\Clients\ClientProvisioner;
 use Filament\Actions;
 use Filament\Forms;
 use Filament\Notifications\Notification;
@@ -112,13 +112,13 @@ class EditUser extends EditRecord
                 }),
 
             Actions\Action::make('addToTenant')
-                ->label('Add to tenant')
+                ->label('Add to client')
                 ->icon('heroicon-o-building-office-2')
-                ->modalHeading('Add this staff member to a tenant')
-                ->modalDescription('Attaches this user to the selected tenant. Common use: wire a staff member into a specific customer as their account manager so they can take calls or manage the portal on the customer\'s behalf.')
+                ->modalHeading('Add this staff member to a client')
+                ->modalDescription('Attaches this user to the selected client. Common use: wire a staff member into a specific customer as their account manager so they can take calls or manage the portal on the customer\'s behalf.')
                 ->schema([
                     Forms\Components\Select::make('team_id')
-                        ->label('Tenant')
+                        ->label('Client')
                         ->required()
                         ->searchable()
                         ->options(function () {
@@ -134,11 +134,11 @@ class EditUser extends EditRecord
                                 ->pluck('name', 'id')
                                 ->all();
                         })
-                        ->helperText('Only tenants this user is not already attached to appear here.'),
+                        ->helperText('Only clients this user is not already attached to appear here.'),
                     Forms\Components\Select::make('role')
-                        ->label('Tenant role')
+                        ->label('Client role')
                         ->options([
-                            'admin' => 'Admin — can manage users and roles in this tenant',
+                            'admin' => 'Admin — can manage users and roles in this client',
                             'member' => 'Member — default invitee role (portal.view_* only)',
                         ])
                         ->default('admin')
@@ -147,8 +147,8 @@ class EditUser extends EditRecord
                 ->action(function (array $data): void {
                     /** @var User $record */
                     $record = $this->record;
-                    $tenant = Team::findOrFail($data['team_id']);
-                    $this->attachUserToTenant($tenant, $record, $data['role']);
+                    $client = Team::findOrFail($data['team_id']);
+                    $this->attachUserToTenant($client, $record, $data['role']);
                 }),
 
             Actions\DeleteAction::make(),
@@ -156,25 +156,25 @@ class EditUser extends EditRecord
     }
 
     /**
-     * Attach $user to $tenant with the given pivot role and assign
+     * Attach $user to $client with the given pivot role and assign
      * the corresponding tenant-scoped Spatie roles. Mirrors the
      * helper on EditAllUser — same shape, different page.
      */
-    protected function attachUserToTenant(Team $tenant, User $user, string $role): void
+    protected function attachUserToTenant(Team $client, User $user, string $role): void
     {
         $role = $role === 'admin' ? 'admin' : 'member';
 
-        $tenant->users()->syncWithoutDetaching([
+        $client->users()->syncWithoutDetaching([
             $user->id => ['role' => $role],
         ]);
 
         $spatieRoles = $role === 'admin'
-            ? [TenantProvisioner::ROLE_TENANT_ADMIN, TenantProvisioner::ROLE_TENANT_USER]
-            : [TenantProvisioner::ROLE_TENANT_USER];
+            ? [ClientProvisioner::ROLE_CLIENT_ADMIN, ClientProvisioner::ROLE_CLIENT_USER]
+            : [ClientProvisioner::ROLE_CLIENT_USER];
 
         $registrar = app(PermissionRegistrar::class);
         $previous = $registrar->getPermissionsTeamId();
-        $registrar->setPermissionsTeamId($tenant->id);
+        $registrar->setPermissionsTeamId($client->id);
         try {
             $user->assignRole($spatieRoles);
         } finally {
@@ -182,14 +182,14 @@ class EditUser extends EditRecord
             $registrar->forgetCachedPermissions();
         }
 
-        $user->forceFill(['current_team_id' => $tenant->id])->save();
+        $user->forceFill(['current_team_id' => $client->id])->save();
 
-        $this->refreshFormData(['tenants']);
+        $this->refreshFormData(['clients']);
 
         Notification::make()
             ->success()
-            ->title("{$user->email} added to {$tenant->name} as {$role}.")
-            ->body('Their current tenant context has been switched to '.$tenant->name.'.')
+            ->title("{$user->email} added to {$client->name} as {$role}.")
+            ->body('Their current client context has been switched to '.$client->name.'.')
             ->send();
     }
 

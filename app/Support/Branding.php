@@ -81,4 +81,59 @@ final class Branding
         return self::url('orbital.portal_favicon')
             ?? asset('images/orbital-icon.png');
     }
+
+    // ─── Primary colors ──────────────────────────────────────────
+    //
+    // Each panel's accent color is the named public constant on
+    // \Filament\Support\Colors\Color (e.g. Color::Indigo). The
+    // operator picks by name through the Branding admin UI; we
+    // resolve that name to the actual palette array at render time.
+
+    /**
+     * @return array<int, string>
+     */
+    public static function adminPrimaryColor(): array
+    {
+        return self::resolvePalette(config('orbital.admin_primary_color', 'Emerald'), 'Emerald');
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function operatorPrimaryColor(): array
+    {
+        return self::resolvePalette(config('orbital.operator_primary_color', 'Indigo'), 'Indigo');
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function portalPrimaryColor(): array
+    {
+        return self::resolvePalette(config('orbital.portal_primary_color', 'Rose'), 'Rose');
+    }
+
+    /**
+     * Map a color name (e.g. 'Indigo') to the corresponding palette
+     * constant on Filament's Color class. Falls back to $default when
+     * the name doesn't resolve — guards against stale config values
+     * after a Filament upgrade that removes a palette.
+     *
+     * @return array<int, string>
+     */
+    protected static function resolvePalette(mixed $name, string $default): array
+    {
+        $class = \Filament\Support\Colors\Color::class;
+        $candidate = is_string($name) && $name !== '' ? $name : $default;
+
+        foreach ([$candidate, $default] as $attempt) {
+            if (defined("{$class}::{$attempt}")) {
+                return constant("{$class}::{$attempt}");
+            }
+        }
+
+        // Last-resort belt-and-suspenders — every Filament install
+        // ships Color::Gray, so we'll at least render something.
+        return constant("{$class}::Gray");
+    }
 }

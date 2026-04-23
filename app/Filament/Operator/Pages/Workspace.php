@@ -23,7 +23,7 @@ use UnitEnum;
  * an account is loaded via "Fetch Account" or an incoming call.
  *
  * When no account is loaded: shows a search prompt to fetch one.
- * When an account is loaded: shows tenant info, messages table,
+ * When an account is loaded: shows client info, messages table,
  * new message form, and intake flow viewer.
  */
 class Workspace extends Page implements HasTable
@@ -68,17 +68,17 @@ class Workspace extends Page implements HasTable
             return 'Account: '.$this->activeTeamData['name'].' (#'.$this->activeTeamData['account_number'].')';
         }
 
-        return 'No account loaded. Use "Fetch Account" to open a tenant workspace.';
+        return 'No account loaded. Use "Fetch Account" to open a client workspace.';
     }
 
     /**
-     * Load a tenant into the workspace.
+     * Load a client into the workspace.
      */
     public function fetchAccount(int $teamId): void
     {
         $team = Team::where('personal_team', false)->find($teamId);
         if (! $team) {
-            Notification::make()->title('Tenant not found')->danger()->send();
+            Notification::make()->title('Client not found')->danger()->send();
 
             return;
         }
@@ -156,7 +156,7 @@ class Workspace extends Page implements HasTable
     }
 
     /**
-     * Release the current tenant from the workspace.
+     * Release the current client from the workspace.
      */
     public function releaseAccount(): void
     {
@@ -179,7 +179,7 @@ class Workspace extends Page implements HasTable
                     : null)
                 ->schema([
                     Forms\Components\Select::make('team_id')
-                        ->label('Search all tenants')
+                        ->label('Search all clients')
                         ->options(fn () => Team::query()
                             ->where('personal_team', false)
                             ->orderBy('name')
@@ -210,7 +210,7 @@ class Workspace extends Page implements HasTable
     }
 
     /**
-     * Messages table — scoped to the active tenant.
+     * Messages table — scoped to the active client.
      */
     public function table(Table $table): Table
     {
@@ -288,7 +288,7 @@ class Workspace extends Page implements HasTable
             ->defaultSort('created_at', 'desc')
             ->emptyStateHeading(fn () => $this->activeTeamId ? 'No messages yet' : 'No account loaded')
             ->emptyStateDescription(fn () => $this->activeTeamId
-                ? 'Messages taken for this tenant will appear here.'
+                ? 'Messages taken for this client will appear here.'
                 : 'Fetch an account to view its messages.');
     }
 }

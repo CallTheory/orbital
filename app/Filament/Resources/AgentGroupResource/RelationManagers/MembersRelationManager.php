@@ -138,7 +138,7 @@ class MembersRelationManager extends RelationManager
     }
 
     /**
-     * Platform PBX extensions — non-tenant, non-staff-softphone hardware
+     * Platform PBX extensions — non-client, non-staff-softphone hardware
      * devices that can be group members.
      *
      * @return array<int, string>

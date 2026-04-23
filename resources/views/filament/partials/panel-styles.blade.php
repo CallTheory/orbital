@@ -29,6 +29,19 @@
         border: 2px solid rgb(59 130 246) !important; /* blue-500 */
     }
 
+    /* Highlight the nav group heading in the panel's primary color
+       when any item inside that group is the active page. Keeps the
+       user oriented about where they are even with the group body
+       collapsed. Uses :has() which is supported in all modern
+       evergreen browsers (Chromium 105+, Firefox 121+, Safari 15.4+);
+       falls back silently elsewhere. */
+    .fi-sidebar-group:has(.fi-sidebar-item.fi-active) .fi-sidebar-group-label {
+        color: var(--primary-600);
+    }
+    .dark .fi-sidebar-group:has(.fi-sidebar-item.fi-active) .fi-sidebar-group-label {
+        color: var(--primary-400);
+    }
+
     /* Top-of-page system health indicator — fed by the cached system
        health snapshot. Purely visual, not interactive. */
     .orbital-status-bar {

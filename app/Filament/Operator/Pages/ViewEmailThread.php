@@ -58,7 +58,7 @@ class ViewEmailThread extends Page implements HasTable
     public function getSubheading(): ?string
     {
         $parts = [];
-        $parts[] = 'Tenant: '.$this->thread->team->name;
+        $parts[] = 'Client: '.$this->thread->team->name;
         if ($this->thread->emailQueue) {
             $parts[] = 'Queue: '.$this->thread->emailQueue->name;
         }
@@ -68,7 +68,7 @@ class ViewEmailThread extends Page implements HasTable
         $operatorTz = auth()->user()?->displayTimezone() ?? config('app.timezone');
         $tenantTz = $this->thread->team?->displayTimezone() ?? config('app.timezone');
         if ($operatorTz !== $tenantTz) {
-            $parts[] = 'Tenant tz: '.$tenantTz;
+            $parts[] = 'Client tz: '.$tenantTz;
         }
 
         return implode('  ·  ', $parts);

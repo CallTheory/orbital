@@ -120,7 +120,7 @@
                         </svg>
                         <div style="font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem;">No account loaded</div>
                         <div style="font-size: 0.875rem; color: var(--gray-500); max-width: 24rem; margin: 0 auto;">
-                            Click <strong>Fetch Account</strong> above to open a tenant's workspace, or an incoming call will load one automatically.
+                            Click <strong>Fetch Account</strong> above to open a client's workspace, or an incoming call will load one automatically.
                         </div>
                     </div>
                 </div>

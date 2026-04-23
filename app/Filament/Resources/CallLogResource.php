@@ -58,7 +58,7 @@ class CallLogResource extends Resource
                     ->timezone(fn () => auth()->user()?->displayTimezone() ?? config('app.timezone'))
                     ->sortable(),
                 Tables\Columns\TextColumn::make('team.name')
-                    ->label('Tenant')
+                    ->label('Client')
                     ->placeholder('—')
                     ->sortable(),
                 Tables\Columns\TextColumn::make('direction')
@@ -93,7 +93,7 @@ class CallLogResource extends Resource
                         'internal' => 'Internal',
                     ]),
                 Tables\Filters\SelectFilter::make('team_id')
-                    ->label('Tenant')
+                    ->label('Client')
                     ->relationship('team', 'name', fn ($query) => $query->where('personal_team', false)),
             ])
             ->actions([

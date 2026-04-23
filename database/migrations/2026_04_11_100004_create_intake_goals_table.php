@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Schema;
  * and (future) a chat bot. One goal == one self-contained objective like
  * "gather caller info", "identify reason for call", or "answer from FAQ".
  *
- * Tenants compose these into ordered flows (see intake_flows); they never
+ * Clients compose these into ordered flows (see intake_flows); they never
  * author goals themselves — the platform maintains the library.
  *
  * Template/instance model (same shape as agent_personas):

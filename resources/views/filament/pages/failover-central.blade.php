@@ -11,7 +11,37 @@
             default => '',
         };
     @endphp
-    <div wire:poll.5s="refreshState" style="display: flex; flex-direction: column; gap: 1.5rem;">
+    {{-- Two-column grid at xl+ widths so tier cards sit side-by-side
+         on wide monitors; collapses to a single column below that so
+         each card keeps enough horizontal room for the member rows.
+         Inlined <style> + class instead of Tailwind utilities because
+         Filament's CSS bundle is pre-compiled and doesn't scan this
+         view, so utility classes wouldn't land in the output. --}}
+    <style>
+        .orbital-failover-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1.5rem;
+        }
+        @media (min-width: 1280px) {
+            .orbital-failover-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+        /* Stretch each card's Filament section to the full height of
+           its grid cell. Without this, the short card in a paired row
+           leaves the page background showing below its inner section
+           even though the bordered wrapper spans the full row height. */
+        .orbital-failover-grid > div {
+            display: flex;
+            flex-direction: column;
+        }
+        .orbital-failover-grid > div > * {
+            flex: 1 1 auto;
+            min-height: 0;
+        }
+    </style>
+    <div wire:poll.5s="refreshState" class="orbital-failover-grid">
 
         {{-- =========================================================
              Postgres (Patroni)

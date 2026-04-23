@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Http;
 /**
  * Deepgram pre-recorded transcription API.
  *
- * Expects `api_key` in the tenant's voicemail_transcription_config.
+ * Expects `api_key` in the client's voicemail_transcription_config.
  * Optional `model` (defaults to `nova-2`) and `language` (`en-US`).
  *
  * Response shape (simplified):
@@ -29,7 +29,7 @@ class DeepgramDriver implements TranscriptionDriver
     {
         $apiKey = (string) ($this->config['api_key'] ?? '');
         if ($apiKey === '') {
-            throw new \RuntimeException('Deepgram driver requires api_key in the tenant config.');
+            throw new \RuntimeException('Deepgram driver requires api_key in the client config.');
         }
 
         $query = http_build_query([

@@ -31,12 +31,12 @@ class DatabaseSeeder extends Seeder
 
         if (app()->environment('local')) {
             $this->call([
-                DemoTenantSeeder::class,
+                DemoClientSeeder::class,
                 // Template tenants — reusable example configurations
                 // for the three common answering-service patterns.
-                // Runs after DemoTenantSeeder so it can reuse the
+                // Runs after DemoClientSeeder so it can reuse the
                 // shared operator group and trunk that seeder creates.
-                TemplateTenantSeeder::class,
+                TemplateClientSeeder::class,
             ]);
         }
     }

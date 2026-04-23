@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Schema;
  *
  * Three tables:
  *
- *   - **skills** — platform-defined vocabulary. Tenants don't
+ *   - **skills** — platform-defined vocabulary. Clients don't
  *     author skills; this is an admin-only namespace because
  *     shared operator pools work best with a single normalized
  *     dictionary. Slugs are unique. Examples: `spanish`,
@@ -30,7 +30,7 @@ use Illuminate\Support\Facades\Schema;
  *     intersection into queue_members ARA rows so Asterisk only
  *     ever rings qualified people.
  *
- * Tenant tier (`teams.tier`) was added separately and is consumed
+ * Client tier (`teams.tier`) was added separately and is consumed
  * by QueueMemberSyncer to bias penalty math: enterprise > pro >
  * free, lower penalty = ring first.
  */

@@ -19,10 +19,10 @@ trait BelongsToTeam
                 return;
             }
 
-            // Super-admins always bypass the team scope. They use TenantResource
-            // sub-pages to drill into specific tenants, which scope queries via
+            // Super-admins always bypass the team scope. They use ClientResource
+            // sub-pages to drill into specific clients, which scope queries via
             // the relationship — not via auth context. Filtering super-admins
-            // by their own personal team would hide tenant data they need to see.
+            // by their own personal team would hide client data they need to see.
             if ($user->isSuperAdmin()) {
                 return;
             }
@@ -37,7 +37,7 @@ trait BelongsToTeam
 
         static::creating(function (Model $model) {
             // Auto-set team_id from the auth'd user's current team ONLY for
-            // non-super-admin users. Super-admins explicitly pick the tenant
+            // non-super-admin users. Super-admins explicitly pick the client
             // via the relationship parent or the form picker.
             if (! $model->team_id && auth()->check()) {
                 $user = auth()->user();
@@ -54,14 +54,14 @@ trait BelongsToTeam
     }
 
     /**
-     * Explicit cross-tenant query, super-admin only. Use this inside
-     * TenantResource analytics and the Tenancy service namespace —
+     * Explicit cross-client query, super-admin only. Use this inside
+     * ClientResource analytics and the Tenancy service namespace —
      * anywhere else it's a smell.
      */
     public static function withoutTeamScope(): Builder
     {
         $user = auth()->user();
-        abort_unless($user?->isSuperAdmin(), 403, 'Cross-tenant queries are super-admin only.');
+        abort_unless($user?->isSuperAdmin(), 403, 'Cross-client queries are super-admin only.');
 
         return static::query()->withoutGlobalScope('team');
     }

@@ -16,7 +16,7 @@ use Tests\TestCase;
  * Verifies the retention prune job:
  *   - skips rows whose anchor date is inside the window
  *   - deletes S3 objects + clears columns for rows past the window
- *   - honors a tenant-level retention override
+ *   - honors a client-level retention override
  *   - treats retention_days <= 0 as "keep forever"
  *
  * Uses the `s3` disk faked to a local filesystem — the real S3 driver
@@ -37,7 +37,7 @@ class PruneExpiredCallRecordingsJobTest extends TestCase
     public function test_it_deletes_expired_recordings_and_clears_columns(): void
     {
         $team = $this->makeTeam();
-        $path = 'tenants/'.$team->id.'/2026/01/old-mix.wav';
+        $path = 'clients/'.$team->id.'/2026/01/old-mix.wav';
         Storage::disk('s3')->put($path, 'fake-wav');
 
         $call = $this->makeCall($team, [
@@ -60,7 +60,7 @@ class PruneExpiredCallRecordingsJobTest extends TestCase
     public function test_it_keeps_recent_recordings(): void
     {
         $team = $this->makeTeam();
-        $path = 'tenants/'.$team->id.'/2026/04/recent-mix.wav';
+        $path = 'clients/'.$team->id.'/2026/04/recent-mix.wav';
         Storage::disk('s3')->put($path, 'fake-wav');
 
         $call = $this->makeCall($team, [
@@ -85,7 +85,7 @@ class PruneExpiredCallRecordingsJobTest extends TestCase
             'recording_overrides' => ['retention_days' => 7],
         ]);
 
-        $path = 'tenants/'.$team->id.'/2026/04/ten-days-old.wav';
+        $path = 'clients/'.$team->id.'/2026/04/ten-days-old.wav';
         Storage::disk('s3')->put($path, 'fake-wav');
 
         $call = $this->makeCall($team, [
@@ -109,7 +109,7 @@ class PruneExpiredCallRecordingsJobTest extends TestCase
         config()->set('telephony.recording.retention_days', 0);
 
         $team = $this->makeTeam();
-        $path = 'tenants/'.$team->id.'/2026/01/ancient.wav';
+        $path = 'clients/'.$team->id.'/2026/01/ancient.wav';
         Storage::disk('s3')->put($path, 'fake-wav');
 
         $call = $this->makeCall($team, [
@@ -145,7 +145,7 @@ class PruneExpiredCallRecordingsJobTest extends TestCase
         $owner = User::factory()->create();
         return Team::forceCreate(array_merge([
             'user_id' => $owner->id,
-            'name' => 'Prune Test Tenant '.uniqid(),
+            'name' => 'Prune Test Client '.uniqid(),
             'personal_team' => false,
         ], $attrs));
     }

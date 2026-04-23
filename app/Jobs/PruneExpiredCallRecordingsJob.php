@@ -16,17 +16,17 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * Walks call_logs past every tenant's retention window, deletes the
+ * Walks call_logs past every client's retention window, deletes the
  * recording objects from object storage, and clears the path columns.
  *
- * Retention is per-tenant: we look up the team's effective recording
- * policy (tenant overrides → platform default) and consider any call
+ * Retention is per-client: we look up the team's effective recording
+ * policy (client overrides → platform default) and consider any call
  * whose `ended_at` (or `started_at` fallback) is older than
  * `retention_days` to be eligible for pruning.
  *
  * Extension-level overrides don't matter for retention — an extension
  * can opt *in* or *out* of recording, but the retention window is a
- * tenant-billing concern, not a per-extension one. An orphaned call
+ * client-billing concern, not a per-extension one. An orphaned call
  * (no team) falls back to the platform default.
  *
  * Idempotent: a second run finds the columns already null and skips.
@@ -52,7 +52,7 @@ class PruneExpiredCallRecordingsJob implements ShouldQueue
         $platformRetention = (int) config('telephony.recording.retention_days', 90);
 
         // Cache per-team retention so we don't rebuild the policy for
-        // every row (tenants typically have hundreds to thousands of
+        // every row (clients typically have hundreds to thousands of
         // calls against a single retention value).
         $retentionByTeam = [];
         $resolveRetention = function (?int $teamId) use (&$retentionByTeam, $recording, $platformRetention): int {

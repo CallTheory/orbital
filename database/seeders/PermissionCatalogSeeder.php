@@ -20,7 +20,7 @@ class PermissionCatalogSeeder extends Seeder
         // ────────────────────────────────────────────────────────────
         // Domain resources (all super-admin managed — no tenant self-service)
         // Kept as a flat catalog so future "delegated tenant" deployments
-        // can selectively expose resources via TenantPermissionGatekeeper.
+        // can selectively expose resources via ClientPermissionGatekeeper.
         // ────────────────────────────────────────────────────────────
         'sip_trunk.view_any', 'sip_trunk.view', 'sip_trunk.create', 'sip_trunk.update', 'sip_trunk.delete',
         'extension.view_any', 'extension.view', 'extension.create', 'extension.update', 'extension.delete',
@@ -41,13 +41,13 @@ class PermissionCatalogSeeder extends Seeder
         // ────────────────────────────────────────────────────────────
         // Customer portal
         // ────────────────────────────────────────────────────────────
-        // Read-side — default `tenant_user` role perms.
+        // Read-side — default `client_user` role perms.
         'portal.view_home',
         'portal.view_calls',
         'portal.view_messages',
         'portal.view_recordings',
-        // Management — `tenant_admin` grants, gate the portal
-        // Users/Roles admin pages. Never added to `tenant_user`;
+        // Management — `client_admin` grants, gate the portal
+        // Users/Roles admin pages. Never added to `client_user`;
         // a tenant admin can hand them out via custom roles.
         'portal.manage_users',
         'portal.manage_roles',

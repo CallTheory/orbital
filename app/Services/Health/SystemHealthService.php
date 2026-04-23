@@ -52,8 +52,21 @@ class SystemHealthService
         $probes = $this->runParallelProbes([
             'asterisk_ami' => ['host' => $asteriskHost, 'port' => (int) (config('telephony.asterisk.ami.port') ?: 5038)],
             'asterisk_sip_tcp' => ['host' => $asteriskHost, 'port' => 5060],
-            'asterisk_sip_tls' => ['host' => $asteriskHost, 'port' => 5061],
-            'asterisk_wss' => ['host' => $asteriskHost, 'port' => 8089],
+            // SIP TLS (5061) intentionally NOT probed: even a clean
+            // TLS handshake without a following SIP OPTIONS dialog
+            // makes chan_pjsip log a "Unable to set up ssl connection"
+            // error per probe, which at a 5s poll cadence overwhelms
+            // the Asterisk log. Niche transport (most installs use
+            // UDP/TCP 5060 internally and only expose TLS to external
+            // trunks); the TCP probe at 5060 already signals whether
+            // chan_pjsip is alive, and `asterisk_wss` exercises the
+            // TLS cert loading via a clean HTTP-over-TLS handshake.
+            // 'asterisk_sip_tls' => ['host' => $asteriskHost, 'port' => 5061, 'tls' => true],
+            // tls:true makes the probe do a real TLS handshake
+            // (openssl s_client) instead of a raw TCP connect. Without
+            // it, Asterisk's SSL_accept fails on our half-open socket
+            // and logs an SSL_shutdown error for every poll cycle.
+            'asterisk_wss' => ['host' => $asteriskHost, 'port' => 8089, 'tls' => true],
             'livekit' => $this->parseHostPort(config('telephony.livekit.local.url') ?: env('LIVEKIT_URL', 'http://livekit:7880'), 7880),
             'livekit_sip' => ['host' => env('LIVEKIT_SIP_HOST', 'livekit-sip'), 'port' => (int) env('LIVEKIT_SIP_PORT', 5060)],
             'icecast' => ['host' => env('ICECAST_HOST', 'icecast'), 'port' => (int) env('ICECAST_PORT', 8000)],
@@ -109,7 +122,7 @@ class SystemHealthService
             // red lights rather than a single overall-red card.
             'haproxy' => ['host' => 'haproxy', 'port' => 8404],
             // Local whisper.cpp transcription service. Used by
-            // tenants that pick `whisper_local` as their voicemail
+            // clients that pick `whisper_local` as their voicemail
             // transcription provider. Optional because a down
             // whisper-local just means voicemail emails go out
             // without transcripts (the job catches + degrades) —
@@ -410,16 +423,16 @@ class SystemHealthService
     {
         $ami = $probes['asterisk_ami'] ?? ['ok' => false];
         $sipTcp = $probes['asterisk_sip_tcp'] ?? ['ok' => false];
-        $sipTls = $probes['asterisk_sip_tls'] ?? ['ok' => false];
         $wss = $probes['asterisk_wss'] ?? ['ok' => false];
 
         $mark = fn (bool $ok): string => $ok ? 'ok' : 'down';
 
+        // SIP TLS 5061 intentionally omitted — see the probe list
+        // for the reason (probing it spams Asterisk's SSL log).
         $metrics = [
             'AMI 5038' => $mark($ami['ok']),
             'SIP 5060 TCP' => $mark($sipTcp['ok']),
             'SIP 5060 UDP' => $sipTcp['ok'] ? 'ok (inferred)' : 'down',
-            'SIP 5061 TLS' => $mark($sipTls['ok']),
             'WSS 8089' => $mark($wss['ok']),
         ];
 
@@ -435,7 +448,7 @@ class SystemHealthService
             );
         }
 
-        $transportsUp = $sipTcp['ok'] && $sipTls['ok'] && $wss['ok'];
+        $transportsUp = $sipTcp['ok'] && $wss['ok'];
         if ($transportsUp) {
             return new HealthCheck(
                 key: 'asterisk',
@@ -451,9 +464,6 @@ class SystemHealthService
         $down = [];
         if (! $sipTcp['ok']) {
             $down[] = 'SIP 5060';
-        }
-        if (! $sipTls['ok']) {
-            $down[] = 'SIP TLS 5061';
         }
         if (! $wss['ok']) {
             $down[] = 'WSS 8089';
@@ -677,9 +687,21 @@ class SystemHealthService
             $host = escapeshellarg($target['host']);
             $port = (int) $target['port'];
             $safeKey = preg_replace('/[^a-z0-9_]/i', '', $key);
-            // bash /dev/tcp/<host>/<port> is the simplest portable TCP probe.
-            // `timeout` enforces a hard deadline regardless of DNS or connect state.
-            $script .= "(timeout {$this->probeTimeoutString()} bash -c 'exec 3<>/dev/tcp/'{$host}'/{$port}' 2>/dev/null && echo {$safeKey}:ok || echo {$safeKey}:fail) & ";
+            $timeout = $this->probeTimeoutString();
+
+            if (! empty($target['tls'])) {
+                // Real TLS handshake via openssl s_client. Closes
+                // cleanly after the handshake by feeding empty stdin
+                // with `-no_ign_eof`, so the server logs no half-open
+                // SSL shutdown error. Cheaper than importing PHP's
+                // OpenSSL extension config per-probe.
+                $script .= "(timeout {$timeout} bash -c '</dev/null openssl s_client -connect '{$host}':{$port} -quiet -no_ign_eof >/dev/null 2>&1' && echo {$safeKey}:ok || echo {$safeKey}:fail) & ";
+            } else {
+                // bash /dev/tcp/<host>/<port> is the simplest portable
+                // TCP probe. `timeout` enforces a hard deadline regardless
+                // of DNS or connect state.
+                $script .= "(timeout {$timeout} bash -c 'exec 3<>/dev/tcp/'{$host}'/{$port}' 2>/dev/null && echo {$safeKey}:ok || echo {$safeKey}:fail) & ";
+            }
         }
         $script .= 'wait';
 

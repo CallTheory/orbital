@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Log;
  * monitored or recorded for quality assurance purposes.").
  *
  * Files are hashed by message content so identical disclosures across
- * tenants share a single audio file. The file lives in a volume shared
+ * clients share a single audio file. The file lives in a volume shared
  * between the orbital.test container (which renders it) and the
  * asterisk container (which plays it back at call time):
  *

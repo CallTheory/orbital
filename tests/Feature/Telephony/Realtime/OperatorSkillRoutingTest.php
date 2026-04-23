@@ -21,12 +21,12 @@ use Tests\TestCase;
  * it walks every operator with an active extension, scores them
  * against the queue's required skills, and writes one
  * `queue_members` row per qualified operator with a penalty
- * derived from skill level + tenant tier.
+ * derived from skill level + client tier.
  *
  * This suite locks in:
  *   - operators with no overlap with required skills are excluded
  *   - operators with a strong overlap get a lower penalty (ring first)
- *   - tenant tier shifts the base penalty (enterprise < pro < free)
+ *   - client tier shifts the base penalty (enterprise < pro < free)
  *   - changing required skills triggers a clean recompute (old rows
  *     for now-unqualified operators disappear)
  *   - the AgentGroup fallback still works when a queue declares no

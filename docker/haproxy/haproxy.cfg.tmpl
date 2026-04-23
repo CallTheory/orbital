@@ -125,12 +125,21 @@ backend asterisk_wss_be
     # one Asterisk across reconnects. The SIP dialog state for
     # that user is pinned to whichever node they first reached.
     balance source
-    # Probe the TLS handshake so "backend restarted" shows up
-    # within a few seconds; check-ssl with verify none because
-    # Asterisk uses a self-signed cert internally.
-    option tcp-check
-    server asterisk-1 asterisk-1:8089 check check-ssl verify none inter 5s rise 2 fall 2 resolvers docker
-    server asterisk-2 asterisk-2:8089 check check-ssl verify none inter 5s rise 2 fall 2 resolvers docker
+    # Probe Asterisk's plain-HTTP admin port (8088) to infer 8089
+    # health without hitting TLS. Asterisk serves both 8088 and
+    # 8089 from the same `res_http_websocket` process — if 8088
+    # is up, 8089 is up. Probing 8089 directly causes Asterisk
+    # to log "SSL_shutdown() failed" every probe cycle because
+    # HAProxy's TLS check closes the socket without sending
+    # close_notify — Asterisk treats that as an anomalous close.
+    # Expect 404: Asterisk's HTTP module returns 404 for bare `/`
+    # (no registered handler there — the real URIs live under
+    # `/asterisk/...`), which is the cheapest success signal.
+    option httpchk
+    http-check send meth GET uri / ver HTTP/1.0
+    http-check expect status 404
+    server asterisk-1 asterisk-1:8089 check port 8088 inter 5s rise 2 fall 2 resolvers docker
+    server asterisk-2 asterisk-2:8089 check port 8088 inter 5s rise 2 fall 2 resolvers docker
 
 #-----------------------------------------------------------
 # seaweed-s3 — routes S3 API traffic to the filer(s).

@@ -10,11 +10,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 /**
  * Platform-defined operator skill.
  *
- * Skills are a single shared vocabulary across every tenant —
- * tenants don't author them, only the platform admin does. The
+ * Skills are a single shared vocabulary across every client —
+ * clients don't author them, only the platform admin does. The
  * skill list is what makes a unified operator pool work: an
  * operator's "spanish" or "medical-intake" tag means the same
- * thing across every tenant queue that requires it.
+ * thing across every client queue that requires it.
  *
  * Relationships:
  *   - users(): operators who carry this skill (with level + notes)

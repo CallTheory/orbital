@@ -22,7 +22,7 @@ use Illuminate\Support\Str;
  *   2. Build In-Reply-To + References headers from the inbound
  *      message so the reply threads correctly in the recipient's
  *      mail client
- *   3. Compute a reply-from address for the tenant — uses the
+ *   3. Compute a reply-from address for the client — uses the
  *      `{account_number}@{INBOUND_MAIL_DOMAIN}` pattern so
  *      responses from the other side come back through Haraka
  *      and land on the same thread
@@ -82,7 +82,7 @@ class OutboundReplyService
         // From address — a tenant-scoped inbound address so
         // recipient replies come back to this same thread via
         // Haraka's account_number lookup. Falls back to
-        // MAIL_FROM_ADDRESS when the tenant has no account number.
+        // MAIL_FROM_ADDRESS when the client has no account number.
         $fromAddress = $this->buildTenantFromAddress($thread);
         $fromName = config('mail.from.name');
 
@@ -170,9 +170,9 @@ class OutboundReplyService
      * Build a tenant-scoped from address of the form
      * `{account_number}@{INBOUND_MAIL_DOMAIN}` so reply-backs
      * come through Haraka and land on the same thread. Falls
-     * back to the global MAIL_FROM_ADDRESS if the tenant has
+     * back to the global MAIL_FROM_ADDRESS if the client has
      * no account_number (shouldn't happen in practice — every
-     * tenant gets one at create time).
+     * client gets one at create time).
      */
     private function buildTenantFromAddress(EmailThread $thread): string
     {

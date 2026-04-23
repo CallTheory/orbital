@@ -46,7 +46,7 @@ class AdminResourceSmokeTest extends TestCase
             // Platform group
             'roles' => ['/admin/roles'],
             'groups' => ['/admin/groups'],
-            'tenants' => ['/admin/tenants'],
+            'clients' => ['/admin/clients'],
             'staff' => ['/admin/staff'],
             'platform settings' => ['/admin/platform'],
             'system setup' => ['/admin/setup'],

@@ -22,8 +22,8 @@ use UnitEnum;
 
 /**
  * Admin-only page that lists inbound email messages the router
- * couldn't place on any tenant. Click a row to view, forward,
- * assign to a tenant, or discard.
+ * couldn't place on any client. Click a row to view, forward,
+ * assign to a client, or discard.
  */
 class UnroutedMail extends Page implements HasTable
 {

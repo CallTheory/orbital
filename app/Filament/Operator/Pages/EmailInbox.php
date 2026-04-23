@@ -223,7 +223,7 @@ class EmailInbox extends Page implements HasTable
                     })
                     ->url(fn (EmailThread $record) => url("/operator/email-thread/{$record->id}")),
                 Tables\Columns\TextColumn::make('team.name')
-                    ->label('Tenant')
+                    ->label('Client')
                     ->sortable()
                     ->searchable()
                     ->description(function (EmailThread $record) {

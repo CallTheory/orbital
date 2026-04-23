@@ -98,7 +98,7 @@ class CompiledFlowViewer extends Component
             $persona = AgentPersona::withoutGlobalScope('team')->find($this->personaId);
         }
 
-        // Dev fallback: grab any active tenant persona so the UI has
+        // Dev fallback: grab any active client persona so the UI has
         // something to render while the softphone isn't handling a
         // real call. Remove this when the softphone wires a real
         // persona through.

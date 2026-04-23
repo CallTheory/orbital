@@ -42,7 +42,7 @@ use Illuminate\View\Middleware\ShareErrorsFromSession;
  *
  * Access: any user with a team-less platform role (super_admin,
  * operator, supervisor, or anything else the platform operator has
- * defined). Tenant users are redirected away by PanelRedirect.
+ * defined). Client users are redirected away by PanelRedirect.
  */
 class OperatorPanelProvider extends PanelProvider
 {
@@ -60,7 +60,7 @@ class OperatorPanelProvider extends PanelProvider
             ->brandLogoHeight('2rem')
             ->favicon(fn () => \App\Support\Branding::platformFaviconUrl())
             ->colors([
-                'primary' => Color::Emerald,
+                'primary' => \App\Support\Branding::operatorPrimaryColor(),
                 'danger' => Color::Red,
                 'warning' => Color::Amber,
                 'success' => Color::Emerald,

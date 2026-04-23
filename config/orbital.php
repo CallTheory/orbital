@@ -25,13 +25,19 @@ return [
     'platform_logo_dark' => null,
     'platform_favicon' => null,
 
+    // Per-panel accent colors — names of public constants on
+    // Filament's Color class (Indigo, Emerald, Sky, etc.).
+    // Resolved at render time by \App\Support\Branding.
+    'admin_primary_color' => env('ADMIN_PRIMARY_COLOR', 'Emerald'),
+    'operator_primary_color' => env('OPERATOR_PRIMARY_COLOR', 'Indigo'),
+
     /*
     |--------------------------------------------------------------------------
     | Portal Branding
     |--------------------------------------------------------------------------
     |
-    | Customer-facing identity shown on the tenant portal AND the shared
-    | root /login page. Every user — staff or tenant — sees the portal
+    | Customer-facing identity shown on the client portal AND the shared
+    | root /login page. Every user — staff or client — sees the portal
     | branding when they authenticate; post-login they may land on an
     | admin/operator panel that uses platform branding instead.
     |
@@ -40,6 +46,7 @@ return [
     'portal_logo_light' => null,
     'portal_logo_dark' => null,
     'portal_favicon' => null,
+    'portal_primary_color' => env('PORTAL_PRIMARY_COLOR', 'Rose'),
 
     /*
     |--------------------------------------------------------------------------

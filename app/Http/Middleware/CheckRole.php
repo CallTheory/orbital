@@ -12,7 +12,7 @@ use Symfony\Component\HttpFoundation\Response;
  * Gate routes behind a list of allowed role names. Super-admin always
  * passes regardless of the list.
  *
- * Usage in routes: ->middleware('check.role:operator,supervisor,tenant_admin')
+ * Usage in routes: ->middleware('check.role:operator,supervisor,client_admin')
  */
 class CheckRole
 {

@@ -14,7 +14,7 @@ use Throwable;
 /**
  * Verifies Icecast is up and reachable, and counts how many hold-music
  * classes are configured on the platform. Optional — the platform
- * works fine without Icecast if tenants don't use streaming hold music.
+ * works fine without Icecast if clients don't use streaming hold music.
  *
  * Does NOT push mountpoint configs to Icecast — Icecast reads its own
  * xml config file at container start and we mount that via compose.

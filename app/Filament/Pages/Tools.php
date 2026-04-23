@@ -123,7 +123,7 @@ class Tools extends Page
             [
                 'id' => 'generate-config',
                 'name' => 'Regenerate telephony config',
-                'description' => 'Re-write every tenant dialplan file + the from-trunk dispatcher + the dialplan index, then reload Asterisk.',
+                'description' => 'Re-write every client dialplan file + the from-trunk dispatcher + the dialplan index, then reload Asterisk.',
                 'command' => 'orbital:generate-config --push',
                 'icon' => 'heroicon-o-phone-arrow-up-right',
                 'group' => 'Telephony',

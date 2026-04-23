@@ -13,8 +13,8 @@ return new class extends Migration
         Schema::create('routing_rules', function (Blueprint $table) {
             $table->id();
 
-            // Tenant-scoped rules only. Tenant identification happens upstream
-            // via tenant_dids lookup. These rules decide what to DO with a call
+            // Tenant-scoped rules only. Client identification happens upstream
+            // via client_dids lookup. These rules decide what to DO with a call
             // once the tenant is known.
             $table->foreignId('team_id')->constrained()->cascadeOnDelete();
 

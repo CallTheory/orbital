@@ -10,11 +10,11 @@ use UnitEnum;
 
 /**
  * Placeholder page for platform-level dispatch rules — the cross-
- * tenant routing logic that decides how inbound calls/emails/etc.
+ * client routing logic that decides how inbound calls/emails/etc.
  * find their intake goal, flow, or operator queue.
  *
  * Currently a stub. Firm up the shape (operator-group matching,
- * skill routing, time-of-day overrides, tenant-specific overrides)
+ * skill routing, time-of-day overrides, client-specific overrides)
  * and then promote to a real resource backed by a dispatch_rules
  * table.
  */

@@ -72,7 +72,7 @@ class User extends Authenticatable implements FilamentUser
      * HasProfilePhoto's own `profile_photo_url` accessor calls this
      * method when `profile_photo_path` is null, so overriding here
      * automatically fixes every place Jetstream renders an avatar
-     * (tenant switcher, portal, Filament user menu's Jetstream
+     * (client switcher, portal, Filament user menu's Jetstream
      * fallback path).
      */
     protected function defaultProfilePhotoUrl(): string
@@ -213,12 +213,12 @@ class User extends Authenticatable implements FilamentUser
     }
 
     /**
-     * Does this user belong to at least one real tenant team?
+     * Does this user belong to at least one real client team?
      *
-     * "Real tenant" = a Team row with `personal_team = false`. The
+     * "Real client" = a Team row with `personal_team = false`. The
      * super-admin's "Platform" team is `personal_team = true` and
      * doesn't count, so a super-admin only passes this check when
-     * they've been explicitly attached to a customer tenant — i.e.
+     * they've been explicitly attached to a customer client — i.e.
      * when the platform operator is dog-fooding their own product.
      */
     public function belongsToAnyTenant(): bool
@@ -234,9 +234,9 @@ class User extends Authenticatable implements FilamentUser
      *   admin    — super_admin only
      *   operator — any team-less platform role (super_admin, operator,
      *              supervisor, or whatever else is defined)
-     *   portal   — users who belong to at least one real tenant team.
+     *   portal   — users who belong to at least one real client team.
      *              Super-admin is NOT auto-admitted — they only see the
-     *              portal if they've been explicitly added to a tenant
+     *              portal if they've been explicitly added to a client
      *              (dog-fooding scenario).
      *
      * When a user hits the wrong panel, Filament's Authenticate middleware

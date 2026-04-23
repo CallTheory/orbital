@@ -10,11 +10,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * A message taken on behalf of a tenant — either by an AI agent
+ * A message taken on behalf of a client — either by an AI agent
  * during a call or by a live operator via the workspace.
  *
  * Contains the caller's name, phone number, and reason for
- * calling. Linked to the tenant (team_id), optionally to the
+ * calling. Linked to the client (team_id), optionally to the
  * call that generated it (call_log_id), and to whoever took
  * it (created_by_user_id for operators, agent_persona_id for AI).
  */

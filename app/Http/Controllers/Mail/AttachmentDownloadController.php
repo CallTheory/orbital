@@ -18,10 +18,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * Access rules:
  *   - super_admin: can fetch any attachment
  *   - platform staff (operator/supervisor roles): can fetch any
- *     attachment on any tenant's threads, because operators
+ *     attachment on any client's threads, because operators
  *     work the shared pool
- *   - tenant portal user: can only fetch attachments on
- *     messages belonging to a tenant they're attached to
+ *   - client portal user: can only fetch attachments on
+ *     messages belonging to a client they're attached to
  *     (Phase 5 surfacing — portal users don't see email yet,
  *     but the check is in place now so we don't forget)
  *
@@ -62,7 +62,7 @@ class AttachmentDownloadController extends Controller
      * issues, bounce wrappers, etc.) by seeing exactly what
      * Haraka received.
      *
-     * No tenant access check — super_admin is required
+     * No client access check — super_admin is required
      * because raw MIME can contain headers that wouldn't
      * otherwise be surfaced in the UI.
      */
@@ -86,7 +86,7 @@ class AttachmentDownloadController extends Controller
     }
 
     /**
-     * Abort with 403 unless the user has access to the tenant
+     * Abort with 403 unless the user has access to the client
      * that owns this attachment.
      */
     private function authorizeAccess(\App\Models\User $user, EmailAttachment $attachment): void
@@ -95,7 +95,7 @@ class AttachmentDownloadController extends Controller
             return;
         }
 
-        // Platform operators / supervisors can work any tenant's
+        // Platform operators / supervisors can work any client's
         // threads in the shared pool, so they can fetch any
         // attachment. This mirrors how they can see any thread
         // in the operator inbox.
@@ -103,7 +103,7 @@ class AttachmentDownloadController extends Controller
             return;
         }
 
-        // Otherwise the user must belong to the tenant that owns
+        // Otherwise the user must belong to the client that owns
         // the attachment's message. Pull the team_id through the
         // message relation to avoid an N+1 on repeat downloads.
         $ownerTeamId = $attachment->message?->team_id;

@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Schema;
  *
  * An agent group is a platform-level pool of humans + devices that can
  * take calls — operators, supervisors, hardware desk phones, the lot.
- * Tenant call queues reference a group via call_queues.agent_group_id;
+ * Client call queues reference a group via call_queues.agent_group_id;
  * the queue's strategy decides the order, the group decides who.
  *
  * Members are polymorphic so a group can mix:

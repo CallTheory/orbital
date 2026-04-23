@@ -202,8 +202,8 @@ class AsteriskAmiService
      * re-reads `extensions.conf` (and #include'd files) and rebuilds
      * the dialplan tree.
      *
-     * Used by the per-tenant dialplan write path so a single
-     * tenant's RoutingRule edit doesn't churn the whole platform.
+     * Used by the per-client dialplan write path so a single
+     * client's RoutingRule edit doesn't churn the whole platform.
      * Endpoint and queue changes in the ARA path don't trigger any
      * reload at all — Asterisk pulls those per-call from the DB.
      */

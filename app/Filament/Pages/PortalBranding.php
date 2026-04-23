@@ -51,6 +51,10 @@ class PortalBranding extends Page implements HasForms
     /** @var array<int, string> */
     protected array $sectionKeys = ['portal_branding'];
 
+    // Only one section on this page — collapsing it would just hide
+    // everything, so keep it always open.
+    protected bool $collapsibleSections = false;
+
     /** @var array<string, mixed> */
     public array $data = [];
 

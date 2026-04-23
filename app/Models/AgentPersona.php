@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTeam;
-use App\Services\Tenancy\TemplateResolver;
+use App\Services\Clients\TemplateResolver;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -59,7 +59,7 @@ class AgentPersona extends Model
     }
 
     /**
-     * Tenant instances linked to this template.
+     * Client instances linked to this template.
      */
     public function instances(): HasMany
     {

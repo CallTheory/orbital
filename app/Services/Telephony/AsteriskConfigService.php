@@ -14,12 +14,12 @@ use Illuminate\Support\Facades\View;
 /**
  * Generates Asterisk's static config files from Eloquent state.
  *
- * **Per-tenant dialplan layout (Phase 2).** Every tenant's dialplan
+ * **Per-client dialplan layout (Phase 2).** Every client's dialplan
  * lives in its own include file under
- * `{config_path}/tenants/{team_id}-dialplan.conf`, with a single
+ * `{config_path}/clients/{team_id}-dialplan.conf`, with a single
  * `dialplan_index.conf` enumerating them and a `from-trunk.conf`
  * holding the inbound dispatcher. Reload churn is scoped: editing
- * a single tenant's RoutingRule rewrites just one tenant file plus
+ * a single client's RoutingRule rewrites just one client file plus
  * the dispatcher and triggers `dialplan reload` instead of
  * `core reload`.
  *
@@ -37,13 +37,13 @@ class AsteriskConfigService
         $this->configPath = config('telephony.asterisk.config_path');
     }
 
-    // ── Per-tenant dialplan generators ──────────────────────────────
+    // ── Per-client dialplan generators ──────────────────────────────
 
     /**
-     * Render one tenant's dialplan context. Includes that tenant's
+     * Render one client's dialplan context. Includes that client's
      * extensions + queues only — no inbound routing rules (those
      * live in the from-trunk dispatcher that Goto's into the right
-     * tenant context).
+     * client context).
      */
     public function generateDialplanForTenant(int $teamId): string
     {
@@ -69,7 +69,7 @@ class AsteriskConfigService
             $ext->setAttribute('recording_policy', $policy);
         }
 
-        return View::make('asterisk.tenant-dialplan', [
+        return View::make('asterisk.client-dialplan', [
             'team' => $team,
             'context' => $team->dialplanContext(),
             'extensions' => $extensions,
@@ -79,9 +79,9 @@ class AsteriskConfigService
 
     /**
      * Render the inbound trunk dispatcher. Pulls every active
-     * routing rule across all tenants — the dispatcher is global
+     * routing rule across all clients — the dispatcher is global
      * because trunks are shared infrastructure and the DID match
-     * is what determines which tenant context the call lands in.
+     * is what determines which client context the call lands in.
      */
     public function generateFromTrunkDispatcher(): string
     {
@@ -97,7 +97,7 @@ class AsteriskConfigService
     }
 
     /**
-     * Render the dialplan index. Lists every active tenant's
+     * Render the dialplan index. Lists every active client's
      * dialplan file by name so Asterisk's `#include` directives
      * pull them in (Asterisk doesn't support include globbing).
      */
@@ -115,9 +115,9 @@ class AsteriskConfigService
 
     /**
      * Render the [internal] context — dialling context for platform
-     * staff softphones. Contains all extensions across all tenants
+     * staff softphones. Contains all extensions across all clients
      * so an operator can dial any AI agent or coworker extension
-     * without knowing the tenant context.
+     * without knowing the client context.
      */
     public function generateInternalContext(): string
     {
@@ -154,18 +154,18 @@ class AsteriskConfigService
         ])->render();
     }
 
-    // ── Per-tenant write paths ──────────────────────────────────────
+    // ── Per-client write paths ──────────────────────────────────────
 
     /**
-     * Write a single tenant's dialplan file plus the from-trunk
-     * dispatcher (since that file references all tenants and a
-     * tenant's own routing rules can change which DIDs land where).
+     * Write a single client's dialplan file plus the from-trunk
+     * dispatcher (since that file references all clients and a
+     * client's own routing rules can change which DIDs land where).
      * Does NOT touch the dialplan index — that's only regenerated
-     * when tenants are created or deleted.
+     * when clients are created or deleted.
      */
     public function writeDialplanForTenant(int $teamId): void
     {
-        $tenantDir = $this->configPath.'/tenants';
+        $tenantDir = $this->configPath.'/clients';
         File::ensureDirectoryExists($tenantDir);
 
         File::put(
@@ -180,9 +180,9 @@ class AsteriskConfigService
     }
 
     /**
-     * Regenerate the dialplan index. Called when a tenant is
+     * Regenerate the dialplan index. Called when a client is
      * created or deleted — those events change which include
-     * directives the index file emits, but in-place tenant edits
+     * directives the index file emits, but in-place client edits
      * never touch it.
      */
     public function writeDialplanIndex(): void
@@ -196,13 +196,13 @@ class AsteriskConfigService
     }
 
     /**
-     * Remove a tenant's dialplan file from disk. Called by the
+     * Remove a client's dialplan file from disk. Called by the
      * Team-deleted observer so the next dialplan reload doesn't
-     * reference a tenant whose data is gone.
+     * reference a client whose data is gone.
      */
     public function deleteDialplanForTenant(int $teamId): void
     {
-        $path = $this->configPath."/tenants/{$teamId}-dialplan.conf";
+        $path = $this->configPath."/clients/{$teamId}-dialplan.conf";
         if (File::exists($path)) {
             File::delete($path);
         }
@@ -211,12 +211,12 @@ class AsteriskConfigService
     /**
      * Full regen of every dialplan artefact. Used by the
      * `orbital:generate-config` artisan command and as a last-resort
-     * recovery for drift. Walks every tenant, writes a per-tenant
+     * recovery for drift. Walks every client, writes a per-client
      * file each, then the dispatcher and index.
      */
     public function writeAllDialplans(): void
     {
-        $tenantDir = $this->configPath.'/tenants';
+        $tenantDir = $this->configPath.'/clients';
         File::ensureDirectoryExists($tenantDir);
 
         $teamIds = Team::query()
@@ -253,9 +253,9 @@ class AsteriskConfigService
     }
 
     /**
-     * Render voicemail.conf with one mailbox per tenant that has a
+     * Render voicemail.conf with one mailbox per client that has a
      * `destination_type=voicemail` routing rule. Mailbox number =
-     * tenant account_number; recordings go to the tenant's primary
+     * client account_number; recordings go to the client's primary
      * contact email with the audio attached.
      *
      * The rendered file is bind-mounted over the stock
@@ -267,7 +267,7 @@ class AsteriskConfigService
     {
         // Pull every team that has at least one active voicemail
         // routing rule. One mailbox per team regardless of how many
-        // voicemail rules point at it — the mailbox is the tenant's,
+        // voicemail rules point at it — the mailbox is the client's,
         // not the rule's.
         $teamIds = RoutingRule::query()
             ->where('destination_type', 'voicemail')
@@ -285,7 +285,7 @@ class AsteriskConfigService
             }
             $contact = $team->owner;
             $mailboxes[] = [
-                // Mailbox number is the tenant's account_number so
+                // Mailbox number is the client's account_number so
                 // it's stable across DID / rule changes and a human
                 // operator can say "mailbox 100001" on the phone.
                 'mailbox' => (string) $team->account_number,
@@ -323,7 +323,7 @@ class AsteriskConfigService
     /**
      * Cheaper than `reloadAsterisk()` — only re-parses the dialplan
      * (`dialplan reload`), not the whole config. Used by the
-     * per-tenant write path so an edit to one tenant's RoutingRule
+     * per-client write path so an edit to one client's RoutingRule
      * doesn't churn pjsip / queues / codec config across the whole
      * Asterisk process. Fan-out to every active backend.
      */

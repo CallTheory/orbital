@@ -30,7 +30,7 @@ use Throwable;
  *   1. Load stub, pull raw RFC822 from MinIO
  *   2. Parse MIME via InboundEmail::fromMessage
  *   3. Populate header + body columns
- *   4. Hand to InboundRouter → tenant + destination lookup
+ *   4. Hand to InboundRouter → client + destination lookup
  *   5. Hand to ThreadResolver → group into EmailThread
  *   6. Persist attachments to MinIO + index rows
  *   7. Stamp team_id, thread_id, routing_status (routed|unrouted),
@@ -86,11 +86,11 @@ class ProcessInboundEmailJob implements ShouldQueue
                 'body_html' => $parsed->html(),
             ])->save();
 
-            // ── 2. Route → tenant + destination.
+            // ── 2. Route → client + destination.
             $routed = $router->route($message);
 
             // ── 3. Resolve or create a thread (only if routed
-            //       to a real tenant; unrouted messages stay
+            //       to a real client; unrouted messages stay
             //       orphaned for admin review).
             $thread = null;
             if ($routed['team_id'] !== null) {

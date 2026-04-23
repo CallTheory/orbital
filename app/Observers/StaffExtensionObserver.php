@@ -11,7 +11,7 @@ use App\Services\Telephony\PlatformExtensionAllocator;
  * Cleans up a staff user's softphone extension when the user is deleted.
  *
  * The allocator is a no-op if the user doesn't have an extension assigned,
- * so this is safe for tenant-side users (who never get one) too.
+ * so this is safe for client-side users (who never get one) too.
  */
 class StaffExtensionObserver
 {

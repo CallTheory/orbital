@@ -32,7 +32,7 @@ exten => *60,1,NoOp(Speaking clock)
 
 @if($internalDidSimulation)
 ; ── Internal DID simulation ──
-; When an operator dials a tenant's external DID from a softphone
+; When an operator dials a client's external DID from a softphone
 ; (e.g. 15550000001), bounce the call into [from-trunk] so it takes
 ; the exact same routing path a real inbound SIP trunk call would.
 ; Guarded by config('telephony.asterisk.internal_did_simulation'),

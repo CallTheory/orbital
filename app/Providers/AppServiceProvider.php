@@ -10,7 +10,7 @@ use App\Models\User;
 use App\Observers\QuotaObserver;
 use App\Observers\StaffExtensionObserver;
 use App\Observers\TelephonyObserver;
-use App\Services\Tenancy\TenantPermissionGatekeeper;
+use App\Services\Clients\ClientPermissionGatekeeper;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -56,7 +56,7 @@ class AppServiceProvider extends ServiceProvider
         // always opt in to taking work after signing in rather than
         // being silently thrown into rotation because their previous
         // tab happened to leave them on Available. Listener gates on
-        // `hasAnyPlatformRole` so tenant-only users (who don't have
+        // `hasAnyPlatformRole` so client-only users (who don't have
         // an availability state at all) are a cheap no-op.
         Event::listen(Login::class, \App\Listeners\ResetAvailabilityOnLogin::class);
 
@@ -101,7 +101,7 @@ class AppServiceProvider extends ServiceProvider
         Passport::authorizationView('auth.passport-consent-stub');
 
         // Boot-time invariant check: no platform-only permission should ever
-        // be on a tenant's allow list. Logs critical if violated.
+        // be on a client's allow list. Logs critical if violated.
         $this->assertNoPlatformPermissionsInTenantGrants();
 
         // Pulse access gate. Pulse doesn't ship a service provider hook,
@@ -145,25 +145,25 @@ class AppServiceProvider extends ServiceProvider
     }
 
     /**
-     * Defensive check: the tenant_permission_grants table must never contain
+     * Defensive check: the client_permission_grants table must never contain
      * any of the PLATFORM_ONLY permissions. If it does, something has bypassed
      * the gatekeeper — log loudly.
      */
     protected function assertNoPlatformPermissionsInTenantGrants(): void
     {
         // Skip during migrations when the tables may not exist yet.
-        if (! Schema::hasTable('tenant_permission_grants') || ! Schema::hasTable('permissions')) {
+        if (! Schema::hasTable('client_permission_grants') || ! Schema::hasTable('permissions')) {
             return;
         }
 
         try {
-            $count = DB::table('tenant_permission_grants as g')
+            $count = DB::table('client_permission_grants as g')
                 ->join('permissions as p', 'p.id', '=', 'g.permission_id')
-                ->whereIn('p.name', TenantPermissionGatekeeper::PLATFORM_ONLY)
+                ->whereIn('p.name', ClientPermissionGatekeeper::PLATFORM_ONLY)
                 ->count();
 
             if ($count > 0) {
-                Log::critical('Platform-only permissions found in tenant_permission_grants', [
+                Log::critical('Platform-only permissions found in client_permission_grants', [
                     'count' => $count,
                 ]);
             }

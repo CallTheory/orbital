@@ -1,12 +1,12 @@
 {{--
-    voicemail.conf — generated from tenants with a voicemail
-    routing rule. Every tenant gets one mailbox whose number equals
-    the tenant's account_number. New-message emails go to the
-    tenant's primary contact with the audio attached.
+    voicemail.conf — generated from clients with a voicemail
+    routing rule. Every client gets one mailbox whose number equals
+    the client's account_number. New-message emails go to the
+    client's primary contact with the audio attached.
 
     Variables in scope:
         $mailboxes — list of arrays {mailbox, password, fullname,
-                     email} for tenants that have at least one
+                     email} for clients that have at least one
                      RoutingRule with destination_type='voicemail'.
 --}}
 ;===============================================================================
@@ -52,7 +52,7 @@ mountain=America/Denver|'vm-received' Q 'digits/at' IMp
 pacific=America/Los_Angeles|'vm-received' Q 'digits/at' IMp
 
 [default]
-; Mailboxes: one per tenant with a voicemail routing rule.
+; Mailboxes: one per client with a voicemail routing rule.
 ; Format: mailbox => password,fullname,email,pager,options
 ; Email field is INTENTIONALLY blank — Laravel's transcription +
 ; email pipeline (triggered by externnotify above) owns delivery.
@@ -61,6 +61,6 @@ pacific=America/Los_Angeles|'vm-received' Q 'digits/at' IMp
 {{ $mb['mailbox'] }} => {{ $mb['password'] }},{{ $mb['fullname'] }},,,tz=eastern
 @endforeach
 @if(count($mailboxes) === 0)
-; No tenants have a voicemail routing rule configured. Add one via
+; No clients have a voicemail routing rule configured. Add one via
 ; the admin UI and regenerate configs (orbital:generate-config).
 @endif

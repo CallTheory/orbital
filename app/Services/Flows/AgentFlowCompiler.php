@@ -10,7 +10,7 @@ use App\Models\IntakeFlow;
 use App\Models\IntakeGoal;
 use App\Models\KnowledgeStore;
 use App\Models\RoutingRule;
-use App\Services\Tenancy\TemplateResolver;
+use App\Services\Clients\TemplateResolver;
 
 /**
  * Takes a persona + (optional) extension + (optional) routing rule and
@@ -53,10 +53,10 @@ class AgentFlowCompiler
             );
         }
 
-        $flow->loadMissing(['steps.intakeGoal.template']);
+        $flow->loadMissing(['steps.intakeGoal']);
 
         $resolvedGoals = $flow->steps
-            ->map(fn ($step) => $this->resolveGoal($step->intakeGoal))
+            ->map(fn ($step) => $step->intakeGoal ? $this->resolveGoal($step->intakeGoal, $step->step_params ?? []) : null)
             ->filter()
             ->values();
 
@@ -92,6 +92,7 @@ class AgentFlowCompiler
             'talking_points' => $goal['talking_points'],
             'data_fields' => $goal['data_fields'],
             'completion' => $goal['completion'],
+            'step_params' => $goal['step_params'] ?? [],
         ])->all();
 
         return new CompiledFlow(
@@ -149,22 +150,40 @@ class AgentFlowCompiler
     }
 
     /**
-     * Resolve an IntakeGoal through TemplateResolver so we get merged
-     * template + overrides without caring whether the row is a tenant
-     * instance or a platform library goal.
+     * Merge the library primitive's defaults with the per-step params
+     * this placement carries. Step params win for any key they set;
+     * unset keys fall through to the library row.
      *
+     * Two keys get special handling because they're arrays whose natural
+     * merge semantics aren't "replace":
+     *   - `knowledge_store_ids`: step value replaces (author explicitly
+     *     picked which stores this node should search; empty means none).
+     *   - `data_fields`: unchanged from the library — it describes the
+     *     PARAM schema for the editor, not runtime behavior, so overriding
+     *     it would confuse the UI.
+     *
+     * @param  array<string, mixed>  $stepParams
      * @return array<string, mixed>
      */
-    private function resolveGoal(IntakeGoal $goal): array
+    private function resolveGoal(IntakeGoal $goal, array $stepParams = []): array
     {
-        $effective = $goal->effective();
-        // Template resolver doesn't know the goal's own ID / knowledge_store_ids /
-        // key, so pull those back off the row directly for fields it elided.
-        return array_merge($effective, [
-            'id' => $goal->id,
-            'key' => $goal->effectiveField('key') ?? $goal->key,
-            'knowledge_store_ids' => $goal->effectiveField('knowledge_store_ids') ?? $goal->knowledge_store_ids ?? [],
-        ]);
+        $base = $goal->attributesToArray();
+
+        $merged = $stepParams + $base;
+        $merged['id'] = $goal->id;
+        $merged['key'] = $goal->key;
+        // Always read data_fields from the library row — it's the schema
+        // documentation for the editor, not runtime content.
+        $merged['data_fields'] = $goal->data_fields ?? [];
+        // Expose the raw step params under a dedicated key so downstream
+        // renderers (prompt builder, operator script) can reach the
+        // per-placement configuration without round-tripping the merge.
+        $merged['step_params'] = $stepParams;
+        $merged['knowledge_store_ids'] = $stepParams['knowledge_store_ids']
+            ?? $goal->knowledge_store_ids
+            ?? [];
+
+        return $merged;
     }
 
     /**
@@ -333,7 +352,7 @@ class AgentFlowCompiler
      * Collect the distinct set of knowledge stores referenced by any goal
      * in the flow. Any store_id that doesn't belong to the persona's team
      * is silently dropped — a defense-in-depth check against misconfigured
-     * tenant data.
+     * client data.
      *
      * @param  \Illuminate\Support\Collection<int, array<string, mixed>>  $goals
      * @return array<int, array{id: int, name: string, description: ?string}>
@@ -372,7 +391,7 @@ class AgentFlowCompiler
     {
         return [
             'name' => 'search_knowledge',
-            'description' => 'Search the tenant\'s knowledge stores for an answer. Use this when the caller asks a factual question that might be answered from FAQ or policy documents. The response includes the most relevant chunks with citations; answer ONLY from what you find.',
+            'description' => 'Search the client\'s knowledge stores for an answer. Use this when the caller asks a factual question that might be answered from FAQ or policy documents. The response includes the most relevant chunks with citations; answer ONLY from what you find.',
             'parameters' => [
                 'type' => 'object',
                 'required' => ['query'],

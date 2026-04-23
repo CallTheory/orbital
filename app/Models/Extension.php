@@ -70,8 +70,8 @@ class Extension extends Model
 
     /**
      * Canonical Asterisk endpoint id used in the ARA tables. Two
-     * tenants can have the same extension number internally, but
-     * Asterisk's pjsip endpoint id is global — so we prefix tenant
+     * clients can have the same extension number internally, but
+     * Asterisk's pjsip endpoint id is global — so we prefix client
      * extensions with `t{team_id}_` and leave platform-staff
      * extensions (team_id = null) unprefixed.
      *

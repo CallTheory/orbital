@@ -19,8 +19,8 @@ use UnitEnum;
 
 /**
  * Platform-level shared directory — a phone book curated by the
- * platform operator and attached to one or more tenants. Attached
- * tenants see entries from this directory during call-time lookups
+ * platform operator and attached to one or more clients. Attached
+ * clients see entries from this directory during call-time lookups
  * via the BelongsToTeamOrSharedPool scope on DirectoryEntry.
  */
 class SharedDirectoryResource extends Resource
@@ -53,7 +53,7 @@ class SharedDirectoryResource extends Resource
                 Forms\Components\Textarea::make('description')
                     ->rows(3)
                     ->maxLength(1000)
-                    ->placeholder('Describe what this shared directory is for and which tenants reference it during call handling.'),
+                    ->placeholder('Describe what this shared directory is for and which clients reference it during call handling.'),
             ]);
     }
 
@@ -73,7 +73,7 @@ class SharedDirectoryResource extends Resource
                     ->counts('entries')
                     ->alignCenter(),
                 Tables\Columns\TextColumn::make('teams_count')
-                    ->label('Attached tenants')
+                    ->label('Attached clients')
                     ->counts('teams')
                     ->alignCenter(),
                 Tables\Columns\TextColumn::make('created_at')
@@ -84,14 +84,14 @@ class SharedDirectoryResource extends Resource
             ->defaultSort('name')
             ->actions([
                 Action::make('attach')
-                    ->label('Attach tenants')
+                    ->label('Attach clients')
                     ->icon('heroicon-m-link')
                     ->color('primary')
-                    ->modalHeading(fn (SharedDirectory $record) => "Attach tenants to {$record->name}")
-                    ->modalDescription('Select which tenants should see entries from this shared directory during call handling. Attached tenants\' DirectoryEntry queries automatically include these rows.')
+                    ->modalHeading(fn (SharedDirectory $record) => "Attach clients to {$record->name}")
+                    ->modalDescription('Select which clients should see entries from this shared directory during call handling. Attached clients\' DirectoryEntry queries automatically include these rows.')
                     ->schema([
                         Forms\Components\Select::make('team_ids')
-                            ->label('Tenants')
+                            ->label('Clients')
                             ->multiple()
                             ->options(fn () => Team::query()
                                 ->where('personal_team', false)
@@ -114,7 +114,7 @@ class SharedDirectoryResource extends Resource
                         }
 
                         Notification::make()
-                            ->title('Tenants updated')
+                            ->title('Clients updated')
                             ->body(sprintf(
                                 '%d attached, %d detached',
                                 count($toAttach),

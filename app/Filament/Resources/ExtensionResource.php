@@ -23,8 +23,8 @@ use UnitEnum;
  * user is created and managed via the user's edit page — they don't show
  * up in this list.
  *
- * Tenant extensions (AI agents, virtual DIDs) live inside each tenant
- * under TenantResource → Extensions.
+ * Client extensions (AI agents, virtual DIDs) live inside each client
+ * under ClientResource → Extensions.
  */
 class ExtensionResource extends Resource
 {
@@ -147,13 +147,13 @@ class ExtensionResource extends Resource
                 Forms\Components\Select::make('recording_mode')
                     ->label('Call recording')
                     ->options([
-                        'inherit' => 'Inherit from tenant / platform',
+                        'inherit' => 'Inherit from client / platform',
                         'always' => 'Always record',
                         'never' => 'Never record',
                     ])
                     ->default('inherit')
                     ->native(false)
-                    ->helperText('"Inherit" defers to the tenant override, which falls back to the platform default. Use "never" for sensitive lines (legal hotline, executive) regardless of tenant settings.'),
+                    ->helperText('"Inherit" defers to the client override, which falls back to the platform default. Use "never" for sensitive lines (legal hotline, executive) regardless of client settings.'),
                 Forms\Components\Toggle::make('is_active')
                     ->default(true),
             ]);

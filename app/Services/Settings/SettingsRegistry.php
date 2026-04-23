@@ -35,7 +35,7 @@ final class SettingsRegistry
             'portal_branding' => [
                 'label' => 'Portal Branding',
                 'icon' => 'heroicon-o-paint-brush',
-                'description' => 'Identity shown on the customer portal and the shared login page — the first thing your tenants see.',
+                'description' => 'Identity shown on the customer portal and the shared login page — the first thing your clients see.',
             ],
             'app' => [
                 'label' => 'Application',
@@ -45,12 +45,12 @@ final class SettingsRegistry
             'mail' => [
                 'label' => 'Mail',
                 'icon' => 'heroicon-o-envelope',
-                'description' => 'Outbound email transport. Applies to all notifications, password resets, and tenant messages.',
+                'description' => 'Outbound email transport. Applies to all notifications, password resets, and client messages.',
             ],
             'inbound_mail' => [
                 'label' => 'Inbound Mail',
                 'icon' => 'heroicon-o-inbox-arrow-down',
-                'description' => 'SendGrid-style inbound parsing: the Haraka SMTP shim accepts mail for tenant account numbers and posts it to the Laravel webhook.',
+                'description' => 'SendGrid-style inbound parsing: the Haraka SMTP shim accepts mail for client account numbers and posts it to the Laravel webhook.',
             ],
             'logging' => [
                 'label' => 'Logging',
@@ -105,12 +105,12 @@ final class SettingsRegistry
             'knowledge' => [
                 'label' => 'Knowledge & Embeddings',
                 'icon' => 'heroicon-o-book-open',
-                'description' => 'How retrieval-augmented intake goals embed and search tenant knowledge stores.',
+                'description' => 'How retrieval-augmented intake goals embed and search client knowledge stores.',
             ],
             'recording' => [
                 'label' => 'Call Recording',
                 'icon' => 'heroicon-o-microphone',
-                'description' => 'Platform defaults for call recording. Tenants can override per-call via their own settings.',
+                'description' => 'Platform defaults for call recording. Clients can override per-call via their own settings.',
             ],
         ];
     }
@@ -170,6 +170,22 @@ final class SettingsRegistry
                 'config_key' => 'orbital.support_message',
                 'helper' => 'Shown when users hit a quota or error and need to be told who to contact.',
             ],
+            'orbital.admin_primary_color' => [
+                'section' => 'branding',
+                'label' => 'Admin panel primary color',
+                'type' => 'select',
+                'config_key' => 'orbital.admin_primary_color',
+                'options' => self::primaryColorOptions(),
+                'helper' => 'Accent color used on the admin panel — buttons, links, active nav, badges.',
+            ],
+            'orbital.operator_primary_color' => [
+                'section' => 'branding',
+                'label' => 'Operator panel primary color',
+                'type' => 'select',
+                'config_key' => 'orbital.operator_primary_color',
+                'options' => self::primaryColorOptions(),
+                'helper' => 'Accent color used on the operator workspace.',
+            ],
             'orbital.platform_logo_light' => [
                 'section' => 'branding',
                 'label' => 'Platform logo (light mode)',
@@ -197,7 +213,7 @@ final class SettingsRegistry
 
             // ─── Portal Branding ───────────────────────────────────────
             // Customer-facing identity: shown on the portal panel AND
-            // the shared root /login page. Every user — tenant or
+            // the shared root /login page. Every user — client or
             // staff — authenticates at the portal-branded login
             // before being routed to their actual panel.
             'orbital.portal_name' => [
@@ -207,6 +223,14 @@ final class SettingsRegistry
                 'config_key' => 'orbital.portal_name',
                 'placeholder' => 'Customer Portal',
                 'helper' => 'Shown in the portal header and the login page <title>.',
+            ],
+            'orbital.portal_primary_color' => [
+                'section' => 'portal_branding',
+                'label' => 'Portal primary color',
+                'type' => 'select',
+                'config_key' => 'orbital.portal_primary_color',
+                'options' => self::primaryColorOptions(),
+                'helper' => 'Accent color used on the customer portal and the shared login page.',
             ],
             'orbital.portal_logo_light' => [
                 'section' => 'portal_branding',
@@ -235,7 +259,7 @@ final class SettingsRegistry
 
             // ─── Application ───────────────────────────────────────────
             // App Name intentionally not surfaced here — "Platform
-            // Name" (Branding section) is the tenant-facing name and
+            // Name" (Branding section) is the client-facing name and
             // now feeds everything that would have read app.name.
             // APP_NAME in .env still drives Laravel's internal config.
             'app.url' => [
@@ -343,7 +367,7 @@ final class SettingsRegistry
                 'type' => 'text',
                 'config_key' => 'services.inbound_mail.domain',
                 'placeholder' => 'inbound.orbital.test',
-                'helper' => 'The domain tenant account-number local-parts land on — e.g. 100001@inbound.orbital.test. Used by outbound Reply-To headers. DNS MX record for this domain must point at the Haraka SMTP shim or inbound mail will bounce.',
+                'helper' => 'The domain client account-number local-parts land on — e.g. 100001@inbound.orbital.test. Used by outbound Reply-To headers. DNS MX record for this domain must point at the Haraka SMTP shim or inbound mail will bounce.',
             ],
             'services.inbound_mail.token' => [
                 'section' => 'inbound_mail',
@@ -623,7 +647,7 @@ final class SettingsRegistry
                 'label' => 'Internal DID simulation',
                 'type' => 'toggle',
                 'config_key' => 'telephony.asterisk.internal_did_simulation',
-                'helper' => 'Development-only shortcut that lets operator softphones dial a tenant DID directly through the internal dialplan, as if it arrived on a real trunk. Leave OFF in production — a real operator should never be able to self-originate a call as if it came from outside the building.',
+                'helper' => 'Development-only shortcut that lets operator softphones dial a client DID directly through the internal dialplan, as if it arrived on a real trunk. Leave OFF in production — a real operator should never be able to self-originate a call as if it came from outside the building.',
                 'restart_required' => ['asterisk'],
             ],
 
@@ -828,7 +852,7 @@ final class SettingsRegistry
                 'label' => 'Call recording enabled',
                 'type' => 'toggle',
                 'config_key' => 'telephony.recording.enabled',
-                'helper' => 'Master switch. When off, no calls are recorded regardless of tenant or extension settings.',
+                'helper' => 'Master switch. When off, no calls are recorded regardless of client or extension settings.',
             ],
             'telephony.recording.format' => [
                 'section' => 'recording',
@@ -879,7 +903,7 @@ final class SettingsRegistry
                 'label' => 'Disclosure message (TTS)',
                 'type' => 'textarea',
                 'config_key' => 'telephony.recording.disclosure_message',
-                'helper' => 'Optional text spoken to the caller at the start of a recorded call — e.g. "This call may be monitored or recorded for quality assurance purposes." Leave blank to skip. Tenants can override with their own message.',
+                'helper' => 'Optional text spoken to the caller at the start of a recorded call — e.g. "This call may be monitored or recorded for quality assurance purposes." Leave blank to skip. Clients can override with their own message.',
             ],
 
         ];
@@ -909,5 +933,37 @@ final class SettingsRegistry
     public static function isSecret(string $key): bool
     {
         return (bool) (self::find($key)['secret'] ?? false);
+    }
+
+    /**
+     * Shared option map for the three "primary color" selects (admin,
+     * operator, portal). Every value matches a public constant on
+     * {@see \Filament\Support\Colors\Color} so the Branding helper
+     * can resolve it dynamically with `constant(...)`. Grayscales
+     * are intentionally omitted — these are accent colors.
+     *
+     * @return array<string, string>
+     */
+    public static function primaryColorOptions(): array
+    {
+        return [
+            'Red' => 'Red',
+            'Orange' => 'Orange',
+            'Amber' => 'Amber',
+            'Yellow' => 'Yellow',
+            'Lime' => 'Lime',
+            'Green' => 'Green',
+            'Emerald' => 'Emerald',
+            'Teal' => 'Teal',
+            'Cyan' => 'Cyan',
+            'Sky' => 'Sky',
+            'Blue' => 'Blue',
+            'Indigo' => 'Indigo',
+            'Violet' => 'Violet',
+            'Purple' => 'Purple',
+            'Fuchsia' => 'Fuchsia',
+            'Pink' => 'Pink',
+            'Rose' => 'Rose',
+        ];
     }
 }

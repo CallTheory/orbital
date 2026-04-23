@@ -10,9 +10,9 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * Extended tenant-scope trait for models that can ALSO be owned
+ * Extended client-scope trait for models that can ALSO be owned
  * by a platform-level shared container attached to multiple
- * tenants via a pivot. Currently used by `DirectoryEntry` and
+ * clients via a pivot. Currently used by `DirectoryEntry` and
  * `DirectoryFieldDefinition`.
  *
  * The default `BelongsToTeam` scope filters queries to
@@ -24,22 +24,22 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  *                              WHERE team_id = currentTeam
  *                                AND is_active = true)
  *
- * so any tenant-scoped query automatically sees the tenant's
+ * so any tenant-scoped query automatically sees the client's
  * private rows PLUS rows from every shared container they're
  * subscribed to. Admin management surfaces that explicitly
  * query by `->where('team_id', ...)` keep their current
- * tenant-only behavior because they never rely on the scope.
+ * client-only behavior because they never rely on the scope.
  *
  * Consumer requirements:
  *   - Declare `public const SHARED_PARENT_COLUMN = '...';`
  *   - Declare `public const TEAM_SHARED_PIVOT_TABLE = '...';`
  *
- * Escape hatch for "just this tenant's private rows" — any
+ * Escape hatch for "just this client's private rows" — any
  * explicit `->where('team_id', $id)` at the query site is
  * sufficient; the OR clause is harmless because no shared
  * row will have the matching team_id.
  *
- * Cross-tenant super-admin access: `withoutTeamScope()` as
+ * Cross-client super-admin access: `withoutTeamScope()` as
  * per the base `BelongsToTeam` trait — unchanged shape.
  */
 trait BelongsToTeamOrSharedPool
@@ -54,7 +54,7 @@ trait BelongsToTeamOrSharedPool
 
             // Super-admins bypass the scope entirely — same as
             // the base BelongsToTeam trait. They drill into
-            // specific tenants via explicit query filters.
+            // specific clients via explicit query filters.
             if ($user->isSuperAdmin()) {
                 return;
             }
@@ -80,7 +80,7 @@ trait BelongsToTeamOrSharedPool
             });
         });
 
-        // Auto-stamp team_id for tenant-created rows, same as
+        // Auto-stamp team_id for client-created rows, same as
         // BelongsToTeam. Skipped entirely when shared_*_id is
         // already set (super-admins creating shared records).
         static::creating(function (Model $model) {
@@ -106,14 +106,14 @@ trait BelongsToTeamOrSharedPool
     }
 
     /**
-     * Super-admin-only cross-tenant query. Same shape as
+     * Super-admin-only cross-client query. Same shape as
      * `BelongsToTeam::withoutTeamScope()` — use for admin
      * surfaces that need the raw view.
      */
     public static function withoutTeamScope(): Builder
     {
         $user = auth()->user();
-        abort_unless($user?->isSuperAdmin(), 403, 'Cross-tenant queries are super-admin only.');
+        abort_unless($user?->isSuperAdmin(), 403, 'Cross-client queries are super-admin only.');
 
         return static::query()->withoutGlobalScope('team');
     }

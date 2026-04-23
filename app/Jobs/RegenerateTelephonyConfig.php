@@ -16,10 +16,10 @@ use Illuminate\Support\Facades\Log;
 /**
  * Regenerates Asterisk dialplan files and triggers a scoped reload.
  *
- * The job is per-tenant: dispatching with a `teamId` only rewrites
- * that tenant's dialplan file plus the from-trunk dispatcher and
+ * The job is per-client: dispatching with a `teamId` only rewrites
+ * that client's dialplan file plus the from-trunk dispatcher and
  * triggers `dialplan reload` (NOT `core reload`), so a single
- * tenant's RoutingRule edit doesn't churn pjsip/queues/codec config
+ * client's RoutingRule edit doesn't churn pjsip/queues/codec config
  * for the rest of the platform.
  *
  * Dispatching with a null `teamId` regenerates everything — used by
@@ -44,21 +44,21 @@ class RegenerateTelephonyConfig implements ShouldBeUnique, ShouldQueue
         Log::info('Regenerating telephony config', ['team_id' => $this->teamId]);
 
         if ($this->teamId !== null) {
-            // Scoped path: only this tenant's dialplan file plus the
+            // Scoped path: only this client's dialplan file plus the
             // shared from-trunk dispatcher (since DIDs in this
-            // tenant's routing rules might have changed which trunk
+            // client's routing rules might have changed which trunk
             // patterns dispatch where).
             $service->writeDialplanForTenant($this->teamId);
 
             if ($service->reloadDialplan()) {
-                Log::info('Dialplan reloaded for tenant', ['team_id' => $this->teamId]);
+                Log::info('Dialplan reloaded for client', ['team_id' => $this->teamId]);
             } else {
                 Log::warning('Dialplan reload failed — file written but not applied', ['team_id' => $this->teamId]);
             }
             return;
         }
 
-        // Full regen: every tenant's dialplan + the dispatcher +
+        // Full regen: every client's dialplan + the dispatcher +
         // the index. Used by bootstrap, fresh seed, and the
         // `orbital:generate-config` artisan command.
         $service->writeAllDialplans();

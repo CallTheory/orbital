@@ -8,13 +8,13 @@ use Illuminate\Database\Eloquent\Builder;
 
 /**
  * Shared behavior for Filament resources that are managed exclusively by
- * platform operators (super-admin) on behalf of tenants.
+ * platform operators (super-admin) on behalf of clients.
  *
  * Three things:
  *   1. All CRUD operations are gated to super_admin
  *   2. Queries bypass the BelongsToTeam global scope so super-admin sees
- *      records across every tenant (plus platform-wide records with team_id = null)
- *   3. (Consumers add their own tenant column/filter on top of this)
+ *      records across every client (plus platform-wide records with team_id = null)
+ *   3. (Consumers add their own client column/filter on top of this)
  */
 trait PlatformManagedResource
 {

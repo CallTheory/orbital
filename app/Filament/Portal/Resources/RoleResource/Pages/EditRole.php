@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Filament\Portal\Resources\RoleResource\Pages;
 
 use App\Filament\Portal\Resources\RoleResource;
-use App\Services\Tenancy\TenantPermissionGatekeeper;
-use App\Services\Tenancy\TenantProvisioner;
+use App\Services\Clients\ClientPermissionGatekeeper;
+use App\Services\Clients\ClientProvisioner;
 use Filament\Actions;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
@@ -55,7 +55,7 @@ class EditRole extends EditRecord
 
     /**
      * Protect seeded role names from being renamed — the app
-     * references `tenant_admin` and `tenant_user` by name so
+     * references `client_admin` and `client_user` by name so
      * renaming them would break authorization code.
      */
     protected function mutateFormDataBeforeSave(array $data): array
@@ -85,7 +85,7 @@ class EditRole extends EditRecord
             return;
         }
 
-        app(TenantPermissionGatekeeper::class)
+        app(ClientPermissionGatekeeper::class)
             ->syncRolePermissions($team, $record, $this->cachedPermissions);
     }
 }

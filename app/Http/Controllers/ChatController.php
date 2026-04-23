@@ -11,22 +11,22 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
- * Public chat entry point. The URL carries the tenant slug and a
+ * Public chat entry point. The URL carries the client slug and a
  * persona id/slug so a customer can land directly on a chat session
  * without any authentication. On first visit we create a ChatSession
  * row keyed by a random public token stored in the session.
  *
  * This is intentionally minimal — the real work lives in the Livewire
  * component (ChatConsole) and the chat API endpoint. The controller
- * just resolves the tenant + persona and hands off.
+ * just resolves the client + persona and hands off.
  */
 class ChatController extends Controller
 {
-    public function show(Request $request, string $tenant, int $persona)
+    public function show(Request $request, string $client, int $persona)
     {
-        $team = Team::where('id', $tenant)
-            ->orWhere('name', $tenant)
-            ->firstOr(fn () => throw new NotFoundHttpException('Unknown tenant.'));
+        $team = Team::where('id', $client)
+            ->orWhere('name', $client)
+            ->firstOr(fn () => throw new NotFoundHttpException('Unknown client.'));
 
         $personaModel = AgentPersona::withoutGlobalScope('team')
             ->where('team_id', $team->id)

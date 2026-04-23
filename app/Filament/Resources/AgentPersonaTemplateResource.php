@@ -20,9 +20,9 @@ use UnitEnum;
 /**
  * Platform-library template personas. `team_id = null` and `template_id = null`.
  *
- * When the platform operator edits a template, all linked tenant instances
+ * When the platform operator edits a template, all linked client instances
  * automatically reflect the changes on unchanged fields (template propagation
- * via TemplateResolver). Tenants can override any field on their instance to
+ * via TemplateResolver). Clients can override any field on their instance to
  * break the link for that field.
  */
 class AgentPersonaTemplateResource extends Resource
@@ -168,11 +168,11 @@ class AgentPersonaTemplateResource extends Resource
             ])
             ->actions([
                 \Filament\Actions\Action::make('clone_to_tenant')
-                    ->label('Clone to tenant')
+                    ->label('Clone to client')
                     ->icon('heroicon-o-document-duplicate')
                     ->form([
                         Forms\Components\Select::make('team_id')
-                            ->label('Tenant')
+                            ->label('Client')
                             ->options(fn () => Team::where('personal_team', false)->pluck('name', 'id'))
                             ->required(),
                     ])
@@ -187,7 +187,7 @@ class AgentPersonaTemplateResource extends Resource
                         ]);
 
                         Notification::make()
-                            ->title("Cloned template to tenant")
+                            ->title("Cloned template to client")
                             ->body("Instance #{$instance->id} is live.")
                             ->success()
                             ->send();

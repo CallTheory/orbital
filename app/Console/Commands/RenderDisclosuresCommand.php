@@ -10,12 +10,12 @@ use Illuminate\Console\Command;
 
 /**
  * Walks every disclosure message in the system — platform default +
- * every tenant override — and renders its TTS audio to the shared
+ * every client override — and renders its TTS audio to the shared
  * prompts volume so Asterisk has prompt files to play at call time.
  *
  * Run after changing the platform default, during a fresh deploy, or
  * any time you suspect a prompt file is out of sync with the DB.
- * Individual tenant edits fire RenderDisclosurePromptJob automatically,
+ * Individual client edits fire RenderDisclosurePromptJob automatically,
  * so this is mostly a bulk/recovery tool.
  *
  *   ./vendor/bin/sail artisan orbital:render-disclosures
@@ -25,7 +25,7 @@ class RenderDisclosuresCommand extends Command
     protected $signature = 'orbital:render-disclosures
         {--force : Re-render even if the file already exists (deletes cached files first)}';
 
-    protected $description = 'Render all recording-disclosure TTS prompts (platform default + every tenant override).';
+    protected $description = 'Render all recording-disclosure TTS prompts (platform default + every client override).';
 
     public function handle(DisclosureRenderer $renderer): int
     {
@@ -79,9 +79,9 @@ class RenderDisclosuresCommand extends Command
 
     /**
      * Build a map of `message => [list of origin labels]` so duplicate
-     * messages across tenants only render once. The origin list is
+     * messages across clients only render once. The origin list is
      * cosmetic — it's what the command output uses to show which
-     * tenants share a given prompt.
+     * clients share a given prompt.
      *
      * @return array<string, array<int, string>>
      */
@@ -103,7 +103,7 @@ class RenderDisclosuresCommand extends Command
                     if ($msg === '') {
                         continue;
                     }
-                    $map[$msg][] = "tenant:{$team->id}";
+                    $map[$msg][] = "client:{$team->id}";
                 }
             });
 

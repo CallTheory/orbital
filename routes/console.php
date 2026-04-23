@@ -30,7 +30,7 @@ Schedule::call(fn () => Cache::forever('scheduler:heartbeat', now()->toIso8601St
     // onOneServer() so prod can run N scheduler containers safely.
     ->onOneServer();
 
-// Walk every call log past its tenant's retention window, delete the
+// Walk every call log past its client's retention window, delete the
 // S3 objects, and null the columns. Runs at 03:15 local so overnight
 // upload jobs have already settled.
 Schedule::job(new PruneExpiredCallRecordingsJob())

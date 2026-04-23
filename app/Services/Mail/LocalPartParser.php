@@ -6,7 +6,7 @@ namespace App\Services\Mail;
 
 /**
  * Parses the local-part of an inbound email address into a
- * tenant account_number and optional function sub-routing key.
+ * client account_number and optional function sub-routing key.
  *
  * Grammar (matches the user's SendGrid Inbound Parse convention
  * from prior platforms):
@@ -66,9 +66,9 @@ class LocalPartParser
     /**
      * Returns the input trimmed if it looks like a numeric
      * account number, otherwise null. We're deliberately strict
-     * here — the tenant routing only works off numeric account
+     * here — the client routing only works off numeric account
      * numbers, and accepting arbitrary strings would let any
-     * mail to `support@...` collide with unrelated tenants.
+     * mail to `support@...` collide with unrelated clients.
      */
     private function normalizeAccountNumber(string $candidate): ?string
     {

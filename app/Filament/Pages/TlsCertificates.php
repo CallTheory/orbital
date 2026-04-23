@@ -30,9 +30,9 @@ class TlsCertificates extends Page
 
     protected static string|UnitEnum|null $navigationGroup = 'System';
 
-    protected static ?int $navigationSort = 3;
+    protected static ?int $navigationSort = 4;
 
-    protected static ?string $navigationLabel = 'TLS Certificates';
+    protected static ?string $navigationLabel = 'Certificates';
 
     protected static ?string $title = 'TLS Certificates';
 

@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * Shared mid-call state keyed on the LiveKit session/room name.
  *
  * Not using BelongsToTeam because this model gets accessed from both
- * sides: the agent worker calls into Laravel before the tenant context
+ * sides: the agent worker calls into Laravel before the client context
  * is established, and the operator reads it via the web panel under
  * the normal team scope. Isolation is enforced at the controller level
  * instead — see CallSessionController.

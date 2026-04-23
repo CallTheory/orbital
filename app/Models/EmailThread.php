@@ -17,7 +17,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * The ThreadResolver chains messages via RFC822 `Message-ID` /
  * `In-Reply-To` / `References` headers, falling back to a
  * sender + subject-root match within a 7-day window when the
- * headers don't resolve (e.g. a plain reply from a tenant
+ * headers don't resolve (e.g. a plain reply from a client
  * whose mail client stripped the References chain).
  *
  * A thread's `status` mirrors how operators work it:

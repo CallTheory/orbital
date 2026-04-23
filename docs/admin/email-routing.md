@@ -1,6 +1,6 @@
 # Email Routing
 
-Orbital's inbound email pipeline accepts messages via SMTP (Haraka), resolves the tenant, and routes each thread to the right queue based on configurable rules.
+Orbital's inbound email pipeline accepts messages via SMTP (Haraka), resolves the client, and routes each thread to the right queue based on configurable rules.
 
 ## How It Works
 
@@ -8,17 +8,17 @@ Orbital's inbound email pipeline accepts messages via SMTP (Haraka), resolves th
 Sender → SMTP (Haraka) → Webhook → Laravel Router → Queue → Operator Inbox
 ```
 
-1. **Tenant resolution**: The recipient address encodes the tenant's account number as the local part. For example, `100001@inbound.orbital.test` resolves to the tenant with account number `100001`.
+1. **Client resolution**: The recipient address encodes the client's account number as the local part. For example, `100001@inbound.orbital.test` resolves to the client with account number `100001`.
 
 2. **Thread grouping**: Messages are grouped into threads using RFC822 `Message-ID`, `In-Reply-To`, and `References` headers. Replies to existing threads land on the same thread regardless of routing rules.
 
-3. **Rule evaluation**: For new threads, the router evaluates the tenant's email routing rules in priority order (lowest number = highest priority). The first matching rule determines the destination.
+3. **Rule evaluation**: For new threads, the router evaluates the client's email routing rules in priority order (lowest number = highest priority). The first matching rule determines the destination.
 
 4. **Queue assignment**: The thread is stamped with the destination queue. Once set, the queue assignment persists — subsequent messages on the thread inherit the existing queue.
 
 ## Email Queues
 
-Each tenant can have one or more email queues. A queue is a named bucket that threads land in, worked by a specific group of operators.
+Each client can have one or more email queues. A queue is a named bucket that threads land in, worked by a specific group of operators.
 
 | Field | Purpose |
 |-------|---------|
@@ -34,11 +34,11 @@ Queues reference platform-level **Agent Groups**. An agent group is a pool of op
 If no operator group is assigned, the queue is "open" — all operators can see its threads.
 
 !!! tip "Simple setup"
-    Most tenants only need one queue with a catch-all rule. Create a queue called "General Inbox", assign your operator group, and add a default routing rule pointing to it.
+    Most clients only need one queue with a catch-all rule. Create a queue called "General Inbox", assign your operator group, and add a default routing rule pointing to it.
 
 ## Routing Rules
 
-Rules determine which queue (or other destination) an inbound email lands in. They're evaluated per-tenant in priority order.
+Rules determine which queue (or other destination) an inbound email lands in. They're evaluated per-client in priority order.
 
 ### Match Types
 
@@ -90,7 +90,7 @@ Emails sent to `100002.vip@...` route to VIP. Emails with "urgent" in the subjec
 
 ## Function Suffix Addressing
 
-Tenants can receive email at multiple "sub-addresses" using function suffixes:
+Clients can receive email at multiple "sub-addresses" using function suffixes:
 
 ```
 {account_number}.{function}@{inbound_domain}
@@ -103,14 +103,14 @@ Examples for account 100002:
 - `100002.vip@inbound.orbital.test` — VIP client correspondence
 - `100002.billing@inbound.orbital.test` — billing inquiries
 
-The function suffix is extracted by the router and matched against function-type routing rules. This lets tenants give different email addresses to different contacts and have them automatically sorted into the right queue.
+The function suffix is extracted by the router and matched against function-type routing rules. This lets clients give different email addresses to different contacts and have them automatically sorted into the right queue.
 
 ## Troubleshooting
 
 ### Emails not appearing in the operator inbox
 
 1. Check **Admin > Monitor > Unrouted Mail** for messages that failed routing
-2. Verify the tenant has at least one email routing rule (a default catch-all)
+2. Verify the client has at least one email routing rule (a default catch-all)
 3. Verify the destination queue exists and is active
 4. If using operator groups, verify the operator is a member of the queue's agent group
 

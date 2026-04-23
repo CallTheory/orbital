@@ -14,10 +14,10 @@ use Illuminate\Support\Str;
  * Resolution order:
  *
  *   1. `In-Reply-To` header → look up an existing message by
- *      its Message-ID in the same tenant, return that message's
+ *      its Message-ID in the same client, return that message's
  *      thread_id.
  *   2. `References` header → walk the chain of Message-IDs,
- *      same lookup, same tenant.
+ *      same lookup, same client.
  *   3. Sender + subject-root match within a 7-day window
  *      (catches plain replies from mail clients that strip
  *      `In-Reply-To` / `References`, which is depressingly
@@ -25,7 +25,7 @@ use Illuminate\Support\Str;
  *   4. Otherwise, create a new thread keyed off the current
  *      message's subject root.
  *
- * Tenant-scoped throughout — two tenants sending mail about
+ * Client-scoped throughout — two clients sending mail about
  * "Order #1234" will never accidentally share a thread because
  * the header / sender / subject lookups all filter by `team_id`.
  */

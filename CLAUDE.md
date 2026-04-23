@@ -4,7 +4,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 ## Project Overview
 
-**Orbital** is a multi-tenant answering-service / virtual-receptionist platform. It's installable software: a call-center company (the "platform operator") runs Orbital to take calls on behalf of their customers ("tenants"). It combines Asterisk (SIP telephony), LiveKit (AI voice agents + WebRTC), and Laravel (management UI) into a unified platform where both AI agents and platform-staff operators handle calls. Tenants are customers — they get a portal to view messages, call history, and recordings taken on their behalf; they never configure infrastructure or take calls themselves.
+**Orbital** is a multi-tenant answering-service / virtual-receptionist platform. It's installable software: a call-center company (the "platform operator") runs Orbital to take calls on behalf of their customers ("clients"). It combines Asterisk (SIP telephony), LiveKit (AI voice agents + WebRTC), and Laravel (management UI) into a unified platform where both AI agents and platform-staff operators handle calls. Clients are the call-center's customer accounts — they get a portal to view messages, call history, and recordings taken on their behalf; they never configure infrastructure or take calls themselves.
 
 ## Commands
 

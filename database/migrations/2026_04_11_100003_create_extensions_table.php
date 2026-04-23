@@ -20,7 +20,7 @@ return new class extends Migration
             // Phone Extensions resource): sip_phone, ata, softphone, webrtc_client.
             // Auto-managed staff softphone: staff_softphone (hidden from the
             // Phone Extensions list, surfaced on the Staff user page).
-            // Tenant-only types: ai_agent, virtual.
+            // Client-only types: ai_agent, virtual.
             $table->enum('type', [
                 'sip_phone',
                 'ata',

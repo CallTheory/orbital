@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace App\Policies;
 
-use App\Policies\Concerns\TenantResourcePolicy;
+use App\Policies\Concerns\ClientResourcePolicy;
 
 class AgentPersonaPolicy
 {
-    use TenantResourcePolicy;
+    use ClientResourcePolicy;
 
     protected function permissionPrefix(): string
     {

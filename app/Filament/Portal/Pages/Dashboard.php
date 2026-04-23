@@ -10,7 +10,7 @@ use Filament\Pages\Dashboard as BaseDashboard;
 use UnitEnum;
 
 /**
- * Tenant user's home page on the portal. Shows a small summary of
+ * Client user's home page on the portal. Shows a small summary of
  * recent call activity so they land on something useful; the full
  * call history lives on {@see CallHistory}.
  *
@@ -45,7 +45,7 @@ class Dashboard extends BaseDashboard
     {
         $user = auth()->user();
         $teamId = (int) ($user->current_team_id ?? 0);
-        $this->tenantName = $user->currentTeam?->name ?? 'Unknown Tenant';
+        $this->tenantName = $user->currentTeam?->name ?? 'Unknown Client';
 
         $this->recentCalls = CallLog::query()
             ->where('team_id', $teamId)

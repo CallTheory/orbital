@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Http;
 /**
  * OpenAI's hosted Whisper transcription API.
  *
- * Expects `api_key` in the tenant's voicemail_transcription_config.
+ * Expects `api_key` in the client's voicemail_transcription_config.
  * Optional `model` override (defaults to `whisper-1`).
  */
 class OpenAiWhisperDriver implements TranscriptionDriver
@@ -26,7 +26,7 @@ class OpenAiWhisperDriver implements TranscriptionDriver
     {
         $apiKey = (string) ($this->config['api_key'] ?? '');
         if ($apiKey === '') {
-            throw new \RuntimeException('OpenAI Whisper driver requires api_key in the tenant config.');
+            throw new \RuntimeException('OpenAI Whisper driver requires api_key in the client config.');
         }
 
         $response = Http::timeout($this->timeoutSeconds)
@@ -37,7 +37,7 @@ class OpenAiWhisperDriver implements TranscriptionDriver
                 'model' => (string) ($this->config['model'] ?? 'whisper-1'),
                 'response_format' => 'json',
                 // Always US English for voicemail; expand to a
-                // tenant-configurable locale later if we get
+                // client-configurable locale later if we get
                 // multilingual clients.
                 'language' => (string) ($this->config['language'] ?? 'en'),
             ])

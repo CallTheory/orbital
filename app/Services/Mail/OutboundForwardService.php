@@ -14,7 +14,7 @@ use Illuminate\Support\Str;
 
 /**
  * Forwards the latest message in an EmailThread to an arbitrary
- * address — typically a tenant contact, supervisor, or external
+ * address — typically a client contact, supervisor, or external
  * party. The operator can prepend their own note above the
  * forwarded body.
  *

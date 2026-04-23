@@ -12,7 +12,7 @@ use Throwable;
 
 /**
  * Makes sure Ollama has the default embedding model pulled so local
- * knowledge-store ingest works out of the box when a tenant picks
+ * knowledge-store ingest works out of the box when a client picks
  * the `ollama:*` embedding provider.
  *
  * Ollama is opt-in (docker-compose `local-ai` profile), so when the

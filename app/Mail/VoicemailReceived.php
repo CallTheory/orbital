@@ -13,10 +13,10 @@ use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
 
 /**
- * Tenant-facing voicemail notification. One email per voicemail row
+ * Client-facing voicemail notification. One email per voicemail row
  * with the transcript inline and the WAV attached.
  *
- * Subject includes caller ID so tenants can triage without opening
+ * Subject includes caller ID so clients can triage without opening
  * the email. Transcript status footer tells the operator whether
  * the transcript is trustworthy, degraded, or skipped entirely.
  */

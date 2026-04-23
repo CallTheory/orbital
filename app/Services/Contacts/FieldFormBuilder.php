@@ -8,11 +8,11 @@ use Filament\Forms;
 use Illuminate\Support\Collection;
 
 /**
- * Translates a tenant's field-definition collection into Filament
+ * Translates a client's field-definition collection into Filament
  * form components keyed under `values.{slug}` so they read/write
  * directly into the model's `values` JSONB column.
  *
- * Used by ManageTenantDirectory — the page loads definitions at
+ * Used by ManageClientDirectory — the page loads definitions at
  * form() time and hands them here. Field type → component mapping
  * is the only knowledge concentrated in this class so adding a new
  * field type is a single edit.

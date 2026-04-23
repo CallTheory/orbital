@@ -1,6 +1,6 @@
 # Agent Groups
 
-Agent groups are platform-level pools of operators (and optionally hardware phone extensions) that work queues. A single group can be assigned to both call queues and email queues, so the same team of operators handles all channels for a tenant.
+Agent groups are platform-level pools of operators (and optionally hardware phone extensions) that work queues. A single group can be assigned to both call queues and email queues, so the same team of operators handles all channels for a client.
 
 ## Creating a Group
 
@@ -42,4 +42,4 @@ Create one group (e.g. "All Operators"), add every operator, and assign it to al
 Create groups per shift (e.g. "Day Shift", "Night Shift"). Assign different email queues to different groups so operators only see work for their shift.
 
 ### Skill-based groups
-Create groups by expertise (e.g. "Billing Team", "Technical Support"). Assign tenant queues to the appropriate group so specialized work goes to qualified operators.
+Create groups by expertise (e.g. "Billing Team", "Technical Support"). Assign client queues to the appropriate group so specialized work goes to qualified operators.

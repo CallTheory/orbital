@@ -14,7 +14,7 @@ use Spatie\Permission\PermissionRegistrar;
 /**
  * Shared user-factory helpers for feature tests. Orbital's auth flow
  * depends on Spatie roles (both team-less platform roles and
- * team-scoped tenant roles), and factory-created users don't have
+ * team-scoped client roles), and factory-created users don't have
  * roles by default, so every auth-aware test needs a helper that
  * attaches the right role.
  *
@@ -78,7 +78,7 @@ trait CreatesOrbitalUsers
      * Build a user with a tenant-scoped role (team_id != null) so it
      * routes to the customer portal.
      *
-     * Creates a real tenant team (`personal_team = false`) and attaches
+     * Creates a real client team (`personal_team = false`) and attaches
      * the user via both `current_team_id` *and* the teams() pivot —
      * `User::belongsToAnyTenant()` checks pivot membership, so setting
      * current_team_id alone isn't enough to pass panel gating.
@@ -103,7 +103,7 @@ trait CreatesOrbitalUsers
 
         try {
             $role = Role::firstOrCreate([
-                'name' => 'tenant_user',
+                'name' => 'client_user',
                 'guard_name' => 'web',
                 'team_id' => $team->id,
             ]);
@@ -118,7 +118,7 @@ trait CreatesOrbitalUsers
     }
 
     /**
-     * Attach the given user to a real tenant team as a member. Used to
+     * Attach the given user to a real client team as a member. Used to
      * simulate a super-admin dog-fooding the customer portal — the new
      * portal gate requires `belongsToAnyTenant()`.
      */

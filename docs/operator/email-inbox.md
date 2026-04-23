@@ -19,7 +19,7 @@ The inbox table shows:
 |--------|-------------|
 | **Received** | When the last message arrived (in your timezone) |
 | **Subject** | Thread subject — click to open the thread |
-| **Tenant** | Which customer this thread belongs to, with the delivered-to address below |
+| **Client** | Which customer this thread belongs to, with the delivered-to address below |
 | **Status** | New, In Progress, Awaiting Reply, or Closed |
 | **Queue** | Which email queue the thread is in |
 | **Claimed by** | Click the green "Claim" badge to take ownership, or click your name to unclaim |
@@ -30,7 +30,7 @@ Click the received date or subject to open a thread. Messages are shown as colla
 
 Each message shows:
 - Sender name and address
-- Timestamp in your timezone (and tenant timezone if different)
+- Timestamp in your timezone (and client timezone if different)
 - Direction indicator: "received" for inbound, "sent" for outbound
 - Subject, recipients, body text, and attachments
 

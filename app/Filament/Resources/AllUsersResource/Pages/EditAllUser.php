@@ -7,7 +7,7 @@ namespace App\Filament\Resources\AllUsersResource\Pages;
 use App\Filament\Resources\AllUsersResource;
 use App\Models\Team;
 use App\Models\User;
-use App\Services\Tenancy\TenantProvisioner;
+use App\Services\Clients\ClientProvisioner;
 use Filament\Actions;
 use Filament\Forms;
 use Filament\Notifications\Notification;
@@ -125,13 +125,13 @@ class EditAllUser extends EditRecord
                     }),
 
                 Actions\Action::make('addToTenant')
-                    ->label('Add to tenant')
+                    ->label('Add to client')
                     ->icon('heroicon-o-building-office-2')
-                    ->modalHeading('Add this user to a tenant')
-                    ->modalDescription('Attaches this user to the selected tenant and assigns the tenant-scoped roles that go with the chosen pivot role. Mirrors the "Add existing user" action on Customers → Tenants → Users, just reached from the user side.')
+                    ->modalHeading('Add this user to a client')
+                    ->modalDescription('Attaches this user to the selected client and assigns the tenant-scoped roles that go with the chosen pivot role. Mirrors the "Add existing user" action on Customers → Clients → Users, just reached from the user side.')
                     ->schema([
                         Forms\Components\Select::make('team_id')
-                            ->label('Tenant')
+                            ->label('Client')
                             ->required()
                             ->searchable()
                             ->options(function () {
@@ -147,11 +147,11 @@ class EditAllUser extends EditRecord
                                     ->pluck('name', 'id')
                                     ->all();
                             })
-                            ->helperText('Only tenants this user is not already attached to appear here.'),
+                            ->helperText('Only clients this user is not already attached to appear here.'),
                         Forms\Components\Select::make('role')
-                            ->label('Tenant role')
+                            ->label('Client role')
                             ->options([
-                                'admin' => 'Admin — can manage users and roles in this tenant',
+                                'admin' => 'Admin — can manage users and roles in this client',
                                 'member' => 'Member — default invitee role (portal.view_* only)',
                             ])
                             ->default('admin')
@@ -160,8 +160,8 @@ class EditAllUser extends EditRecord
                     ->action(function (array $data): void {
                         /** @var User $record */
                         $record = $this->record;
-                        $tenant = Team::findOrFail($data['team_id']);
-                        $this->attachUserToTenant($tenant, $record, $data['role']);
+                        $client = Team::findOrFail($data['team_id']);
+                        $this->attachUserToTenant($client, $record, $data['role']);
                     }),
 
                 Actions\Action::make('forceReverifyEmail')
@@ -192,28 +192,28 @@ class EditAllUser extends EditRecord
     }
 
     /**
-     * Attach $user to $tenant with the given pivot role and assign
+     * Attach $user to $client with the given pivot role and assign
      * the corresponding tenant-scoped Spatie roles. Mirrors the logic
-     * in ManageTenantUsers::attachExistingUser — extracted here so the
+     * in ManageClientUsers::attachExistingUser — extracted here so the
      * action can be fired from the user side as well. Refreshes the
-     * Livewire record after the save so the Tenant memberships panel
+     * Livewire record after the save so the Client memberships panel
      * picks up the new row on the next render.
      */
-    protected function attachUserToTenant(Team $tenant, User $user, string $role): void
+    protected function attachUserToTenant(Team $client, User $user, string $role): void
     {
         $role = $role === 'admin' ? 'admin' : 'member';
 
-        $tenant->users()->syncWithoutDetaching([
+        $client->users()->syncWithoutDetaching([
             $user->id => ['role' => $role],
         ]);
 
         $spatieRoles = $role === 'admin'
-            ? [TenantProvisioner::ROLE_TENANT_ADMIN, TenantProvisioner::ROLE_TENANT_USER]
-            : [TenantProvisioner::ROLE_TENANT_USER];
+            ? [ClientProvisioner::ROLE_CLIENT_ADMIN, ClientProvisioner::ROLE_CLIENT_USER]
+            : [ClientProvisioner::ROLE_CLIENT_USER];
 
         $registrar = app(PermissionRegistrar::class);
         $previous = $registrar->getPermissionsTeamId();
-        $registrar->setPermissionsTeamId($tenant->id);
+        $registrar->setPermissionsTeamId($client->id);
         try {
             $user->assignRole($spatieRoles);
         } finally {
@@ -221,20 +221,20 @@ class EditAllUser extends EditRecord
             $registrar->forgetCachedPermissions();
         }
 
-        // Flip current_team_id to the newly-attached tenant so a
-        // follow-up `/portal` visit lands inside the tenant's context
+        // Flip current_team_id to the newly-attached client so a
+        // follow-up `/portal` visit lands inside the client's context
         // (which is what you want when adding yourself to test the
         // customer portal). Previous guard only flipped when
         // current_team_id was null, which stranded super-admins
         // whose personal team was already their current team.
-        $user->forceFill(['current_team_id' => $tenant->id])->save();
+        $user->forceFill(['current_team_id' => $client->id])->save();
 
-        $this->refreshFormData(['tenants']);
+        $this->refreshFormData(['clients']);
 
         Notification::make()
             ->success()
-            ->title("{$user->email} added to {$tenant->name} as {$role}.")
-            ->body('Their current tenant context has been switched to '.$tenant->name.'.')
+            ->title("{$user->email} added to {$client->name} as {$role}.")
+            ->body('Their current client context has been switched to '.$client->name.'.')
             ->send();
     }
 }

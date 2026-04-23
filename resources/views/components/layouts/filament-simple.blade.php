@@ -2,7 +2,7 @@
     // All Fortify-backed auth pages render inside Filament's own
     // SimpleLayout shell by piggybacking on the PORTAL panel's context.
     // The login page is the single unified entry point for every user
-    // on the platform (staff and tenants alike) — and since the portal
+    // on the platform (staff and clients alike) — and since the portal
     // is the customer-facing identity, it's the brand and palette
     // customers should see when they land. Staff still authenticate
     // here; they just see portal branding while they do it.

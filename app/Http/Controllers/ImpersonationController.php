@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Session;
  * Start route stashes the real user id in session and switches auth().
  * While impersonating, the app sees the impersonated user for all
  * permission checks — that's the whole point, so super-admin can see
- * exactly what the tenant user sees.
+ * exactly what the client user sees.
  */
 class ImpersonationController extends Controller
 {
@@ -31,7 +31,7 @@ class ImpersonationController extends Controller
         Auth::login($user);
 
         // Redirect to `/` and let the root redirect pick the right
-        // home panel for the now-impersonated user. For a tenant_user
+        // home panel for the now-impersonated user. For a client_user
         // that's /portal — which is exactly the point of impersonation.
         return redirect('/');
     }

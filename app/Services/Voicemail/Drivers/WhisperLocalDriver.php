@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Http;
  *
  * Sends the WAV as multipart to the in-cluster whisper-local
  * compose service at :9700 and parses the `{ "text": "..." }`
- * response. The tenant's config picks:
+ * response. The client's config picks:
  *   - `model`    — which bundled ggml model to load (tiny.en,
  *                  base.en, small, large-v3-turbo, etc.); defaults
  *                  to base.en for fast English.
@@ -37,7 +37,7 @@ class WhisperLocalDriver implements TranscriptionDriver
         $language = (string) ($this->config['language'] ?? '');
 
         $form = ['model' => $model];
-        // Only send `language` when the tenant picked one. The
+        // Only send `language` when the client picked one. The
         // server interprets absence as auto-detect, which is right
         // for multilingual models used without a locale hint.
         if ($language !== '') {

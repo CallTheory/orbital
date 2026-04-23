@@ -18,20 +18,20 @@ use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 
 /**
- * Locks in the per-tenant dialplan layout introduced in Phase 2.
+ * Locks in the per-client dialplan layout introduced in Phase 2.
  *
  * The contract this suite enforces:
  *   - `generateDialplanForTenant()` emits a `[tenant_{id}]` context
- *     containing only that tenant's extensions and queues, and uses
+ *     containing only that client's extensions and queues, and uses
  *     the prefixed Asterisk-side queue name in `Queue()` calls.
  *   - `generateFromTrunkDispatcher()` emits the global inbound
- *     dispatcher with `Goto`s into the right tenant context per
+ *     dispatcher with `Goto`s into the right client context per
  *     routing rule.
  *   - `generateDialplanIndex()` lists every non-personal team's
  *     dialplan file as an `#include` directive.
  *   - `writeDialplanForTenant()` produces files at the expected
  *     paths under the configured config_path.
- *   - Two tenants with the same queue name don't collide in the
+ *   - Two clients with the same queue name don't collide in the
  *     generated output (the prefix from Phase 1 is doing its job
  *     end-to-end).
  */
@@ -149,8 +149,8 @@ class PerTenantDialplanTest extends TestCase
         $output = app(AsteriskConfigService::class)->generateDialplanIndex();
 
         $this->assertStringContainsString('#include "from-trunk.conf"', $output);
-        $this->assertStringContainsString("#include \"tenants/{$a->id}-dialplan.conf\"", $output);
-        $this->assertStringContainsString("#include \"tenants/{$b->id}-dialplan.conf\"", $output);
+        $this->assertStringContainsString("#include \"clients/{$a->id}-dialplan.conf\"", $output);
+        $this->assertStringContainsString("#include \"clients/{$b->id}-dialplan.conf\"", $output);
     }
 
     public function test_write_dialplan_for_tenant_produces_expected_files(): void
@@ -166,7 +166,7 @@ class PerTenantDialplanTest extends TestCase
 
         app(AsteriskConfigService::class)->writeDialplanForTenant($team->id);
 
-        $tenantFile = $this->tmpConfigPath."/tenants/{$team->id}-dialplan.conf";
+        $tenantFile = $this->tmpConfigPath."/clients/{$team->id}-dialplan.conf";
         $dispatcherFile = $this->tmpConfigPath.'/from-trunk.conf';
 
         $this->assertFileExists($tenantFile);
@@ -180,7 +180,7 @@ class PerTenantDialplanTest extends TestCase
         $svc = app(AsteriskConfigService::class);
 
         $svc->writeDialplanForTenant($team->id);
-        $tenantFile = $this->tmpConfigPath."/tenants/{$team->id}-dialplan.conf";
+        $tenantFile = $this->tmpConfigPath."/clients/{$team->id}-dialplan.conf";
         $this->assertFileExists($tenantFile);
 
         $svc->deleteDialplanForTenant($team->id);
@@ -197,7 +197,7 @@ class PerTenantDialplanTest extends TestCase
         Extension::create(['team_id' => $teamA->id, 'number' => '201', 'type' => 'sip_phone', 'context' => 'internal', 'is_active' => true]);
         Extension::create(['team_id' => $teamB->id, 'number' => '301', 'type' => 'sip_phone', 'context' => 'internal', 'is_active' => true]);
 
-        // Run the job synchronously for tenant A only.
+        // Run the job synchronously for client A only.
         $job = new RegenerateTelephonyConfig($teamA->id);
         $svc = $this->mock(AsteriskConfigService::class);
         $svc->shouldReceive('writeDialplanForTenant')->once()->with($teamA->id);

@@ -403,7 +403,7 @@ Filer metadata lives in Valkey database #2. Gets wiped with Valkey —
 which means the blob layer's path-to-volume mapping is lost. Running
 `weed filer.cat` recovery is possible but painful. In practice, treat
 a full Valkey loss as a "restore S3 from off-site backup" event; once
-per-tenant off-site sync is wired, this stops being scary.
+per-client off-site sync is wired, this stops being scary.
 
 ---
 
@@ -414,14 +414,14 @@ Non-HA but useful to know about while you're set up for admin work.
 ### Operator-dialed DID simulation
 
 When `TELEPHONY_INTERNAL_DID_SIMULATION=true` in `.env`, an
-operator seated at any softphone can dial a tenant's external DID
+operator seated at any softphone can dial a client's external DID
 (e.g. `15550000001`) and the call takes the exact same routing
 path a real inbound SIP trunk call would. Handy for validating:
 
 - A new routing rule routes to the right queue / agent / mailbox
 - A voicemail mailbox accepts messages and emails work end-to-end
 - An AI persona answers and runs its intake flow
-- A template tenant behaves as designed
+- A template client behaves as designed
 
 **How it works.** `AsteriskConfigService` injects an extension
 pattern `_1NXXNXXXXXX` into the `[internal]` dialplan that
@@ -469,6 +469,47 @@ These aren't blockers but are worth knowing about:
 - **No LiveKit drain**. Restart drops in-flight rooms on that instance.
 - **No cross-region DR**. Single-site only. DR + failover is a later
   phase.
+
+---
+
+## Known benign log noise
+
+Errors that look scary but are cosmetic — catalogued here so on-call
+doesn't chase them during an incident. If you see one of these,
+confirm it matches the description and move on. If the rate or
+pattern looks different from what's documented, investigate.
+
+### Patroni — `ConnectionResetError: [Errno 104] Connection reset by peer`
+
+**Where:** `orbital-patroni-{1,2,3}-1` container logs, stack ending in
+`socketserver.py ... sendall(b)` → `ConnectionResetError`.
+
+**Cause:** HAProxy probes Patroni's REST API (`/`, `/leader`,
+`/replica`) every few seconds to decide which node gets Postgres
+writes. HAProxy reads the HTTP status line + headers to make its
+routing decision and closes the socket with RST — it doesn't need
+the JSON body. Patroni's response writer is already partway through
+`wfile.write(body.encode('utf-8'))` when the socket closes, so
+`sendall()` raises. The health check itself *succeeded*; the check
+result was derived from the status line Patroni had already sent.
+
+**Why it's safe to ignore:**
+
+- Postgres replication runs over a separate streaming channel between
+  the Patroni-managed Postgres instances. Nothing to do with the REST
+  API.
+- Leader election runs over etcd, not the REST API.
+- The Patroni main loop keeps humming between tracebacks — you'll see
+  `"no action. I am (...), following a leader (...)"` interleaved with
+  the errors.
+
+**When to care:** if the traceback appears *without* a `"no action"`
+heartbeat for more than ~30s, Patroni's main loop is stuck and that's
+a real problem. Check etcd quorum and Patroni's own health next.
+
+**Upstream:** a known Patroni issue; the fix (silencing the write
+exception in the API handler) has been proposed multiple times but
+never merged because it's cosmetic.
 
 ---
 

@@ -8,53 +8,75 @@ use App\Models\IntakeGoal;
 use Illuminate\Database\Seeder;
 
 /**
- * Platform-owned library of intake goals. These are the small, structured
- * building blocks that every tenant composes into call flows. The seeder is
- * opinionated — it ships what a generic answering service actually needs on
- * day one. Platform operators can add their own goals via the Filament
- * editor; this seeder just provides a sensible starting set.
+ * Platform-owned palette of intake primitives.
+ *
+ * Each row describes ONE node type the flow compiler knows how to
+ * render into a prompt/script. A flow is an ordered (eventually DAG)
+ * composition of these primitives, and each placement carries its
+ * own parameters in `intake_flow_steps.step_params` — so the library
+ * row stays generic and every instance in a flow is customizable.
+ *
+ * The schema for each node's `step_params` is documented in its
+ * `data_fields` array here. The Filament flow editor reads that
+ * array to know which inputs to render when you drop the node into
+ * a flow.
+ *
+ * Keys are stable — the compiler branches on them. Rename with care.
  */
 class IntakeGoalLibrarySeeder extends Seeder
 {
     public function run(): void
     {
-        foreach ($this->goals() as $goal) {
+        // Remove any library rows that are no longer part of the palette
+        // so migrating from the old "bundled goal" seed cleans up without
+        // a hand-rolled migration. Soft-deleted via the SoftDeletes cast.
+        $currentKeys = array_map(fn ($g) => $g['key'], $this->primitives());
+        IntakeGoal::whereNotIn('key', $currentKeys)->delete();
+
+        foreach ($this->primitives() as $primitive) {
             IntakeGoal::updateOrCreate(
-                [
-                    'team_id' => null,
-                    'template_id' => null,
-                    'key' => $goal['key'],
-                ],
-                $goal + ['is_active' => true],
+                ['key' => $primitive['key']],
+                $primitive + ['is_active' => true],
             );
         }
     }
 
     /**
+     * The primitive palette.
+     *
+     * Categories:
+     *   intake       — collect info from the caller
+     *   action       — do something on behalf of the caller
+     *   control      — branching / conditional flow (no user-visible side effect)
+     *
      * @return array<int, array<string, mixed>>
      */
-    private function goals(): array
+    private function primitives(): array
     {
         return [
+            // ─── Intake primitives ───────────────────────────────────
             [
-                'key' => 'identify_caller',
-                'name' => 'Identify Caller',
+                'key' => 'gather_detail',
+                'name' => 'Gather Detail',
                 'category' => 'intake',
-                'icon' => 'heroicon-o-user',
-                'description' => 'Collect the caller\'s name and a reliable callback number.',
+                'icon' => 'heroicon-o-clipboard-document',
+                'description' => 'Collect one specific piece of information from the caller.',
                 'talking_points' => [
-                    'Greet the caller warmly and thank them for calling.',
-                    'Ask for the caller\'s full name.',
-                    'Confirm the best number to reach them on if the call disconnects.',
-                    'If appropriate, ask what company or relationship they\'re calling from.',
+                    'Ask the caller for the configured piece of information.',
+                    'If they hesitate, offer the hint verbatim.',
+                    'Read the value back to confirm before moving on.',
                 ],
+                // Parameters the flow author sets when placing this node.
+                // The Filament editor renders one control per entry.
                 'data_fields' => [
-                    ['key' => 'caller_name', 'label' => 'Caller name', 'type' => 'string', 'required' => true, 'hint' => 'First and last name.'],
-                    ['key' => 'callback_number', 'label' => 'Callback number', 'type' => 'phone', 'required' => true, 'hint' => 'Best number if disconnected.'],
-                    ['key' => 'caller_company', 'label' => 'Company', 'type' => 'string', 'required' => false],
-                    ['key' => 'caller_relationship', 'label' => 'Relationship', 'type' => 'string', 'required' => false, 'hint' => 'Existing customer, vendor, new inquiry, etc.'],
+                    ['key' => 'slot', 'label' => 'Store as (variable name)', 'type' => 'string', 'required' => true, 'hint' => 'e.g. caller_name, callback_phone, account_number'],
+                    ['key' => 'label', 'label' => 'Display label', 'type' => 'string', 'required' => true, 'hint' => 'What the operator/CRM sees. e.g. "Caller Name"'],
+                    ['key' => 'prompt', 'label' => 'How the AI asks', 'type' => 'textarea', 'required' => false, 'hint' => 'Optional override. Leave blank for the AI to phrase it.'],
+                    ['key' => 'type', 'label' => 'Value type', 'type' => 'select', 'required' => true, 'options' => ['string', 'phone', 'email', 'date', 'number', 'choice'], 'hint' => 'Controls validation and how the AI confirms.'],
+                    ['key' => 'required', 'label' => 'Required?', 'type' => 'boolean', 'required' => false],
+                    ['key' => 'hint', 'label' => 'Fallback hint', 'type' => 'string', 'required' => false, 'hint' => 'Spoken if the caller hesitates.'],
                 ],
-                'completion' => ['type' => 'all_required'],
+                'completion' => ['type' => 'slot_filled', 'slot' => '{slot}'],
             ],
 
             [
@@ -62,138 +84,140 @@ class IntakeGoalLibrarySeeder extends Seeder
                 'name' => 'Identify Reason for Call',
                 'category' => 'intake',
                 'icon' => 'heroicon-o-question-mark-circle',
-                'description' => 'Capture the caller\'s reason for calling in their own words, plus a rough urgency signal.',
+                'description' => 'Capture the caller\'s reason in their own words (open-ended).',
                 'talking_points' => [
-                    'Ask what prompted the call today.',
-                    'Listen without interrupting; let them finish.',
-                    'Gauge urgency — is this a routine question or time-sensitive?',
+                    'Ask why the caller is reaching out today.',
+                    'Let them describe the situation in their own words.',
+                    'Do not interrupt or paraphrase until they finish.',
                 ],
                 'data_fields' => [
-                    ['key' => 'reason', 'label' => 'Reason for call', 'type' => 'textarea', 'required' => true, 'hint' => 'Caller\'s own words.'],
-                    ['key' => 'urgency', 'label' => 'Urgency', 'type' => 'select', 'required' => false, 'hint' => 'low / normal / high / emergency.'],
+                    ['key' => 'slot', 'label' => 'Store as (variable name)', 'type' => 'string', 'required' => true, 'hint' => 'Default: reason'],
+                    ['key' => 'prompt', 'label' => 'How the AI asks', 'type' => 'textarea', 'required' => false],
                 ],
-                'completion' => ['type' => 'all_required'],
+                'completion' => ['type' => 'slot_filled', 'slot' => '{slot}'],
             ],
 
             [
-                'key' => 'take_message',
-                'name' => 'Take Message',
+                'key' => 'verify_caller',
+                'name' => 'Verify Caller Identity',
                 'category' => 'intake',
-                'icon' => 'heroicon-o-envelope',
-                'description' => 'Record a message for a staff member who isn\'t available right now.',
+                'icon' => 'heroicon-o-identification',
+                'description' => 'Confirm the caller against a directory or known customer list.',
                 'talking_points' => [
-                    'Let the caller know you\'ll take a message and make sure it gets to the right person.',
-                    'Capture the message in the caller\'s own words.',
-                    'Confirm whether a callback is expected and when is a good time.',
-                    'Repeat the callback number back to verify.',
+                    'Ask for the configured identifier (phone, account number, email).',
+                    'Look it up against the directory.',
+                    'If a match is found, carry the identity forward for later nodes.',
+                    'If no match, continue — downstream branching decides what to do.',
                 ],
                 'data_fields' => [
-                    ['key' => 'recipient', 'label' => 'Message for', 'type' => 'string', 'required' => false, 'hint' => 'Staff member or department.'],
-                    ['key' => 'message', 'label' => 'Message', 'type' => 'textarea', 'required' => true],
-                    ['key' => 'callback_expected', 'label' => 'Callback expected?', 'type' => 'boolean', 'required' => true],
-                    ['key' => 'callback_window', 'label' => 'Best time to call back', 'type' => 'string', 'required' => false],
+                    ['key' => 'lookup_field', 'label' => 'Lookup by', 'type' => 'select', 'required' => true, 'options' => ['phone', 'account_number', 'email'], 'hint' => 'Which field identifies the caller.'],
+                    ['key' => 'match_slot', 'label' => 'Store match result as', 'type' => 'string', 'required' => true, 'hint' => 'e.g. matched_customer_id'],
                 ],
-                'completion' => ['type' => 'all_required'],
+                'completion' => ['type' => 'slot_filled', 'slot' => '{match_slot}'],
+            ],
+
+            // ─── Action primitives ───────────────────────────────────
+            [
+                'key' => 'save_message',
+                'name' => 'Save Message',
+                'category' => 'action',
+                'icon' => 'heroicon-o-envelope',
+                'description' => 'Persist the collected fields as a message to the client\'s portal inbox.',
+                'talking_points' => [
+                    'Confirm to the caller that a message will be passed along.',
+                    'Read back the included fields so they can correct mistakes.',
+                ],
+                'data_fields' => [
+                    ['key' => 'include_slots', 'label' => 'Fields to include', 'type' => 'slot_list', 'required' => true, 'hint' => 'Names of earlier gather_detail slots to persist.'],
+                    ['key' => 'destination', 'label' => 'Destination', 'type' => 'select', 'required' => false, 'options' => ['inbox', 'email_queue'], 'hint' => 'Default: inbox.'],
+                ],
+                'completion' => ['type' => 'node_completed'],
             ],
 
             [
-                'key' => 'schedule_callback',
-                'name' => 'Schedule a Callback',
-                'category' => 'scheduling',
-                'icon' => 'heroicon-o-calendar-days',
-                'description' => 'Propose callback windows and confirm a slot the caller is comfortable with.',
+                'key' => 'answer_question',
+                'name' => 'Answer Question',
+                'category' => 'action',
+                'icon' => 'heroicon-o-chat-bubble-bottom-center-text',
+                'description' => 'Answer the caller\'s question using the attached knowledge stores. Falls back cleanly when nothing matches.',
                 'talking_points' => [
-                    'Offer two or three callback windows to choose from.',
-                    'Confirm the selected window back to the caller.',
-                    'Note any access restrictions (e.g. "do not call before 10am").',
+                    'Search the attached knowledge stores before replying.',
+                    'If an answer is found, summarize it in two sentences.',
+                    'If not, say you don\'t have that information and offer the configured fallback action.',
                 ],
                 'data_fields' => [
-                    ['key' => 'preferred_window', 'label' => 'Preferred callback window', 'type' => 'string', 'required' => true],
-                    ['key' => 'alternate_window', 'label' => 'Alternate window', 'type' => 'string', 'required' => false],
-                    ['key' => 'access_notes', 'label' => 'Access / timing notes', 'type' => 'textarea', 'required' => false],
+                    ['key' => 'knowledge_store_ids', 'label' => 'Knowledge stores', 'type' => 'knowledge_store_list', 'required' => false, 'hint' => 'Which stores to search. None = search all stores attached to this client.'],
+                    ['key' => 'on_no_match', 'label' => 'When no answer is found', 'type' => 'select', 'required' => false, 'options' => ['offer_message', 'transfer', 'end_politely'], 'hint' => 'Default: offer_message.'],
                 ],
-                'completion' => ['type' => 'all_required'],
+                'completion' => ['type' => 'node_completed'],
             ],
 
             [
                 'key' => 'transfer_call',
                 'name' => 'Transfer Call',
-                'category' => 'routing',
+                'category' => 'action',
                 'icon' => 'heroicon-o-arrow-right-circle',
-                'description' => 'Route the caller to a specific extension, number, or department.',
+                'description' => 'Transfer the live caller to an extension, a DID, or a queue.',
                 'talking_points' => [
-                    'Confirm the destination with the caller before transferring.',
-                    'Let them know they may need to re-introduce themselves on the other end.',
-                    'For warm transfers, stay on the line until the destination answers.',
+                    'Tell the caller who you\'re transferring them to before bridging.',
+                    'Perform the configured transfer.',
                 ],
                 'data_fields' => [
-                    ['key' => 'destination', 'label' => 'Destination', 'type' => 'string', 'required' => true, 'hint' => 'Extension, number, or department name.'],
-                    ['key' => 'transfer_mode', 'label' => 'Transfer mode', 'type' => 'select', 'required' => true, 'hint' => 'cold or warm'],
-                    ['key' => 'reason', 'label' => 'Transfer reason', 'type' => 'string', 'required' => false],
+                    ['key' => 'destination_type', 'label' => 'Destination type', 'type' => 'select', 'required' => true, 'options' => ['extension', 'did', 'queue']],
+                    ['key' => 'destination', 'label' => 'Destination', 'type' => 'string', 'required' => true, 'hint' => 'Extension number, DID, or queue name.'],
+                    ['key' => 'mode', 'label' => 'Mode', 'type' => 'select', 'required' => false, 'options' => ['cold', 'warm'], 'hint' => 'Default: cold.'],
                 ],
-                'completion' => ['type' => 'decision', 'decision_field' => 'transfer_confirmed'],
-                'tools' => [
-                    ['type' => 'transfer_call', 'config' => []],
-                ],
+                'completion' => ['type' => 'node_completed'],
             ],
 
             [
-                'key' => 'answer_from_faq',
-                'name' => 'Answer from FAQ',
-                'category' => 'knowledge',
-                'icon' => 'heroicon-o-book-open',
-                'description' => 'Look up information in the tenant\'s knowledge store and answer the caller\'s question from it.',
+                'key' => 'schedule_callback',
+                'name' => 'Schedule a Callback',
+                'category' => 'action',
+                'icon' => 'heroicon-o-calendar',
+                'description' => 'Capture a preferred callback window and persist it on the message.',
                 'talking_points' => [
-                    'Ask the caller to phrase their question clearly.',
-                    'Search the knowledge store and answer only from what you find.',
-                    'If nothing matches, offer to take a message for a human follow-up.',
+                    'Ask the caller when the best time to reach them is.',
+                    'Record the window and confirm.',
                 ],
                 'data_fields' => [
-                    ['key' => 'question', 'label' => 'Question asked', 'type' => 'textarea', 'required' => true],
-                    ['key' => 'answered', 'label' => 'Question answered?', 'type' => 'boolean', 'required' => true],
+                    ['key' => 'window_slot', 'label' => 'Store window as', 'type' => 'string', 'required' => true, 'hint' => 'Default: callback_window'],
+                    ['key' => 'allow_specific_time', 'label' => 'Allow specific date/time?', 'type' => 'boolean', 'required' => false, 'hint' => 'Otherwise accept fuzzy windows ("tomorrow afternoon").'],
                 ],
-                'completion' => ['type' => 'manual'],
+                'completion' => ['type' => 'slot_filled', 'slot' => '{window_slot}'],
+            ],
+
+            // ─── Control primitives (visual-editor primitives; compiler
+            // treats them as no-ops today, but they render as real nodes
+            // so authors can lay out the intended graph before the
+            // runtime catches up). ─────────────────────────────────────
+            [
+                'key' => 'branch_if',
+                'name' => 'Branch (If / Else)',
+                'category' => 'control',
+                'icon' => 'heroicon-o-arrows-right-left',
+                'description' => 'Evaluate a condition against earlier collected data and pick a path.',
+                'talking_points' => [],
+                'data_fields' => [
+                    ['key' => 'condition', 'label' => 'Condition', 'type' => 'expression', 'required' => true, 'hint' => 'e.g. matched_customer_id != null   ·   callback_phone starts_with "+1"'],
+                    ['key' => 'on_true_goto', 'label' => 'If true, go to step', 'type' => 'step_ref', 'required' => true],
+                    ['key' => 'on_false_goto', 'label' => 'If false, go to step', 'type' => 'step_ref', 'required' => false, 'hint' => 'Default: next step.'],
+                ],
+                'completion' => ['type' => 'branch'],
             ],
 
             [
-                'key' => 'verify_existing_customer',
-                'name' => 'Verify Existing Customer',
-                'category' => 'intake',
-                'icon' => 'heroicon-o-identification',
-                'description' => 'Check whether the caller is an existing customer using a lookup key.',
-                'talking_points' => [
-                    'Ask for the account number or the phone number on file.',
-                    'Verify one additional piece of information to confirm identity.',
-                    'If verification fails, fall back to taking a message for staff.',
-                ],
+                'key' => 'branch_on_time_of_day',
+                'name' => 'Branch on Time of Day',
+                'category' => 'control',
+                'icon' => 'heroicon-o-clock',
+                'description' => 'Pick a path based on the current time, weekday, or holiday calendar.',
+                'talking_points' => [],
                 'data_fields' => [
-                    ['key' => 'lookup_value', 'label' => 'Lookup value', 'type' => 'string', 'required' => true, 'hint' => 'Account #, phone, or email.'],
-                    ['key' => 'verified', 'label' => 'Identity verified?', 'type' => 'boolean', 'required' => true],
+                    ['key' => 'windows', 'label' => 'Business-hour windows', 'type' => 'time_window_list', 'required' => true, 'hint' => 'Day + start + end + where to go when matched.'],
+                    ['key' => 'on_outside_goto', 'label' => 'Outside any window, go to', 'type' => 'step_ref', 'required' => false],
                 ],
-                'completion' => ['type' => 'all_required'],
-                'tools' => [
-                    ['type' => 'lookup_account', 'config' => []],
-                ],
-            ],
-
-            [
-                'key' => 'handle_objection',
-                'name' => 'Handle Objection',
-                'category' => 'escalation',
-                'icon' => 'heroicon-o-shield-exclamation',
-                'description' => 'Calmly de-escalate a frustrated caller and offer a path forward.',
-                'talking_points' => [
-                    'Acknowledge the frustration without agreeing or disagreeing.',
-                    'Thank them for telling you.',
-                    'Offer to take a message for a supervisor or manager.',
-                    'If they become abusive, warn once and then politely end the call.',
-                ],
-                'data_fields' => [
-                    ['key' => 'concern_summary', 'label' => 'Concern summary', 'type' => 'textarea', 'required' => true],
-                    ['key' => 'resolution_offered', 'label' => 'Resolution offered', 'type' => 'string', 'required' => false],
-                    ['key' => 'escalate_to_supervisor', 'label' => 'Escalate to supervisor?', 'type' => 'boolean', 'required' => false],
-                ],
-                'completion' => ['type' => 'manual'],
+                'completion' => ['type' => 'branch'],
             ],
         ];
     }

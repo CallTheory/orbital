@@ -9,10 +9,10 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * Per-tenant rule for routing an inbound email message to a
+ * Per-client rule for routing an inbound email message to a
  * destination (queue, operator, AI persona, or discard).
  *
- * The InboundRouter evaluates a tenant's rules in priority ASC
+ * The InboundRouter evaluates a client's rules in priority ASC
  * order. `function`-type rules are tried first when the recipient
  * local-part has a `.function` suffix, then `default` rules
  * catch anything that didn't match. `from_pattern` and

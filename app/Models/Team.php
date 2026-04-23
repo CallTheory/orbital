@@ -61,7 +61,7 @@ class Team extends JetstreamTeam
             'max_users' => 'integer',
             'max_concurrent_calls' => 'integer',
             'recording_overrides' => 'array',
-            // Voicemail transcription creds — API keys live per-tenant,
+            // Voicemail transcription creds — API keys live per-client,
             // encrypted at rest. The cast handles encrypt/decrypt on
             // read and write so consumers just see a plain array.
             'voicemail_transcription_config' => 'encrypted:array',
@@ -81,11 +81,6 @@ class Team extends JetstreamTeam
     public function agentPersonas(): HasMany
     {
         return $this->hasMany(AgentPersona::class);
-    }
-
-    public function intakeGoals(): HasMany
-    {
-        return $this->hasMany(IntakeGoal::class);
     }
 
     public function intakeFlows(): HasMany
@@ -140,13 +135,13 @@ class Team extends JetstreamTeam
 
     public function tenantDids(): HasMany
     {
-        return $this->hasMany(TenantDid::class)->orderBy('priority');
+        return $this->hasMany(ClientDid::class)->orderBy('priority');
     }
 
     /**
      * The active DID with the highest priority (lowest priority number).
      */
-    public function primaryDid(): ?TenantDid
+    public function primaryDid(): ?ClientDid
     {
         return $this->tenantDids()
             ->where('is_active', true)
@@ -155,10 +150,10 @@ class Team extends JetstreamTeam
     }
 
     /**
-     * Tenant's own phone book, used by AI agents and live operators
+     * Client's own phone book, used by AI agents and live operators
      * while handling a call. Distinct from `team_user` pivot, which
      * holds login accounts. Directory is arbitrary contacts with
-     * tenant-defined custom fields.
+     * client-defined custom fields.
      */
     public function directoryEntries(): HasMany
     {
@@ -166,7 +161,7 @@ class Team extends JetstreamTeam
     }
 
     /**
-     * Tenant-authored Directory field schema. Defines the input
+     * Client-authored Directory field schema. Defines the input
      * schema captured into each DirectoryEntry's `values` JSONB.
      */
     public function directoryFieldDefinitions(): HasMany
@@ -175,8 +170,8 @@ class Team extends JetstreamTeam
     }
 
     /**
-     * Platform-level shared directories this tenant is
-     * subscribed to. Managed by super-admins; tenants see shared
+     * Platform-level shared directories this client is
+     * subscribed to. Managed by super-admins; clients see shared
      * rows unioned into their directory view.
      */
     public function sharedDirectories(): BelongsToMany
@@ -187,7 +182,7 @@ class Team extends JetstreamTeam
     }
 
     /**
-     * The timezone the tenant operates in. Falls back to app
+     * The timezone the client operates in. Falls back to app
      * default when not explicitly set.
      */
     public function displayTimezone(): string
@@ -198,11 +193,11 @@ class Team extends JetstreamTeam
     }
 
     /**
-     * The canonical Asterisk dialplan context for this tenant. Each
-     * tenant's routing logic lives inside `[tenant_{id}]` so DIDs
+     * The canonical Asterisk dialplan context for this client. Each
+     * client's routing logic lives inside `[tenant_{id}]` so DIDs
      * dispatched from `[from-trunk]` Goto into the right namespace
      * and queue / extension references can't collide with another
-     * tenant's dialplan.
+     * client's dialplan.
      */
     public function dialplanContext(): string
     {

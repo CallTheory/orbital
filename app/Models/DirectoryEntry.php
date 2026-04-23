@@ -10,16 +10,16 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
- * The tenant's own phone book. AI agents and live operators consult
+ * The client's own phone book. AI agents and live operators consult
  * the directory while handling a call — "transfer to Dr. Smith's
  * office", "Alice prefers SMS after hours". Never logs in to Orbital.
  *
- * Fully tenant-defined schema. Every field value lives inside the
+ * Fully client-defined schema. Every field value lives inside the
  * `values` JSONB column keyed by the slug of a
  * DirectoryFieldDefinition row. Role accessors ({@see name()},
  * {@see email()}, {@see phone()}, {@see organization()}) resolve the
  * canonical field at read time so downstream code doesn't need to
- * know what the tenant named their fields.
+ * know what the client named their fields.
  */
 class DirectoryEntry extends Model
 {
@@ -82,7 +82,7 @@ class DirectoryEntry extends Model
     }
 
     /**
-     * Display-ready name, falling back to "Unnamed" when the tenant
+     * Display-ready name, falling back to "Unnamed" when the client
      * hasn't assigned a role=name field yet or the field is empty.
      * Kept as a method (not an accessor) so callers can distinguish
      * "no value" from "we rendered a placeholder".
@@ -110,7 +110,7 @@ class DirectoryEntry extends Model
         }
 
         // Look up the row's OWN parent's definitions, bypassing
-        // the unified tenant-view scope.
+        // the unified client-view scope.
         $query = DirectoryFieldDefinition::withoutGlobalScope('team')
             ->where('role', $role)
             ->where('is_active', true);

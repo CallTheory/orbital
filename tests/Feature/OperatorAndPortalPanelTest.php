@@ -16,8 +16,8 @@ use Tests\TestCase;
  *
  * Covers:
  *   - every operator panel page renders for a platform staff user
- *   - every portal panel page renders for a tenant user
- *   - cross-panel redirects: operator user hitting /admin, tenant user
+ *   - every portal panel page renders for a client user
+ *   - cross-panel redirects: operator user hitting /admin, client user
  *     hitting /operator, super-admin hitting all three
  *   - unauthenticated visits to /operator and /portal bounce to /login
  */
@@ -86,7 +86,7 @@ class OperatorAndPortalPanelTest extends TestCase
     {
         $user = $this->makeUserWithTeamlessRole('super_admin');
 
-        // No tenant membership — belongsToAnyTenant() returns false, so
+        // No client membership — belongsToAnyTenant() returns false, so
         // PanelRedirect bounces them to their home surface (/admin).
         $this->loginAs($user)
             ->get('/portal')

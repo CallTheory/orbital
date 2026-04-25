@@ -7,6 +7,7 @@ namespace App\Filament\Resources\ClientResource\Pages;
 use App\Filament\Resources\ClientResource;
 use App\Models\AgentGroup;
 use App\Models\AgentPersona;
+use App\Models\QueueStrategyTemplate;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
@@ -45,19 +46,12 @@ class ManageClientCallQueues extends ManageRelatedRecords
                     ->searchable()
                     ->required()
                     ->helperText('The platform-level pool of humans + devices that ring when this queue activates. Manage in Platform → Agent Groups.'),
-                Forms\Components\Select::make('strategy')
-                    ->options([
-                        'ringall' => 'Ring All',
-                        'roundrobin' => 'Round Robin',
-                        'leastrecent' => 'Least Recent',
-                        'random' => 'Random',
-                        'fewestcalls' => 'Fewest Calls',
-                    ])
-                    ->default('ringall')
-                    ->required(),
-                Forms\Components\TextInput::make('timeout')->numeric()->default(30)->suffix('seconds'),
-                Forms\Components\TextInput::make('retry')->numeric()->default(5)->suffix('seconds'),
-                Forms\Components\TextInput::make('wrapup_time')->numeric()->default(0)->suffix('seconds'),
+                Forms\Components\Select::make('strategy_template_id')
+                    ->label('Strategy')
+                    ->options(fn () => QueueStrategyTemplate::orderByDesc('is_default')->orderBy('name')->pluck('name', 'id'))
+                    ->default(fn () => QueueStrategyTemplate::where('is_default', true)->value('id'))
+                    ->required()
+                    ->helperText('Platform-curated strategy template (strategy + timeout + retry + wrapup). Manage in Platform → Queue Strategies.'),
                 Forms\Components\TextInput::make('max_callers')
                     ->numeric()
                     ->default(0)
@@ -71,6 +65,16 @@ class ManageClientCallQueues extends ManageRelatedRecords
                     ->helperText('Optional. If no human in the agent group answers, hand off to this AI persona.'),
                 Forms\Components\Toggle::make('join_empty'),
                 Forms\Components\Toggle::make('leave_when_empty')->default(true),
+                Forms\Components\Select::make('dids')
+                    ->label('DIDs routed to this queue')
+                    ->multiple()
+                    ->relationship(
+                        name: 'dids',
+                        titleAttribute: 'number',
+                        modifyQueryUsing: fn ($query) => $query->where('team_id', $this->getOwnerRecord()->id),
+                    )
+                    ->preload()
+                    ->helperText('Inbound calls to these DIDs ring this queue. A DID can belong to only one queue at a time.'),
             ]);
     }
 
@@ -83,7 +87,10 @@ class ManageClientCallQueues extends ManageRelatedRecords
                 Tables\Columns\TextColumn::make('agentGroup.label')
                     ->label('Agent group')
                     ->placeholder('— not configured —'),
-                Tables\Columns\TextColumn::make('strategy')->badge(),
+                Tables\Columns\TextColumn::make('strategyTemplate.name')
+                    ->label('Strategy')
+                    ->badge()
+                    ->placeholder('— legacy —'),
                 Tables\Columns\TextColumn::make('overflowAgent.name')
                     ->label('Overflow AI')
                     ->placeholder('None'),

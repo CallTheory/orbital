@@ -43,6 +43,8 @@ class EmailQueue extends Model
         'name',
         'description',
         'strategy',
+        'matched_addresses',
+        'matched_domain',
         'overflow_agent_persona_id',
         'agent_group_id',
         'is_active',
@@ -52,6 +54,7 @@ class EmailQueue extends Model
     {
         return [
             'is_active' => 'boolean',
+            'matched_addresses' => 'array',
         ];
     }
 

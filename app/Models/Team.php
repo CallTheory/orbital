@@ -83,9 +83,24 @@ class Team extends JetstreamTeam
         return $this->hasMany(AgentPersona::class);
     }
 
+    public function slots(): HasMany
+    {
+        return $this->hasMany(ClientSlot::class)->orderBy('name');
+    }
+
     public function intakeFlows(): HasMany
     {
         return $this->hasMany(IntakeFlow::class);
+    }
+
+    public function flowGraphs(): HasMany
+    {
+        return $this->hasMany(FlowGraph::class);
+    }
+
+    public function channelAssignments(): HasMany
+    {
+        return $this->hasMany(ClientChannelAssignment::class);
     }
 
     public function knowledgeStores(): HasMany

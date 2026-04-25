@@ -405,8 +405,11 @@ class ClientResource extends Resource
             Pages\ManageClientDids::class,
             Pages\ManageClientExtensions::class,
             Pages\ManageClientCallQueues::class,
-            Pages\ManageClientRoutingRules::class,
-            Pages\ManageClientEmailRules::class,
+            // Routing rules + email rules are no longer user-edited;
+            // per-channel matching lives on the queue row (DIDs on
+            // CallQueue, matched_addresses on EmailQueue) and flow
+            // resolution walks Queue → ClientChannelAssignment →
+            // FlowGraph. Sub-pages were removed.
             Pages\ManageClientEmailQueues::class,
             Pages\ManageClientPersonas::class,
             Pages\ManageClientFlows::class,
@@ -425,8 +428,8 @@ class ClientResource extends Resource
             'dids' => Pages\ManageClientDids::route('/{record}/dids'),
             'extensions' => Pages\ManageClientExtensions::route('/{record}/extensions'),
             'call-queues' => Pages\ManageClientCallQueues::route('/{record}/call-queues'),
-            'routing-rules' => Pages\ManageClientRoutingRules::route('/{record}/routing-rules'),
-            'email-rules' => Pages\ManageClientEmailRules::route('/{record}/email-rules'),
+            // routing-rules + email-rules pages removed; these now
+            // derive from the flow editor canvas on save.
             'email-queues' => Pages\ManageClientEmailQueues::route('/{record}/email-queues'),
             'personas' => Pages\ManageClientPersonas::route('/{record}/personas'),
             'intake-flows' => Pages\ManageClientFlows::route('/{record}/intake-flows'),

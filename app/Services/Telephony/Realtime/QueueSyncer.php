@@ -27,12 +27,17 @@ class QueueSyncer
 {
     public function sync(CallQueue $queue): void
     {
+        // Phase 3: prefer the platform-curated strategy template when
+        // the queue has one attached. Falls back to the legacy
+        // per-queue columns for rows that haven't been migrated yet.
+        $template = $queue->strategyTemplate;
+
         $row = [
             'name' => $queue->asteriskName(),
-            'strategy' => $queue->strategy ?: 'ringall',
-            'timeout' => (int) ($queue->timeout ?: 30),
-            'retry' => (int) ($queue->retry ?: 5),
-            'wrapuptime' => (int) ($queue->wrapup_time ?: 10),
+            'strategy' => $template?->strategy ?: ($queue->strategy ?: 'ringall'),
+            'timeout' => (int) ($template?->timeout ?? $queue->timeout ?? 30),
+            'retry' => (int) ($template?->retry ?? $queue->retry ?? 5),
+            'wrapuptime' => (int) ($template?->wrapup_time ?? $queue->wrapup_time ?? 10),
             'maxlen' => (int) ($queue->max_callers ?: 0),
             'musiconhold' => $queue->music_on_hold ?: 'default',
             'joinempty' => $queue->join_empty ? 1 : 0,

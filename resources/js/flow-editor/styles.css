@@ -1,0 +1,986 @@
+/* Flow-editor popup chrome.
+   Palette matches Filament's dark panel (neutral zinc, not bluish
+   slate). Sizes run a half-step larger than a typical compact
+   admin UI so dense forms stay readable without zooming. */
+
+:root {
+    /* Zinc — truly neutral dark grey, matches Filament's default
+       dark panel. No blue undertone. */
+    --oflow-bg:        #09090b;   /* zinc-950 */
+    --oflow-surface:   #18181b;   /* zinc-900 */
+    --oflow-surface-2: #27272a;   /* zinc-800 */
+    --oflow-border:    #3f3f46;   /* zinc-700 */
+    --oflow-border-2:  #52525b;   /* zinc-600 */
+    --oflow-muted:     #71717a;   /* zinc-500 */
+    --oflow-soft:      #a1a1aa;   /* zinc-400 */
+    --oflow-text:      #e4e4e7;   /* zinc-200 */
+    --oflow-strong:    #fafafa;   /* zinc-50 */
+    --oflow-accent:    #0ea5e9;   /* sky-500 */
+    --oflow-accent-soft: rgba(14,165,233,0.35);
+    --oflow-danger:    #f87171;   /* red-400 */
+    --oflow-warn:      #fbbf24;   /* amber-400 */
+}
+
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: var(--oflow-bg);
+    color: var(--oflow-text);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 15px;               /* base bump from 14 → 15 */
+    line-height: 1.45;
+}
+
+#flow-editor-root {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Svelte Flow theming — tell xyflow's own dark mode to use our
+   zinc surface colors so nodes/controls/minimap all match. */
+.svelte-flow {
+    background: var(--oflow-bg);
+    --xy-background-color-default: var(--oflow-bg);
+    --xy-node-background-color-default: var(--oflow-surface);
+    --xy-node-border-default: var(--oflow-border);
+    --xy-node-color-default: var(--oflow-text);
+    --xy-edge-label-background-color-default: var(--oflow-surface);
+    --xy-edge-label-color-default: var(--oflow-text);
+    --xy-controls-button-background-color-default: var(--oflow-surface);
+    --xy-controls-button-background-color-hover-default: var(--oflow-surface-2);
+    --xy-controls-button-color-default: var(--oflow-text);
+    --xy-minimap-background-color-default: var(--oflow-surface);
+}
+
+/* xyflow wraps each node — we leave it transparent so the card's
+   own background (on the inner div) controls contrast. */
+.svelte-flow__node {
+    background: transparent;
+    border: 0;
+    padding: 0;
+}
+
+/* ─── Flow cards ───────────────────────────────────────────────── */
+
+.orbital-flow-node {
+    position: relative;  /* xyflow anchors Position.Bottom handles against us */
+    background: var(--oflow-surface);
+    border: 1px solid var(--oflow-border-2);
+    border-radius: 0.5rem;
+    padding: 0.75rem 0.875rem 0.875rem 0.875rem;
+    width: 280px;
+    color: var(--oflow-strong);
+    font-size: 0.9375rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+}
+.orbital-flow-node.is-entry {
+    border-color: var(--oflow-accent);
+    box-shadow: 0 0 0 2px var(--oflow-accent-soft), 0 2px 8px rgba(0,0,0,0.35);
+}
+.orbital-flow-node.is-selected {
+    border-color: #a855f7;
+    box-shadow: 0 0 0 2px rgba(168,85,247,0.5), 0 2px 8px rgba(0,0,0,0.35);
+}
+.orbital-flow-node.is-inactive {
+    opacity: 0.55;
+}
+
+/* Channel-trigger nodes sit at the top of the canvas. They get a
+   subtle channel-colored top-border so the author can scan the row
+   and immediately see which channels are wired. An inactive trigger
+   (no outbound transitions) additionally fades per .is-inactive. */
+.orbital-flow-node.is-channel-trigger {
+    border-top: 3px solid var(--oflow-accent);
+}
+/* Action groups get a purple top stripe + a "Shared" badge so they
+   stand out visually from regular call flows without needing a
+   separate canvas tab. */
+.orbital-flow-node.is-action-group {
+    border-top: 3px solid #a855f7;   /* purple-500 */
+    background: #1a1322;              /* subtle purple-tinted surface */
+}
+
+.orbital-flow-node__channel-icon {
+    font-size: 1.125rem;
+    line-height: 1;
+    color: var(--oflow-accent);
+    margin-right: 0.125rem;
+}
+
+.orbital-flow-node__title {
+    font-weight: 600;
+    font-size: 1rem;
+    margin-bottom: 0.375rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.orbital-flow-node__badge {
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #38bdf8;
+    background: rgba(14,165,233,0.15);
+    padding: 0.125rem 0.5rem;
+    border-radius: 0.25rem;
+}
+.orbital-flow-node__badge.is-action-group {
+    color: #d8b4fe;                       /* purple-300 */
+    background: rgba(168, 85, 247, 0.18); /* purple-500 @ 18% */
+}
+.orbital-flow-node__icon-btn {
+    background: transparent;
+    border: 0;
+    color: var(--oflow-soft);
+    cursor: pointer;
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+    font-size: 1rem;
+}
+.orbital-flow-node__icon-btn:hover {
+    background: var(--oflow-surface-2);
+    color: var(--oflow-text);
+}
+
+.orbital-flow-node__description {
+    color: var(--oflow-soft);
+    font-size: 0.8125rem;
+    margin-bottom: 0.625rem;
+    line-height: 1.35;
+}
+
+.orbital-flow-node__steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-bottom: 0.5rem;
+}
+.orbital-flow-node__empty {
+    font-size: 0.8125rem;
+    color: var(--oflow-muted);
+    font-style: italic;
+    padding: 0.5rem 0;
+}
+
+.orbital-flow-node__step {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    background: var(--oflow-bg);
+    border: 1px solid var(--oflow-border);
+    color: var(--oflow-text);
+    padding: 0.5rem 0.625rem;
+    border-radius: 0.3125rem;
+    font-size: 0.875rem;
+    text-align: left;
+    cursor: pointer;
+    font-family: inherit;
+}
+.orbital-flow-node__step:hover {
+    background: var(--oflow-surface-2);
+    border-color: var(--oflow-border-2);
+}
+.orbital-flow-node__step-num {
+    color: var(--oflow-muted);
+    font-family: ui-monospace, monospace;
+    font-size: 0.8125rem;
+    min-width: 1.125rem;
+    text-align: right;
+}
+.orbital-flow-node__step-name {
+    font-weight: 500;
+}
+.orbital-flow-node__step-hint {
+    color: #7dd3fc;  /* sky-300 — stays legible on the hover surface-2 bg */
+    font-family: ui-monospace, monospace;
+    font-size: 0.8125rem;
+    flex: 1;
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.orbital-flow-node__step:hover .orbital-flow-node__step-hint {
+    color: #bae6fd;  /* sky-200 — even brighter on hover */
+}
+
+.orbital-flow-node__add {
+    width: 100%;
+    background: transparent;
+    border: 1px dashed var(--oflow-border-2);
+    color: var(--oflow-soft);
+    padding: 0.375rem 0.625rem;
+    border-radius: 0.3125rem;
+    font-size: 0.8125rem;
+    cursor: pointer;
+    font-family: inherit;
+    margin-bottom: 0.5rem;
+}
+.orbital-flow-node__add:hover {
+    background: rgba(56, 189, 248, 0.08);
+    border-color: #38bdf8;
+    color: #38bdf8;
+}
+
+.orbital-flow-node__meta {
+    color: var(--oflow-soft);
+    font-size: 0.8125rem;
+    display: flex;
+    justify-content: space-between;
+    gap: 0.625rem;
+}
+
+/* Port rail: a visible row inside the card that holds the transition
+   labels. The rail extends edge-to-edge via negative margins that
+   cancel the card's horizontal padding, so a label at `left: 33%`
+   aligns with a handle at `left: 33%` of the whole card. Handles
+   themselves are rendered as siblings of the rail (direct children
+   of .orbital-flow-node) and sit at the card's bottom border via
+   xyflow's Position.Bottom default — they don't live in the rail. */
+.orbital-flow-node__ports {
+    position: relative;
+    height: 1.375rem;
+    margin-top: 0.625rem;
+    margin-left: -0.875rem;
+    margin-right: -0.875rem;
+    margin-bottom: 0.25rem; /* breathing room between labels + bottom border */
+}
+.orbital-flow-node__port-label {
+    position: absolute;
+    bottom: 0;            /* Bottom of rail, just above the handle. */
+    transform: translateX(-50%);
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.625rem;
+    line-height: 1;
+    color: var(--oflow-soft);
+    background: var(--oflow-surface-2);
+    border: 1px solid var(--oflow-border);
+    border-radius: 0.1875rem;
+    padding: 0.0625rem 0.25rem;
+    max-width: 10ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    pointer-events: none;
+}
+.orbital-flow-node__port-label.is-fallback {
+    color: var(--oflow-muted);
+    font-style: italic;
+}
+.orbital-flow-node__port-label.is-add {
+    color: var(--oflow-accent);
+    font-weight: 600;
+    background: rgba(14, 165, 233, 0.12);
+    border-color: var(--oflow-accent-soft);
+    min-width: 1.25rem;
+    text-align: center;
+    padding: 0.125rem 0.375rem;
+}
+.orbital-flow-node__port-label.is-unconnected {
+    color: var(--oflow-text);
+    background: rgba(14, 165, 233, 0.06);
+    border-color: var(--oflow-accent-soft);
+    border-style: dashed;
+}
+.orbital-flow-node__port-label.is-terminal {
+    color: var(--oflow-muted);
+    font-style: italic;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 0.5625rem;
+    padding: 0.125rem 0.5rem;
+}
+.orbital-flow-node__port-label.is-max {
+    color: var(--oflow-muted);
+    font-size: 0.5625rem;
+    padding: 0.125rem 0.375rem;
+}
+
+/* Handle styling — bump the hit target and make the "+" port more
+   visible than the already-connected transition ports. Rely on
+   xyflow's default translate() to sit the handle half-outside the
+   card edge; we just override size / color. */
+.orbital-flow-node .svelte-flow__handle {
+    width: 10px;
+    height: 10px;
+    border: 2px solid var(--oflow-bg);
+    background: var(--oflow-border-2);
+}
+/* Draggable handles — any port that hasn't been connected yet. Both
+   give the author a visual cue that clicking + dragging will create
+   a new transition. FlowNode tags each handle with either
+   oflow-port--draggable or oflow-port--connected so we can style them
+   independently of xyflow's internal state. */
+.orbital-flow-node .svelte-flow__handle.oflow-port--draggable {
+    width: 14px;
+    height: 14px;
+    background: var(--oflow-accent);
+    cursor: crosshair;
+    box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.25);
+}
+.orbital-flow-node .svelte-flow__handle.oflow-port--draggable:hover {
+    box-shadow: 0 0 0 5px rgba(14, 165, 233, 0.45);
+    transform: translate(-50%, 50%) scale(1.1);
+}
+
+/* Edge label pill + text — rounded corners + tuned sizing so they
+   read cleanly on the canvas. Dark background + light text comes
+   from xyflow's dark colorMode. */
+.svelte-flow__edge-textwrapper,
+.svelte-flow__edge-label {
+    border-radius: 5px;
+    padding: 3px 8px;
+    font-size: 12px;
+    font-weight: 500;
+}
+.svelte-flow__edge-path {
+    stroke: var(--oflow-soft);
+    stroke-width: 1.75;
+}
+.svelte-flow__edge.selected .svelte-flow__edge-path,
+.svelte-flow__edge:focus .svelte-flow__edge-path {
+    stroke: #a855f7;
+    stroke-width: 2.25;
+}
+
+/* Reconnect anchors — small grabbable dots at each end of every
+   edge. xyflow portals them into a separate `edge-labels` DOM layer
+   so they're NOT children of `.svelte-flow__edge`; visibility can't
+   be gated on edge hover. Always visible, always grabbable, with a
+   non-layout-changing hover cue (glow ring) that doesn't move the
+   hit area out from under the cursor. */
+.svelte-flow__edgeupdater {
+    background: var(--oflow-accent) !important;
+    border: 2px solid var(--oflow-surface);
+    border-radius: 50%;
+    padding: 0;                    /* override `.svelte-flow__edge-label` padding */
+    box-sizing: border-box;
+    cursor: grab;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+    transition: box-shadow 0.12s ease, background-color 0.12s ease;
+}
+.svelte-flow__edgeupdater:hover {
+    background: #38bdf8 !important;
+    box-shadow: 0 0 0 4px rgba(14,165,233,0.28), 0 1px 2px rgba(0,0,0,0.4);
+}
+.svelte-flow__edgeupdater:active {
+    cursor: grabbing;
+}
+
+/* Controls, minimap, attribution — harden contrast + round corners. */
+.svelte-flow__controls {
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid var(--oflow-border);
+}
+.svelte-flow__controls-button {
+    background: var(--oflow-surface) !important;
+    border-bottom: 1px solid var(--oflow-border) !important;
+    color: var(--oflow-text) !important;
+    fill: var(--oflow-text) !important;
+    height: 28px !important;
+    width: 28px !important;
+}
+.svelte-flow__controls-button:hover {
+    background: var(--oflow-surface-2) !important;
+}
+.svelte-flow__minimap {
+    background: var(--oflow-surface) !important;
+    border: 1px solid var(--oflow-border);
+    border-radius: 6px;
+}
+.svelte-flow__minimap-node {
+    fill: var(--oflow-border-2) !important;
+    stroke: var(--oflow-soft) !important;
+}
+.svelte-flow__minimap-mask {
+    fill: rgba(9, 9, 11, 0.6) !important;
+}
+.svelte-flow__attribution {
+    background: rgba(24, 24, 27, 0.8) !important;
+    color: var(--oflow-soft) !important;
+    border-radius: 4px;
+    font-size: 11px !important;
+}
+.svelte-flow__attribution a { color: var(--oflow-text) !important; }
+
+/* ─── Toolbar ──────────────────────────────────────────────────── */
+
+.orbital-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    padding: 0.625rem 1rem;
+    background: var(--oflow-surface);
+    border-bottom: 1px solid var(--oflow-border);
+    flex-shrink: 0;
+}
+.orbital-toolbar h1 {
+    margin: 0;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--oflow-strong);
+}
+.orbital-toolbar__spacer {
+    flex: 1;
+}
+
+/* Channel visibility chip row — toggles hide/show for each channel's
+   owned flows. Chips read as segmented pills; the "on" state uses
+   the sky accent, the "off" state is muted. Click acts as a
+   pressed-button so the state is obvious at a glance. */
+.orbital-channel-filter {
+    display: inline-flex;
+    gap: 0.25rem;
+    padding: 0.1875rem;
+    background: var(--oflow-bg);
+    border: 1px solid var(--oflow-border);
+    border-radius: 0.4375rem;
+}
+.orbital-channel-chip {
+    background: transparent;
+    border: 0;
+    color: var(--oflow-soft);
+    padding: 0.25rem 0.625rem;
+    border-radius: 0.3125rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    letter-spacing: 0.01em;
+}
+.orbital-channel-chip:hover {
+    color: var(--oflow-text);
+    background: var(--oflow-surface-2);
+}
+.orbital-channel-chip.is-on {
+    background: var(--oflow-accent);
+    color: #ffffff;
+}
+.orbital-channel-chip.is-on:hover {
+    background: #0284c7;
+}
+
+/* ─── Buttons ──────────────────────────────────────────────────── */
+
+.orbital-btn {
+    background: var(--oflow-surface-2);
+    color: var(--oflow-text);
+    border: 1px solid var(--oflow-border);
+    border-radius: 0.375rem;
+    padding: 0.4375rem 0.875rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+}
+.orbital-btn:hover {
+    background: var(--oflow-border);
+}
+.orbital-btn.is-primary {
+    background: var(--oflow-accent);
+    border-color: #0284c7;
+    color: #ffffff;
+}
+.orbital-btn.is-primary:hover {
+    background: #0284c7;
+}
+.orbital-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ─── Shell ────────────────────────────────────────────────────── */
+
+.orbital-shell {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+}
+
+.orbital-side-panel {
+    width: 280px;
+    flex-shrink: 0;
+    background: var(--oflow-surface);
+    border-right: 1px solid var(--oflow-border);
+    overflow-y: auto;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ─── Palette ──────────────────────────────────────────────────── */
+
+.orbital-palette {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+.orbital-palette__tabs {
+    display: flex;
+    border-bottom: 1px solid var(--oflow-border);
+    flex-shrink: 0;
+}
+.orbital-palette__tab {
+    flex: 1;
+    background: transparent;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    padding: 0.75rem 0.5rem;
+    color: var(--oflow-soft);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+}
+.orbital-palette__tab.is-active {
+    color: var(--oflow-strong);
+    border-bottom-color: var(--oflow-accent);
+}
+.orbital-palette__tab:hover:not(.is-active) {
+    color: var(--oflow-text);
+    background: var(--oflow-bg);
+}
+.orbital-palette__body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem;
+}
+.orbital-palette__hint {
+    font-size: 0.75rem;
+    color: var(--oflow-muted);
+    margin: 0 0 1rem 0;
+    line-height: 1.45;
+}
+.orbital-palette__filter {
+    position: relative;
+    display: flex;
+    align-items: center;
+    margin-bottom: 0.625rem;
+}
+.orbital-palette__filter input[type="search"] {
+    flex: 1;
+    background: var(--oflow-bg);
+    color: var(--oflow-text);
+    border: 1px solid var(--oflow-border);
+    border-radius: 0.375rem;
+    padding: 0.4375rem 2rem 0.4375rem 0.625rem;
+    font-size: 0.8125rem;
+    font-family: inherit;
+    outline: none;
+}
+.orbital-palette__filter input[type="search"]:focus {
+    border-color: var(--oflow-accent);
+    box-shadow: 0 0 0 2px var(--oflow-accent-soft);
+}
+.orbital-palette__filter input[type="search"]::placeholder {
+    color: var(--oflow-muted);
+}
+/* Hide the browser-native clear button — we supply our own. */
+.orbital-palette__filter input[type="search"]::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+}
+.orbital-palette__filter-clear {
+    position: absolute;
+    right: 0.375rem;
+    background: transparent;
+    border: none;
+    color: var(--oflow-muted);
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0.25rem 0.375rem;
+    border-radius: 0.25rem;
+}
+.orbital-palette__filter-clear:hover {
+    color: var(--oflow-text);
+    background: var(--oflow-surface-2);
+}
+.orbital-palette__empty {
+    color: var(--oflow-muted);
+    font-size: 0.8125rem;
+    font-style: italic;
+    padding: 1rem;
+    text-align: center;
+    border: 1px dashed var(--oflow-border);
+    border-radius: 0.375rem;
+}
+.orbital-palette__group + .orbital-palette__group {
+    margin-top: 1rem;
+}
+.orbital-palette__group-label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--oflow-soft);
+    margin-bottom: 0.4375rem;
+}
+.orbital-palette__items {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3125rem;
+}
+.orbital-palette__item {
+    background: var(--oflow-bg);
+    border: 1px solid var(--oflow-border);
+    border-radius: 0.375rem;
+    padding: 0.5rem 0.625rem;
+    cursor: grab;
+    user-select: none;
+}
+.orbital-palette__item:hover {
+    border-color: var(--oflow-border-2);
+    background: var(--oflow-surface-2);
+}
+.orbital-palette__item:active {
+    cursor: grabbing;
+}
+.orbital-palette__item-name {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--oflow-strong);
+}
+.orbital-palette__item-key {
+    font-size: 0.75rem;
+    color: var(--oflow-muted);
+    font-family: ui-monospace, monospace;
+    margin-top: 0.0625rem;
+}
+
+/* ─── Canvas ───────────────────────────────────────────────────── */
+
+.orbital-canvas {
+    flex: 1;
+    position: relative;
+    min-width: 0;
+}
+.orbital-canvas.is-drop-target::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: 2px dashed var(--oflow-accent-soft);
+    border-radius: 0.5rem;
+    pointer-events: none;
+    z-index: 4;
+}
+.svelte-flow__node.is-drop-target {
+    outline: 2px dashed rgba(14, 165, 233, 0.7);
+    outline-offset: 2px;
+}
+
+/* ─── Modals ───────────────────────────────────────────────────── */
+
+.orbital-modal-scrim {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    padding: 2rem;
+}
+.orbital-modal {
+    background: var(--oflow-surface);
+    border: 1px solid var(--oflow-border);
+    border-radius: 0.625rem;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    width: min(100%, 520px);
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+}
+.orbital-modal.is-wide {
+    width: min(100%, 800px);
+}
+.orbital-modal.is-huge {
+    width: min(100%, 1200px);
+    height: min(100%, calc(100vh - 2rem));
+    max-height: calc(100vh - 2rem);
+}
+.orbital-modal__header {
+    display: flex;
+    align-items: center;
+    padding: 1.125rem 1.5rem;
+    border-bottom: 1px solid var(--oflow-border);
+    gap: 0.75rem;
+}
+.orbital-modal__title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--oflow-strong);
+    flex: 1;
+}
+.orbital-modal__body {
+    padding: 1.375rem 1.5rem 1.5rem 1.5rem;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+}
+
+/* Step-edit modal layout — uses a two-column grid on wide screens so
+   all of the primitive's params are visible at once without scrolling. */
+
+.orbital-step-edit__description {
+    color: var(--oflow-soft);
+    font-size: 0.875rem;
+    margin: 0 0 1rem 0;
+    line-height: 1.5;
+}
+.orbital-step-edit__toolbar {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.125rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--oflow-border);
+}
+.orbital-step-edit__empty {
+    color: var(--oflow-muted);
+    font-size: 0.875rem;
+    font-style: italic;
+    padding: 1.5rem;
+    text-align: center;
+    border: 1px dashed var(--oflow-border);
+    border-radius: 0.375rem;
+}
+.orbital-step-edit__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1rem 1.25rem;
+}
+.orbital-step-edit__footer {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--oflow-border);
+}
+
+.orbital-editor-panel__close {
+    background: transparent;
+    border: none;
+    color: var(--oflow-soft);
+    cursor: pointer;
+    padding: 0.3125rem 0.625rem;
+    font-size: 1.25rem;
+    line-height: 1;
+    border-radius: 0.25rem;
+}
+.orbital-editor-panel__close:hover {
+    background: var(--oflow-surface-2);
+    color: var(--oflow-text);
+}
+
+/* ─── Shared heading label ─────────────────────────────────────── */
+
+.orbital-panel-heading {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--oflow-soft);
+    margin: 0 0 0.625rem 0;
+}
+
+/* ─── Form controls inside modals ──────────────────────────────── */
+
+.orbital-modal__body input[type="text"],
+.orbital-modal__body input[type="number"],
+.orbital-modal__body input:not([type]),
+.orbital-modal__body textarea,
+.orbital-modal__body select {
+    background: var(--oflow-bg);
+    color: var(--oflow-text);
+    border: 1px solid var(--oflow-border);
+    border-radius: 0.375rem;
+    padding: 0.5rem 0.625rem;
+    font-size: 0.875rem;
+    font-family: inherit;
+    width: 100%;
+}
+.orbital-modal__body textarea {
+    resize: vertical;
+}
+.orbital-modal__body label > span {
+    font-size: 0.8125rem;
+    color: var(--oflow-text);
+}
+
+/* Checkbox alignment tweak: bigger box so it doesn't feel lost next
+   to the bumped text size. */
+.orbital-modal__body input[type="checkbox"] {
+    width: 1.0625rem;
+    height: 1.0625rem;
+    accent-color: var(--oflow-accent);
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Expression editor (Phase 2)
+
+   A <textarea> layered on top of a syntax-highlighted <pre>. The
+   textarea renders text transparently; the <pre> provides the
+   colored view. They stay aligned because both use the same font
+   metrics and the overlay mirrors the textarea's scroll offsets.
+   ────────────────────────────────────────────────────────────── */
+
+.orbital-expr {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+.orbital-expr__frame {
+    position: relative;
+    border: 1px solid var(--oflow-border);
+    border-radius: 0.25rem;
+    background: #0f0f11;
+    overflow: hidden;
+}
+.orbital-expr__overlay,
+.orbital-expr__textarea {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    padding: 0.375rem 0.5rem;
+    margin: 0;
+    box-sizing: border-box;
+    tab-size: 4;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.orbital-expr__overlay {
+    position: absolute;
+    inset: 0;
+    color: var(--oflow-text);
+    pointer-events: none;
+    overflow: auto;
+}
+.orbital-expr__textarea {
+    position: relative;
+    display: block;
+    width: 100%;
+    min-height: 4rem;
+    background: transparent;
+    color: transparent;
+    caret-color: var(--oflow-strong);
+    border: 0;
+    outline: none;
+    resize: vertical;
+    /* Keep the textarea layered above the overlay so clicks/scrolling work. */
+    z-index: 1;
+}
+.orbital-expr__textarea::selection {
+    background: rgba(14, 165, 233, 0.35);
+    color: transparent;
+}
+.orbital-expr__textarea::placeholder {
+    color: var(--oflow-muted);
+}
+
+.orbital-expr__meta {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.6875rem;
+}
+.orbital-expr__mode {
+    color: var(--oflow-muted);
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+.orbital-expr__hint-toggle {
+    background: transparent;
+    border: 1px solid var(--oflow-border);
+    border-radius: 0.25rem;
+    color: var(--oflow-soft);
+    font-family: inherit;
+    font-size: 0.6875rem;
+    padding: 0.0625rem 0.375rem;
+    cursor: pointer;
+    margin-left: auto;
+}
+.orbital-expr__hint-toggle:hover {
+    border-color: var(--oflow-accent);
+    color: var(--oflow-text);
+}
+
+.orbital-expr__hints {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.1875rem;
+    align-items: center;
+    padding: 0.375rem;
+    background: var(--oflow-surface);
+    border: 1px solid var(--oflow-border);
+    border-radius: 0.25rem;
+}
+.orbital-expr__legend {
+    flex-basis: 100%;
+    color: var(--oflow-soft);
+    font-size: 0.75rem;
+    line-height: 1.45;
+    padding: 0.125rem 0.25rem 0.375rem 0.25rem;
+    border-bottom: 1px solid var(--oflow-border);
+    margin-bottom: 0.25rem;
+}
+.orbital-expr__legend code {
+    background: var(--oflow-bg);
+    color: var(--oflow-strong);
+    border: 1px solid var(--oflow-border);
+    border-radius: 0.1875rem;
+    padding: 0 0.25rem;
+    font-size: 0.6875rem;
+}
+.orbital-expr__hint-group {
+    display: inline-flex;
+    gap: 0.1875rem;
+    padding-right: 0.25rem;
+    margin-right: 0.25rem;
+    border-right: 1px solid var(--oflow-border);
+}
+.orbital-expr__hint-chip {
+    background: var(--oflow-surface-2);
+    border: 1px solid var(--oflow-border);
+    border-radius: 0.25rem;
+    color: var(--oflow-text);
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.6875rem;
+    padding: 0.0625rem 0.3125rem;
+    cursor: pointer;
+}
+.orbital-expr__hint-chip:hover { border-color: var(--oflow-accent); }
+.orbital-expr__hint-chip.is-slot    { color: #6ee7b7; }
+.orbital-expr__hint-chip.is-context { color: #fcd34d; }
+.orbital-expr__hint-chip.is-fn      { color: #c4b5fd; }
+.orbital-expr__hint-chip.is-brace   { color: var(--oflow-accent); }
+.orbital-expr__hint-sep {
+    color: var(--oflow-muted);
+    font-size: 0.6875rem;
+    padding: 0 0.25rem;
+}
+
+/* ── Token color classes (used inside .orbital-expr__overlay) ── */
+
+.oflow-tok              { white-space: pre-wrap; }
+.oflow-tok--text        { color: var(--oflow-text); }
+.oflow-tok--brace       { color: var(--oflow-accent); font-weight: 600; }
+.oflow-tok--string      { color: #86efac; }
+.oflow-tok--number      { color: #fdba74; }
+.oflow-tok--keyword     { color: #f0abfc; font-weight: 500; }
+.oflow-tok--function    { color: #c4b5fd; }
+.oflow-tok--slot        { color: #6ee7b7; }
+.oflow-tok--context     { color: #fcd34d; }
+.oflow-tok--operator    { color: var(--oflow-strong); }
+.oflow-tok--punct       { color: var(--oflow-soft); }
+.oflow-tok--ws          { color: inherit; }
+.oflow-tok--unknown     { color: var(--oflow-soft); }

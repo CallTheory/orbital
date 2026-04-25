@@ -26,6 +26,7 @@ class RoutingRule extends Model
         'intake_flow_id',
         'priority',
         'is_active',
+        'source',
     ];
 
     protected function casts(): array

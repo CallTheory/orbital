@@ -66,6 +66,12 @@ def build_dynamic_tools(
             tools.append(_make_lookup_account_tool(schema))
         elif name == "send_sms":
             tools.append(_make_send_sms_tool(schema))
+        elif name == "transition_to_flow":
+            # Logged only for v1. The prompt tells the LLM to call
+            # this when a flow's "Next step" rule fires, so we get a
+            # machine-readable trail of state-machine progression
+            # we can surface in Grafana and later act on.
+            tools.append(_make_transition_to_flow_tool(schema, session_key))
         # transfer_call is handled by the static import in agent.py — skip here
         # to avoid double-registering.
         elif name == "transfer_call":
@@ -215,5 +221,38 @@ def _make_send_sms_tool(schema: dict[str, Any]) -> Callable:
     async def send_sms(ctx: RunContext, to: str, body: str) -> str:
         logger.info(f"[flow] send_sms to={to!r} body={body!r}")
         return "SMS dispatch not yet wired into this tenant's system."
+
+
+def _make_transition_to_flow_tool(
+    schema: dict[str, Any],
+    session_key: str | None,
+) -> Callable:
+    """Log a flow-to-flow transition when the LLM fires one.
+
+    V1 is observation-only: the compiled prompt tells the LLM which
+    transitions its current flow has and asks it to call this tool
+    when one fires. We log the call (structured, with session_key
+    for cross-referencing with the call log and operator UI) but we
+    don't enforce that the transition was actually valid. That
+    enforcement lands when we have enough traffic to see drift.
+    """
+    description = schema.get(
+        "description",
+        "Move to another flow as dictated by the current flow's Next step rules.",
+    )
+
+    @function_tool(name="transition_to_flow", description=description)
+    async def transition_to_flow(
+        ctx: RunContext,
+        flow_name: str,
+        reason: str | None = None,
+    ) -> str:
+        logger.info(
+            f"[flow] transition_to_flow flow={flow_name!r} "
+            f"reason={reason!r} session={session_key}"
+        )
+        return f"Transitioned to {flow_name}."
+
+    return transition_to_flow
 
     return send_sms

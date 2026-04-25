@@ -46,6 +46,7 @@ class EmailRoutingRule extends Model
         'destination_id',
         'priority',
         'is_active',
+        'source',
     ];
 
     protected function casts(): array

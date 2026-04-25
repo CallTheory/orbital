@@ -7,6 +7,7 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToTeam;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -15,7 +16,24 @@ class CallQueue extends Model
     use BelongsToTeam;
     use SoftDeletes;
 
+    protected static function booted(): void
+    {
+        // Any queue saved without a template FK picks up the platform
+        // default automatically. Covers Filament forms, seeders, and
+        // any future API callers without forcing each to know about
+        // the template system.
+        static::saving(function (self $queue): void {
+            if ($queue->strategy_template_id === null) {
+                $defaultId = QueueStrategyTemplate::where('is_default', true)->value('id');
+                if ($defaultId !== null) {
+                    $queue->strategy_template_id = $defaultId;
+                }
+            }
+        });
+    }
+
     protected $fillable = [
+        'strategy_template_id',
         'team_id',
         'name',
         'strategy',
@@ -63,12 +81,40 @@ class CallQueue extends Model
     }
 
     /**
+     * DIDs that route inbound calls to this queue. Each DID can
+     * belong to at most one queue (pivot `call_queue_dids` enforces
+     * unique `client_did_id`).
+     */
+    public function dids(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            ClientDid::class,
+            'call_queue_dids',
+            'call_queue_id',
+            'client_did_id',
+        )->withTimestamps();
+    }
+
+    /**
+     * Platform-level strategy template this queue picks. The
+     * template carries `strategy` / `timeout` / `retry` /
+     * `wrapup_time` so clients don't hand-tune them. Legacy queues
+     * (pre-migration) may have a null template FK; QueueSyncer
+     * reads `$this->strategyTemplate` if present, else falls back
+     * to the legacy columns on the row.
+     */
+    public function strategyTemplate(): BelongsTo
+    {
+        return $this->belongsTo(QueueStrategyTemplate::class, 'strategy_template_id');
+    }
+
+    /**
      * Skills this queue requires from operators that should answer
      * its calls. Pivot carries `weight` (1–10) — higher = the queue
      * weights this skill more heavily when QueueMemberSyncer
      * computes member assignments and penalty.
      */
-    public function requiredSkills(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    public function requiredSkills(): BelongsToMany
     {
         return $this->belongsToMany(Skill::class, 'call_queue_required_skills')
             ->withPivot(['weight'])

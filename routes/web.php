@@ -38,16 +38,6 @@ Route::get('/', function () {
     return redirect('/portal');
 })->name('home');
 
-Route::middleware([
-    'auth:sanctum',
-    config('jetstream.auth_session'),
-    'verified',
-])->group(function () {
-    Route::get('/dashboard', function () {
-        return view('dashboard');
-    })->name('dashboard');
-});
-
 // Impersonation — super-admin only
 Route::middleware(['auth', config('jetstream.auth_session')])->group(function () {
     Route::post('/impersonate/{user}', [ImpersonationController::class, 'start'])
@@ -78,6 +68,21 @@ Route::middleware(['auth', config('jetstream.auth_session')])->group(function ()
 // No auth: the URL itself is the shared secret.
 Route::get('/chat/{client}/{persona}', [ChatController::class, 'show'])
     ->name('chat.show');
+
+// Intake-flow visual editor — opens as its own popup from the
+// Filament Intake Flows list. Session-cookie auth via the web
+// guard; super-admin enforcement happens inline.
+Route::middleware(['auth'])->group(function () {
+    Route::get('/admin/flow-editor/{graph}', function (\App\Models\FlowGraph $graph) {
+        abort_unless(auth()->user()?->isSuperAdmin(), 403);
+
+        return view('admin.flow-editor', [
+            'graph' => $graph,
+            'client' => $graph->team,
+            'focusFlowId' => request()->integer('focus') ?: null,
+        ]);
+    })->name('admin.flow-editor');
+});
 
 // ──────────────────────────────────────────────────────────────────
 // Unified SSO — admin-side control panel entry points.

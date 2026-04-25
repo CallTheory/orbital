@@ -8,12 +8,15 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * One step inside an intake flow. Links the flow to an intake goal from
- * the library and captures the step's position + optional per-step
- * overrides and branching rules.
+ * One primitive placement inside an intake flow.
  *
- * Not tenant-scoped directly — ownership cascades through the parent flow,
- * which is team-scoped via {@see IntakeFlow}.
+ * Each step links an intake-goal primitive (from the library) to a
+ * specific parent flow, at a specific position, with a JSON bag of
+ * `step_params` that configure this placement (which slot to write,
+ * which knowledge stores to search, etc.).
+ *
+ * Branching between flows lives on `intake_flow_transitions`, not
+ * here — steps are purely sequential within a flow.
  */
 class IntakeFlowStep extends Model
 {
@@ -21,18 +24,14 @@ class IntakeFlowStep extends Model
         'flow_id',
         'intake_goal_id',
         'position',
-        'branches',
         'step_params',
-        'is_required',
     ];
 
     protected function casts(): array
     {
         return [
             'position' => 'integer',
-            'branches' => 'array',
             'step_params' => 'array',
-            'is_required' => 'boolean',
         ];
     }
 

@@ -38,10 +38,13 @@ class CompiledFlowViewer extends Component
     /** Resolved compiled flow (plain arrays, not the PHP object — Livewire-safe). */
     public array $compiled = [];
 
-    /** Position of the currently-active step within `operator_view`. */
+    /** Position of the currently-active step inside the active flow. */
     public int $activeStep = 0;
 
-    /** Captured field state keyed by data_field.key. */
+    /** ID of the currently-active flow in the multi-flow operator_view. */
+    public ?int $activeFlowId = null;
+
+    /** Captured field state keyed by slot name. */
     public array $fields = [];
 
     public function mount(?string $extensionNumber = null, ?int $personaId = null, ?string $sessionKey = null): void
@@ -117,13 +120,24 @@ class CompiledFlowViewer extends Component
 
         $flow = app(AgentFlowCompiler::class)->compile($persona, $extension);
         $this->compiled = $flow->toArray();
+
+        // operator_view is now a dict with `flows[]`. Default the
+        // active flow to the entry, the active step to 0.
+        $view = $this->compiled['operator_view'] ?? [];
+        $this->activeFlowId = $view['entry_flow_id'] ?? null;
         $this->activeStep = 0;
         $this->fields = [];
     }
 
+    /**
+     * Advance within the currently-active flow. When the AI fires
+     * `transition_to_flow`, the softphone switches `activeFlowId`
+     * via a separate action (broadcast-wired later).
+     */
     public function advanceStep(): void
     {
-        $max = max(0, count($this->compiled['operator_view'] ?? []) - 1);
+        $flow = $this->activeFlow();
+        $max = max(0, count($flow['steps'] ?? []) - 1);
         if ($this->activeStep < $max) {
             $this->activeStep++;
         }
@@ -134,6 +148,28 @@ class CompiledFlowViewer extends Component
         if ($this->activeStep > 0) {
             $this->activeStep--;
         }
+    }
+
+    public function switchFlow(int $flowId): void
+    {
+        $this->activeFlowId = $flowId;
+        $this->activeStep = 0;
+    }
+
+    /**
+     * Resolve the active flow dict from the compiled operator_view.
+     *
+     * @return array<string, mixed>
+     */
+    public function activeFlow(): array
+    {
+        $flows = $this->compiled['operator_view']['flows'] ?? [];
+        foreach ($flows as $f) {
+            if (($f['id'] ?? null) === $this->activeFlowId) {
+                return $f;
+            }
+        }
+        return $flows[0] ?? [];
     }
 
     public function render()

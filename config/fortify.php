@@ -73,7 +73,10 @@ return [
     |
     */
 
-    'home' => '/dashboard',
+    // Post-login target. Points at the root redirector which reads
+    // the user's role and sends them to /admin, /operator, or /portal.
+    // We do NOT use /dashboard — that Jetstream scaffold is gone.
+    'home' => '/',
 
     /*
     |--------------------------------------------------------------------------

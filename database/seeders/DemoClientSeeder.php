@@ -347,85 +347,110 @@ class DemoClientSeeder extends Seeder
         }
 
         // ────────────────────────────────────────────────────────────
-        // Intake flow — composed from primitives.
-        //
-        //   1. answer_question   (search FAQ store; offer message if no answer)
-        //   2. gather_detail     (caller name)
-        //   3. gather_detail     (callback phone)
-        //   4. gather_detail     (reason)
-        //   5. save_message      (persists the three gathered slots)
-        //
-        // Each step carries its own parameters — the library rows stay
-        // generic, every placement here is customized to the demo.
+        // Variables (client_slots) — the typed catalog every flow
+        // operates over. Declared once at the client level.
         // ────────────────────────────────────────────────────────────
+        \App\Models\ClientSlot::updateOrCreate(['team_id' => $team->id, 'name' => 'caller_name'],        ['type' => 'string', 'description' => "The caller's full name"]);
+        \App\Models\ClientSlot::updateOrCreate(['team_id' => $team->id, 'name' => 'callback_phone'],     ['type' => 'phone',  'description' => 'A number to reach them back on']);
+        \App\Models\ClientSlot::updateOrCreate(['team_id' => $team->id, 'name' => 'inquiry_type'],       ['type' => 'choice', 'choices' => ['maintenance', 'leasing', 'other'], 'description' => 'Why the caller reached out']);
+        \App\Models\ClientSlot::updateOrCreate(['team_id' => $team->id, 'name' => 'property_address'],   ['type' => 'string', 'description' => 'Maintenance property address']);
+        \App\Models\ClientSlot::updateOrCreate(['team_id' => $team->id, 'name' => 'issue_description'],  ['type' => 'string', 'description' => 'What needs fixing']);
+        \App\Models\ClientSlot::updateOrCreate(['team_id' => $team->id, 'name' => 'lease_interest'],     ['type' => 'string', 'description' => 'What kind of unit they\'re looking for']);
+        \App\Models\ClientSlot::updateOrCreate(['team_id' => $team->id, 'name' => 'reason'],             ['type' => 'string', 'description' => 'Generic reason for calling']);
+
+        // ────────────────────────────────────────────────────────────
+        // Flow graph — the Inbound Phone channel trigger wires into
+        // Greet & Route, which branches to three per-inquiry flows.
+        //
+        //   Inbound Phone (trigger, active) ─→ Greet & Route ─┬─ Maintenance Message
+        //                                                      ├─ Leasing Message
+        //                                                      └─ General Message
+        //
+        // The ChannelTriggerSeeder creates the five trigger flows
+        // when the editor first opens; here we just activate the
+        // phone one and wire it into the demo's subflows. Canvas
+        // positions for subflows are seeded so the demo opens laid
+        // out sensibly.
+        // ────────────────────────────────────────────────────────────
+        $defaultGraph = app(\App\Services\Flows\ChannelTriggerSeeder::class)->ensureTriggersFor($team);
+        $graphId = \App\Models\FlowGraph::where('team_id', $team->id)->where('name', 'Default')->value('id');
+
         $byKey = IntakeGoal::whereIn('key', [
             'answer_question',
-            'gather_detail',
+            'gather_text',
+            'gather_phone',
+            'gather_choice',
             'save_message',
+            'trigger_inbound_phone',
         ])->get()->keyBy('key');
 
-        $flow = IntakeFlow::firstOrCreate(
-            ['team_id' => $team->id, 'name' => 'Demo Customer Default'],
-            ['is_active' => true],
+        $inboundPhone = IntakeFlow::where('team_id', $team->id)
+            ->where('trigger_type', IntakeFlow::TRIGGER_INBOUND_PHONE)
+            ->first();
+        $inboundPhone->update(['is_active' => true, 'description' => 'Inbound calls on Demo Customer\'s DIDs.']);
+
+        // Populate the trigger flow with a descriptor step so the
+        // synchronizer knows which DIDs / pattern to match.
+        IntakeFlowStep::firstOrCreate(
+            ['flow_id' => $inboundPhone->id, 'intake_goal_id' => $byKey['trigger_inbound_phone']->id],
+            ['position' => 0, 'step_params' => [
+                // Empty did_ids / pattern means "match any DID
+                // assigned to this client" — the synchronizer will
+                // emit a routing rule per active ClientDid.
+            ]],
         );
 
-        if ($flow->steps()->count() === 0) {
-            IntakeFlowStep::create([
-                'flow_id' => $flow->id,
-                'intake_goal_id' => $byKey['answer_question']->id,
-                'position' => 0,
-                'step_params' => [
-                    'knowledge_store_ids' => [$faqStore->id],
-                    'on_no_match' => 'offer_message',
-                ],
-            ]);
-            IntakeFlowStep::create([
-                'flow_id' => $flow->id,
-                'intake_goal_id' => $byKey['gather_detail']->id,
-                'position' => 1,
-                'step_params' => [
-                    'slot' => 'caller_name',
-                    'label' => 'Caller Name',
-                    'type' => 'string',
-                    'required' => true,
-                ],
-            ]);
-            IntakeFlowStep::create([
-                'flow_id' => $flow->id,
-                'intake_goal_id' => $byKey['gather_detail']->id,
-                'position' => 2,
-                'step_params' => [
-                    'slot' => 'callback_phone',
-                    'label' => 'Callback Phone',
-                    'type' => 'phone',
-                    'required' => true,
-                ],
-            ]);
-            IntakeFlowStep::create([
-                'flow_id' => $flow->id,
-                'intake_goal_id' => $byKey['gather_detail']->id,
-                'position' => 3,
-                'step_params' => [
-                    'slot' => 'reason',
-                    'label' => 'Reason for Call',
-                    'type' => 'string',
-                    'required' => true,
-                    'hint' => 'A sentence is fine.',
-                ],
-            ]);
-            IntakeFlowStep::create([
-                'flow_id' => $flow->id,
-                'intake_goal_id' => $byKey['save_message']->id,
-                'position' => 4,
-                'step_params' => [
-                    'include_slots' => ['caller_name', 'callback_phone', 'reason'],
-                    'destination' => 'inbox',
-                ],
-            ]);
-        }
+        // Top-down layout: Greet & Route below the trigger row, then
+        // three branches in a row beneath it.
+        $greet     = IntakeFlow::create(['team_id' => $team->id, 'flow_graph_id' => $graphId, 'name' => 'Greet & Route',       'description' => 'Identify the caller\'s reason and route to the matching branch.', 'is_active' => true, 'canvas_x' => 340, 'canvas_y' => 260]);
+        $maint     = IntakeFlow::create(['team_id' => $team->id, 'flow_graph_id' => $graphId, 'name' => 'Maintenance Message', 'description' => 'Collect property + issue details and save a maintenance message.', 'is_active' => true, 'canvas_x' => 20,  'canvas_y' => 620]);
+        $leasing   = IntakeFlow::create(['team_id' => $team->id, 'flow_graph_id' => $graphId, 'name' => 'Leasing Message',     'description' => 'Collect leasing interest details and save a leasing message.',    'is_active' => true, 'canvas_x' => 340, 'canvas_y' => 620]);
+        $general   = IntakeFlow::create(['team_id' => $team->id, 'flow_graph_id' => $graphId, 'name' => 'General Message',     'description' => 'Catch-all message flow for any other reason.',                    'is_active' => true, 'canvas_x' => 660, 'canvas_y' => 620]);
 
-        // Link the flow to Ava's persona
-        $receptionist->update(['default_flow_id' => $flow->id]);
+        // Greet & Route steps
+        IntakeFlowStep::create(['flow_id' => $greet->id, 'intake_goal_id' => $byKey['answer_question']->id, 'position' => 0, 'step_params' => ['knowledge_store_ids' => [$faqStore->id]]]);
+        IntakeFlowStep::create(['flow_id' => $greet->id, 'intake_goal_id' => $byKey['gather_choice']->id,   'position' => 1, 'step_params' => ['slot' => 'inquiry_type', 'label' => 'Reason for Call', 'options' => ['maintenance', 'leasing', 'other'], 'required' => true]]);
+
+        // Maintenance Message steps
+        IntakeFlowStep::create(['flow_id' => $maint->id, 'intake_goal_id' => $byKey['gather_text']->id,   'position' => 0, 'step_params' => ['slot' => 'caller_name',       'label' => 'Caller Name',      'required' => true]]);
+        IntakeFlowStep::create(['flow_id' => $maint->id, 'intake_goal_id' => $byKey['gather_phone']->id,  'position' => 1, 'step_params' => ['slot' => 'callback_phone',    'label' => 'Callback Phone',   'required' => true]]);
+        IntakeFlowStep::create(['flow_id' => $maint->id, 'intake_goal_id' => $byKey['gather_text']->id,   'position' => 2, 'step_params' => ['slot' => 'property_address',  'label' => 'Property Address', 'required' => true]]);
+        IntakeFlowStep::create(['flow_id' => $maint->id, 'intake_goal_id' => $byKey['gather_text']->id,   'position' => 3, 'step_params' => ['slot' => 'issue_description', 'label' => 'What\'s wrong',    'required' => true]]);
+        IntakeFlowStep::create(['flow_id' => $maint->id, 'intake_goal_id' => $byKey['save_message']->id,  'position' => 4, 'step_params' => ['include_slots' => ['caller_name', 'callback_phone', 'property_address', 'issue_description'], 'destination' => 'inbox']]);
+
+        // Leasing Message steps
+        IntakeFlowStep::create(['flow_id' => $leasing->id, 'intake_goal_id' => $byKey['gather_text']->id,   'position' => 0, 'step_params' => ['slot' => 'caller_name',    'label' => 'Caller Name',     'required' => true]]);
+        IntakeFlowStep::create(['flow_id' => $leasing->id, 'intake_goal_id' => $byKey['gather_phone']->id,  'position' => 1, 'step_params' => ['slot' => 'callback_phone', 'label' => 'Callback Phone',  'required' => true]]);
+        IntakeFlowStep::create(['flow_id' => $leasing->id, 'intake_goal_id' => $byKey['gather_text']->id,   'position' => 2, 'step_params' => ['slot' => 'lease_interest', 'label' => 'Lease Interest',  'required' => true, 'hint' => 'e.g. 2BR, by June']]);
+        IntakeFlowStep::create(['flow_id' => $leasing->id, 'intake_goal_id' => $byKey['save_message']->id,  'position' => 3, 'step_params' => ['include_slots' => ['caller_name', 'callback_phone', 'lease_interest'], 'destination' => 'inbox']]);
+
+        // General Message steps
+        IntakeFlowStep::create(['flow_id' => $general->id, 'intake_goal_id' => $byKey['gather_text']->id,   'position' => 0, 'step_params' => ['slot' => 'caller_name',    'label' => 'Caller Name',     'required' => true]]);
+        IntakeFlowStep::create(['flow_id' => $general->id, 'intake_goal_id' => $byKey['gather_phone']->id,  'position' => 1, 'step_params' => ['slot' => 'callback_phone', 'label' => 'Callback Phone',  'required' => true]]);
+        IntakeFlowStep::create(['flow_id' => $general->id, 'intake_goal_id' => $byKey['gather_text']->id,   'position' => 2, 'step_params' => ['slot' => 'reason',         'label' => 'Reason',          'required' => true]]);
+        IntakeFlowStep::create(['flow_id' => $general->id, 'intake_goal_id' => $byKey['save_message']->id,  'position' => 3, 'step_params' => ['include_slots' => ['caller_name', 'callback_phone', 'reason'], 'destination' => 'inbox']]);
+
+        // Inbound Phone (trigger) -> Greet & Route
+        \App\Models\IntakeFlowTransition::create(['from_flow_id' => $inboundPhone->id, 'to_flow_id' => $greet->id, 'priority' => 10, 'description' => 'matched', 'condition' => null]);
+
+        // Transitions out of Greet & Route
+        \App\Models\IntakeFlowTransition::create(['from_flow_id' => $greet->id, 'to_flow_id' => $maint->id,   'priority' => 10,  'description' => 'maintenance',  'condition' => ['==' => [['var' => 'slots.inquiry_type'], 'maintenance']]]);
+        \App\Models\IntakeFlowTransition::create(['from_flow_id' => $greet->id, 'to_flow_id' => $leasing->id, 'priority' => 20,  'description' => 'leasing',      'condition' => ['==' => [['var' => 'slots.inquiry_type'], 'leasing']]]);
+        \App\Models\IntakeFlowTransition::create(['from_flow_id' => $greet->id, 'to_flow_id' => $general->id, 'priority' => 30,  'description' => 'other',        'condition' => ['==' => [['var' => 'slots.inquiry_type'], 'other']]]);
+
+        // Link the entry flow to Ava's persona
+        $receptionist->update(['default_flow_id' => $greet->id]);
+
+        // Route the demo's DIDs to the main call queue via the new
+        // call_queue_dids pivot — replaces the old
+        // FlowGraphSynchronizer-driven synthetic routing_rules.
+        $demoCallQueue = \App\Models\CallQueue::where('team_id', $team->id)->first();
+        if ($demoCallQueue) {
+            $didIds = \App\Models\ClientDid::where('team_id', $team->id)
+                ->where('is_active', true)
+                ->pluck('id');
+            $demoCallQueue->dids()->sync($didIds);
+        }
 
         // ────────────────────────────────────────────────────────────
         // Add the super-admin (user 1) to the all-operators group so

@@ -225,23 +225,29 @@ class TemplateClientSeeder extends Seeder
         ]);
 
         // Simple message-taking flow so the AI has structured intake.
-        // Composed from primitives: gather three details, then save.
-        $byKey = IntakeGoal::whereIn('key', ['gather_detail', 'save_message'])
-            ->get()->keyBy('key');
+        // Composed from typed primitives: gather name / phone / reason
+        // then save.
+        $byKey = IntakeGoal::whereIn('key', [
+            'gather_text', 'gather_phone', 'save_message',
+        ])->get()->keyBy('key');
+
+        $defaultGraph = app(\App\Services\Flows\ChannelTriggerSeeder::class)->ensureBootstrap($team);
 
         $flow = IntakeFlow::create([
             'team_id' => $team->id,
+            'flow_graph_id' => $defaultGraph->id,
             'name' => 'Overflow Default',
             'is_active' => true,
         ]);
 
-        $gatherId = $byKey['gather_detail']->id;
+        $textId = $byKey['gather_text']->id;
+        $phoneId = $byKey['gather_phone']->id;
         $saveId = $byKey['save_message']->id;
 
-        IntakeFlowStep::create(['flow_id' => $flow->id, 'intake_goal_id' => $gatherId, 'position' => 0, 'step_params' => ['slot' => 'caller_name',    'label' => 'Caller Name',     'type' => 'string', 'required' => true]]);
-        IntakeFlowStep::create(['flow_id' => $flow->id, 'intake_goal_id' => $gatherId, 'position' => 1, 'step_params' => ['slot' => 'callback_phone', 'label' => 'Callback Phone',  'type' => 'phone',  'required' => true]]);
-        IntakeFlowStep::create(['flow_id' => $flow->id, 'intake_goal_id' => $gatherId, 'position' => 2, 'step_params' => ['slot' => 'reason',         'label' => 'Reason for Call', 'type' => 'string', 'required' => true]]);
-        IntakeFlowStep::create(['flow_id' => $flow->id, 'intake_goal_id' => $saveId,   'position' => 3, 'step_params' => ['include_slots' => ['caller_name', 'callback_phone', 'reason'], 'destination' => 'inbox']]);
+        IntakeFlowStep::create(['flow_id' => $flow->id, 'intake_goal_id' => $textId,  'position' => 0, 'step_params' => ['slot' => 'caller_name',    'label' => 'Caller Name',     'required' => true]]);
+        IntakeFlowStep::create(['flow_id' => $flow->id, 'intake_goal_id' => $phoneId, 'position' => 1, 'step_params' => ['slot' => 'callback_phone', 'label' => 'Callback Phone',  'required' => true]]);
+        IntakeFlowStep::create(['flow_id' => $flow->id, 'intake_goal_id' => $textId,  'position' => 2, 'step_params' => ['slot' => 'reason',         'label' => 'Reason for Call', 'required' => true]]);
+        IntakeFlowStep::create(['flow_id' => $flow->id, 'intake_goal_id' => $saveId,  'position' => 3, 'step_params' => ['include_slots' => ['caller_name', 'callback_phone', 'reason'], 'destination' => 'inbox']]);
 
         $persona->update(['default_flow_id' => $flow->id]);
 

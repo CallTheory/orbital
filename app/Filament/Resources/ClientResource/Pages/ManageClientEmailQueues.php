@@ -94,6 +94,17 @@ class ManageClientEmailQueues extends ManageRelatedRecords
                     ->helperText('Optional. When nobody picks up, or when strategy=ai_first, the thread hands off to this persona via ProcessEmailWithAgentJob.'),
 
                 Forms\Components\Toggle::make('is_active')->default(true),
+
+                Forms\Components\TagsInput::make('matched_addresses')
+                    ->label('Matched addresses / local-part patterns')
+                    ->placeholder('e.g. support, billing, alarms')
+                    ->helperText('Inbound emails with these local-parts (or full addresses) route to this queue. Patterns are matched against the envelope / To header. Leave empty to make this queue invisible to inbound mail.'),
+
+                Forms\Components\TextInput::make('matched_domain')
+                    ->label('Matched domain (optional)')
+                    ->maxLength(255)
+                    ->placeholder('e.g. acme.orbital.example')
+                    ->helperText('Scope matches to this domain only. Leave empty to match any tenant domain this client owns.'),
             ]);
     }
 

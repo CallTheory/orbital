@@ -60,6 +60,7 @@ class TranscribeVoicemailJob implements ShouldQueue
             Log::warning('transcribe-voicemail: voicemail or team missing', [
                 'voicemail_id' => $this->voicemailId,
             ]);
+
             return;
         }
 
@@ -76,6 +77,7 @@ class TranscribeVoicemailJob implements ShouldQueue
             // Still send the email — operator needs to know a voicemail
             // was attempted even if we can't read the WAV.
             $this->sendEmail($voicemail);
+
             return;
         }
 
@@ -149,6 +151,7 @@ class TranscribeVoicemailJob implements ShouldQueue
                 'voicemail_id' => $voicemail->id,
                 'team_id' => $voicemail->team_id,
             ]);
+
             return;
         }
 

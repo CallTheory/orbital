@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Services\Voicemail\Drivers;
 
 use App\Services\Voicemail\TranscriptionDriver;
-use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 
 /**

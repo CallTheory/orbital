@@ -28,6 +28,7 @@ class CertificateService
     public function certExists(): bool
     {
         $path = (string) config('tls.cert_path');
+
         return $path !== '' && is_file($path) && filesize($path) > 0;
     }
 
@@ -75,12 +76,14 @@ class CertificateService
     public function isExpired(): bool
     {
         $info = $this->getCertificateInfo();
+
         return $info !== null && $info->isExpired();
     }
 
     public function isExpiringSoon(int $thresholdDays = 14): bool
     {
         $info = $this->getCertificateInfo();
+
         return $info !== null && $info->isExpiringSoon($thresholdDays);
     }
 
@@ -117,9 +120,9 @@ class CertificateService
 
         $output = [];
         $exitCode = 0;
-        exec($cmd . ' 2>&1', $output, $exitCode);
+        exec($cmd.' 2>&1', $output, $exitCode);
 
-        return implode("\n", $output) . "\n[exit code: {$exitCode}]";
+        return implode("\n", $output)."\n[exit code: {$exitCode}]";
     }
 
     /**
@@ -144,9 +147,9 @@ class CertificateService
 
         $output = [];
         $exitCode = 0;
-        exec($cmd . ' 2>&1', $output, $exitCode);
+        exec($cmd.' 2>&1', $output, $exitCode);
 
-        return implode("\n", $output) . "\n[exit code: {$exitCode}]";
+        return implode("\n", $output)."\n[exit code: {$exitCode}]";
     }
 
     /**
@@ -173,6 +176,7 @@ class CertificateService
         if ($org !== '' && $cn !== '') {
             return "{$org} ({$cn})";
         }
+
         return $org ?: $cn ?: 'Unknown';
     }
 
@@ -191,6 +195,7 @@ class CertificateService
                 $sans[] = substr($san, 4);
             }
         }
+
         return $sans;
     }
 }

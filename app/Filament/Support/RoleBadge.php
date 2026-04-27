@@ -65,7 +65,9 @@ class RoleBadge
      */
     protected static function normalizeHex(?string $hex): string
     {
-        if (! $hex) return self::FALLBACK_COLOR;
+        if (! $hex) {
+            return self::FALLBACK_COLOR;
+        }
 
         $hex = ltrim(trim($hex), '#');
 

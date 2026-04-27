@@ -10,6 +10,7 @@
 // store on every drag.
 
 import type {
+    BindingDTO,
     FlowGraphDTO,
     FlowDTO,
     SlotDTO,
@@ -25,7 +26,9 @@ export function nextClientId(prefix = 'new'): string {
 }
 
 export type EditorGraph = {
-    client: { id: number; name: string };
+    orchestration: { id: number; name: string; description: string | null; is_shared: boolean };
+    client: { id: number; name: string } | null;
+    isShared: boolean;
     slots: SlotDTO[];
     flows: FlowDTO[];
     primitives: FlowGraphDTO['primitives'];
@@ -35,12 +38,15 @@ export type EditorGraph = {
     emailQueues: FlowGraphDTO['email_queues'];
     agentPersonas: FlowGraphDTO['agent_personas'];
     dids: FlowGraphDTO['dids'];
+    bindings: BindingDTO[];
     dirty: boolean;
 };
 
 export function fromDTO(dto: FlowGraphDTO): EditorGraph {
     return {
+        orchestration: dto.orchestration,
         client: dto.client,
+        isShared: dto.orchestration.is_shared,
         slots: dto.slots.map((s) => ({ ...s })),
         flows: dto.flows.map((f) => ({
             ...f,
@@ -56,6 +62,7 @@ export function fromDTO(dto: FlowGraphDTO): EditorGraph {
         emailQueues: dto.email_queues ?? [],
         agentPersonas: dto.agent_personas ?? [],
         dids: dto.dids ?? [],
+        bindings: dto.bindings ?? [],
         dirty: false,
     };
 }

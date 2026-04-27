@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Clients;
 
+use App\Models\AgentPersona;
+use App\Models\IntakeGoal;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -29,7 +31,7 @@ class TemplateResolver
      * @var array<class-string, array<int, string>>
      */
     protected array $templatableFields = [
-        \App\Models\AgentPersona::class => [
+        AgentPersona::class => [
             'name',
             'role',
             'description',
@@ -46,7 +48,7 @@ class TemplateResolver
             'tts_provider',
             'tools_config',
         ],
-        \App\Models\IntakeGoal::class => [
+        IntakeGoal::class => [
             'key',
             'name',
             'description',
@@ -93,6 +95,7 @@ class TemplateResolver
         foreach ($fields as $field) {
             $out[$field] = $this->resolve($instance, $field);
         }
+
         return $out;
     }
 
@@ -104,8 +107,8 @@ class TemplateResolver
      *
      * @param  array<string, mixed>  $edited  Form payload keyed by field name
      * @return array{row: array<string, mixed>, overrides: array<string, mixed>|null}
-     *         `row` goes directly into Model::fill(); `overrides` goes into the
-     *         overrides column.
+     *                                                                                `row` goes directly into Model::fill(); `overrides` goes into the
+     *                                                                                overrides column.
      */
     public function computeOverrides(Model $instance, array $edited): array
     {
@@ -120,6 +123,7 @@ class TemplateResolver
                     $row[$field] = $edited[$field];
                 }
             }
+
             return ['row' => $row, 'overrides' => null];
         }
 

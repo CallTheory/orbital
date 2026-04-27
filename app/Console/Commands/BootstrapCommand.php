@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Services\Bootstrap\Bootstrapper;
 use App\Services\Bootstrap\BootstrapRegistry;
 use App\Services\Bootstrap\BootstrapStatus;
 use Illuminate\Console\Command;
@@ -37,8 +38,10 @@ class BootstrapCommand extends Command
                 $this->error("Unknown bootstrapper: {$service}");
                 $available = implode(', ', array_keys($registry->all()));
                 $this->line("Available: {$available}");
+
                 return self::FAILURE;
             }
+
             return $this->runOne($b, $statusOnly);
         }
 
@@ -53,7 +56,7 @@ class BootstrapCommand extends Command
         return $hasErrors ? self::FAILURE : self::SUCCESS;
     }
 
-    protected function runOne(\App\Services\Bootstrap\Bootstrapper $b, bool $statusOnly): int
+    protected function runOne(Bootstrapper $b, bool $statusOnly): int
     {
         $this->info("── {$b->name()} ({$b->key()})");
 

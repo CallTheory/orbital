@@ -64,6 +64,7 @@ class KamailioService
     public function isHealthy(): bool
     {
         $result = $this->rpc('core.uptime');
+
         return $result !== null && isset($result['uptime']);
     }
 
@@ -76,6 +77,7 @@ class KamailioService
         if ($result === null) {
             return null;
         }
+
         return [
             'uptime' => (int) ($result['uptime'] ?? 0),
             'uptime_str' => (string) ($result['up_since'] ?? ''),
@@ -163,6 +165,7 @@ class KamailioService
                 $allOk = false;
             }
         }
+
         return $allOk;
     }
 
@@ -187,6 +190,7 @@ class KamailioService
             foreach ($result as $stat) {
                 if (is_string($stat) && str_contains($stat, 'active_dialogs')) {
                     $parts = explode(' = ', $stat);
+
                     return (int) ($parts[1] ?? 0);
                 }
             }
@@ -210,6 +214,7 @@ class KamailioService
                 return $result;
             }
         }
+
         return null;
     }
 
@@ -245,6 +250,7 @@ class KamailioService
                     'method' => $method,
                     'status' => $response->status(),
                 ]);
+
                 return null;
             }
 
@@ -255,6 +261,7 @@ class KamailioService
                     'method' => $method,
                     'error' => $body['error'],
                 ]);
+
                 return null;
             }
 
@@ -265,6 +272,7 @@ class KamailioService
                 'method' => $method,
                 'error' => $e->getMessage(),
             ]);
+
             return null;
         }
     }
@@ -312,6 +320,7 @@ class KamailioService
 
         // Fall back to numeric DSTATE if FLAGS is not text
         $dstate = (int) ($dest['DSTATE'] ?? 0);
+
         return match ($dstate) {
             0 => 'active',
             1, 4 => 'draining',

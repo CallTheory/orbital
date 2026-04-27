@@ -6,9 +6,9 @@ namespace App\Filament\Resources\ClientResource\Pages;
 
 use App\Filament\Resources\ClientResource;
 use App\Jobs\RenderDisclosurePromptJob;
+use App\Services\Clients\ClientPermissionGatekeeper;
 use App\Services\Telephony\AsteriskConfigService;
 use App\Services\Telephony\VoicemailGreetingRenderer;
-use App\Services\Clients\ClientPermissionGatekeeper;
 use Filament\Actions;
 use Filament\Resources\Pages\EditRecord;
 
@@ -65,6 +65,7 @@ class EditClient extends EditRecord
         }
 
         $data['recording_overrides'] = $cleaned === [] ? null : $cleaned;
+
         return $data;
     }
 

@@ -73,12 +73,12 @@ Route::get('/chat/{client}/{persona}', [ChatController::class, 'show'])
 // Filament Intake Flows list. Session-cookie auth via the web
 // guard; super-admin enforcement happens inline.
 Route::middleware(['auth'])->group(function () {
-    Route::get('/admin/flow-editor/{graph}', function (\App\Models\FlowGraph $graph) {
+    Route::get('/admin/flow-editor/{orchestration}', function (\App\Models\Orchestration $orchestration) {
         abort_unless(auth()->user()?->isSuperAdmin(), 403);
 
         return view('admin.flow-editor', [
-            'graph' => $graph,
-            'client' => $graph->team,
+            'orchestration' => $orchestration,
+            'client' => $orchestration->team,
             'focusFlowId' => request()->integer('focus') ?: null,
         ]);
     })->name('admin.flow-editor');

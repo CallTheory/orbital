@@ -32,8 +32,7 @@ class IngestKnowledgeJob implements ShouldQueue
         public readonly string $sourceType,
         public readonly string $payload,
         public readonly ?string $sourceRef = null,
-    ) {
-    }
+    ) {}
 
     public function handle(IngestService $ingest): void
     {

@@ -36,18 +36,43 @@
     } from './lib/graph';
 
     let {
-        graphId,
+        orchestrationId,
+        isShared,
         clientId,
         focusFlowId,
-        graphName,
+        orchestrationName,
         clientName,
+        closeUrl,
     }: {
-        graphId: number;
-        clientId: number;
+        orchestrationId: number;
+        isShared: boolean;
+        clientId: number | null;
         focusFlowId: number | null;
-        graphName: string;
+        orchestrationName: string;
         clientName: string;
+        closeUrl: string;
     } = $props();
+
+    /**
+     * Try to close the editor's tab. Browsers only allow window.close
+     * when the tab was script-opened with a live opener — Filament's
+     * `openUrlInNewTab` produces noopener tabs, so close() is a no-op
+     * there. Detect that by checking whether the tab is still around
+     * after a brief tick, and fall back to navigating to the admin
+     * orchestrations list. The user gets either an actual close or a
+     * sensible "back to where you came from" instead of a dead button.
+     */
+    function onClickClose() {
+        if (graph?.dirty) {
+            if (! confirm('You have unsaved changes. Discard them?')) return;
+        }
+        window.close();
+        setTimeout(() => {
+            if (! window.closed) {
+                window.location.href = closeUrl;
+            }
+        }, 150);
+    }
 
     let graph: EditorGraph | null = $state(null);
     let loadError: string | null = $state(null);
@@ -87,9 +112,14 @@
 
     let hiddenChannels: Set<Channel> = $state(loadHiddenChannels());
 
+    // Channel-filter localStorage is keyed by orchestration so private
+    // and shared orchestrations both persist their author's preferred
+    // visibility separately.
+    const channelStorageKey = `flowEditor:hiddenChannels:o${orchestrationId}`;
+
     function loadHiddenChannels(): Set<Channel> {
         try {
-            const raw = localStorage.getItem(`flowEditor:hiddenChannels:${clientId}`);
+            const raw = localStorage.getItem(channelStorageKey);
             if (!raw) return new Set();
             const arr = JSON.parse(raw) as Channel[];
             return new Set(arr.filter((c) => (CHANNELS as readonly string[]).includes(c)));
@@ -104,10 +134,7 @@
         else next.add(channel);
         hiddenChannels = next;
         try {
-            localStorage.setItem(
-                `flowEditor:hiddenChannels:${clientId}`,
-                JSON.stringify(Array.from(next)),
-            );
+            localStorage.setItem(channelStorageKey, JSON.stringify(Array.from(next)));
         } catch {
             /* noop — localStorage quota / private mode */
         }
@@ -156,7 +183,7 @@
 
     onMount(async () => {
         try {
-            const dto = await fetchFlowGraph(graphId);
+            const dto = await fetchFlowGraph(orchestrationId);
             graph = fromDTO(dto);
             ({ nodes, edges } = buildViewModel(graph));
             if (focusFlowId) {
@@ -779,7 +806,7 @@
             for (const n of nodes) positions[n.id] = n.position as { x: number; y: number };
 
             const payload = toSavePayload(graph, positions);
-            const saved = await saveFlowGraph(graphId, payload);
+            const saved = await saveFlowGraph(orchestrationId, payload);
             graph = fromDTO(saved);
             ({ nodes, edges } = buildViewModel(graph));
             flowSettingsTarget = null;
@@ -799,7 +826,7 @@
 </script>
 
 <div class="orbital-toolbar">
-    <h1>Flow Editor — {graphName} <span style="color: var(--oflow-muted); font-weight: 400;">· {clientName}</span></h1>
+    <h1>Flow Editor — {orchestrationName} <span style="color: var(--oflow-muted); font-weight: 400;">· {clientName}</span></h1>
 
     {#if graph}
         <div class="orbital-channel-filter" role="toolbar" aria-label="Channel visibility">
@@ -834,7 +861,7 @@
             {saving ? 'Saving…' : 'Save'}
         </button>
     {/if}
-    <button class="orbital-btn" onclick={() => window.close()}>Close</button>
+    <button class="orbital-btn" onclick={onClickClose}>Close</button>
 </div>
 
 {#if loadError}

@@ -6,6 +6,7 @@ namespace App\Models\Passport;
 
 use Illuminate\Contracts\Auth\Authenticatable;
 use Laravel\Passport\Client;
+use Laravel\Passport\Scope;
 
 /**
  * Passport Client model subclass that auto-approves the authorization
@@ -45,7 +46,7 @@ class FirstPartyClient extends Client
     ];
 
     /**
-     * @param  \Laravel\Passport\Scope[]  $scopes
+     * @param  Scope[]  $scopes
      */
     public function skipsAuthorization(Authenticatable $user, array $scopes): bool
     {

@@ -8,9 +8,15 @@ use App\Filament\Resources\AgentPersonaTemplateResource\Pages;
 use App\Models\AgentPersona;
 use App\Models\Team;
 use BackedEnum;
+use Filament\Actions\Action;
+use Filament\Actions\BulkActionGroup;
+use Filament\Actions\DeleteBulkAction;
+use Filament\Actions\EditAction;
 use Filament\Forms;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Tabs;
+use Filament\Schemas\Components\Tabs\Tab;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -78,9 +84,9 @@ class AgentPersonaTemplateResource extends Resource
     {
         return $schema
             ->schema([
-                \Filament\Schemas\Components\Tabs::make('Persona Template')
+                Tabs::make('Persona Template')
                     ->tabs([
-                        \Filament\Schemas\Components\Tabs\Tab::make('Identity')
+                        Tab::make('Identity')
                             ->schema([
                                 Forms\Components\TextInput::make('name')
                                     ->required()
@@ -96,7 +102,7 @@ class AgentPersonaTemplateResource extends Resource
                                 Forms\Components\Toggle::make('is_active')
                                     ->default(true),
                             ]),
-                        \Filament\Schemas\Components\Tabs\Tab::make('Voice & LLM')
+                        Tab::make('Voice & LLM')
                             ->schema([
                                 Forms\Components\Select::make('llm_provider')
                                     ->options([
@@ -129,7 +135,7 @@ class AgentPersonaTemplateResource extends Resource
                                     ->label('Voice ID')
                                     ->placeholder('Provider-specific voice identifier'),
                             ]),
-                        \Filament\Schemas\Components\Tabs\Tab::make('Prompts')
+                        Tab::make('Prompts')
                             ->schema([
                                 Forms\Components\Textarea::make('greeting')
                                     ->label('Inbound Greeting')
@@ -167,7 +173,7 @@ class AgentPersonaTemplateResource extends Resource
                     ->boolean(),
             ])
             ->actions([
-                \Filament\Actions\Action::make('clone_to_tenant')
+                Action::make('clone_to_tenant')
                     ->label('Clone to client')
                     ->icon('heroicon-o-document-duplicate')
                     ->form([
@@ -187,16 +193,16 @@ class AgentPersonaTemplateResource extends Resource
                         ]);
 
                         Notification::make()
-                            ->title("Cloned template to client")
+                            ->title('Cloned template to client')
                             ->body("Instance #{$instance->id} is live.")
                             ->success()
                             ->send();
                     }),
-                \Filament\Actions\EditAction::make(),
+                EditAction::make(),
             ])
             ->bulkActions([
-                \Filament\Actions\BulkActionGroup::make([
-                    \Filament\Actions\DeleteBulkAction::make(),
+                BulkActionGroup::make([
+                    DeleteBulkAction::make(),
                 ]),
             ]);
     }

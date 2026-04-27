@@ -26,8 +26,7 @@ class ChatService
 {
     public function __construct(
         private readonly AgentFlowCompiler $compiler,
-    ) {
-    }
+    ) {}
 
     public function handleTurn(ChatSession $session, string $userMessage): string
     {

@@ -43,11 +43,14 @@ class Security extends Page
 
     // Two-factor state
     public string $confirmationCode = '';
+
     public bool $showingRecoveryCodes = false;
 
     // Password change
     public string $currentPassword = '';
+
     public string $newPassword = '';
+
     public string $newPasswordConfirmation = '';
 
     // Logout other sessions
@@ -88,6 +91,7 @@ class Security extends Page
                 ->body('The code you entered did not match. Try again with a fresh code from your authenticator.')
                 ->danger()
                 ->send();
+
             return;
         }
 
@@ -174,6 +178,7 @@ class Security extends Page
                 ->body($messages)
                 ->danger()
                 ->send();
+
             return;
         }
 
@@ -197,6 +202,7 @@ class Security extends Page
                 ->body('Enter your current password to confirm.')
                 ->danger()
                 ->send();
+
             return;
         }
 

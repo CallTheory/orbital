@@ -26,6 +26,7 @@ class FirstSuperAdminSeeder extends Seeder
 
         if (! $email || ! $password) {
             $this->command?->warn('Skipping FirstSuperAdminSeeder: SUPER_ADMIN_EMAIL and SUPER_ADMIN_PASSWORD not set.');
+
             return;
         }
 

@@ -149,6 +149,7 @@ PROMPT;
     public function revise(string $schemaBlock, array $priorMessages, string $correction): array
     {
         $messages = [...$priorMessages, ['role' => 'user', 'content' => $correction]];
+
         return $this->call($schemaBlock, $messages);
     }
 

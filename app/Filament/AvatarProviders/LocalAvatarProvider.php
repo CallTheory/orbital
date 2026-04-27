@@ -22,9 +22,10 @@ class LocalAvatarProvider implements AvatarProvider
 {
     public function __construct(private readonly LocalAvatarGenerator $generator) {}
 
-    public function get(Model | Authenticatable $record): string
+    public function get(Model|Authenticatable $record): string
     {
         $name = (string) Filament::getNameForDefaultAvatar($record);
+
         return $this->generator->dataUrlFor($name);
     }
 }

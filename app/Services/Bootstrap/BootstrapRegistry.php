@@ -22,6 +22,7 @@ class BootstrapRegistry
     public function register(Bootstrapper $bootstrapper): self
     {
         $this->bootstrappers[$bootstrapper->key()] = $bootstrapper;
+
         return $this;
     }
 
@@ -57,6 +58,7 @@ class BootstrapRegistry
                 );
             }
         }
+
         return $out;
     }
 
@@ -86,6 +88,7 @@ class BootstrapRegistry
                 }
             }
         }
+
         return $out;
     }
 }

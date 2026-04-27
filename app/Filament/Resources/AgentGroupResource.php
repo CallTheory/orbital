@@ -8,6 +8,9 @@ use App\Filament\Resources\AgentGroupResource\Pages;
 use App\Filament\Resources\AgentGroupResource\RelationManagers\MembersRelationManager;
 use App\Models\AgentGroup;
 use BackedEnum;
+use Filament\Actions\BulkActionGroup;
+use Filament\Actions\DeleteBulkAction;
+use Filament\Actions\EditAction;
 use Filament\Forms;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
@@ -106,12 +109,12 @@ class AgentGroupResource extends Resource
             ])
             ->defaultSort('label')
             ->actions([
-                \Filament\Actions\EditAction::make()
+                EditAction::make()
                     ->label('Open'),
             ])
             ->bulkActions([
-                \Filament\Actions\BulkActionGroup::make([
-                    \Filament\Actions\DeleteBulkAction::make(),
+                BulkActionGroup::make([
+                    DeleteBulkAction::make(),
                 ]),
             ]);
     }

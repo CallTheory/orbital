@@ -72,6 +72,7 @@ class MailpitProxy
                 'target' => $target,
                 'error' => $e->getMessage(),
             ]);
+
             return response()->json(
                 ['error' => 'mailpit_upstream_unreachable', 'message' => $e->getMessage()],
                 502,

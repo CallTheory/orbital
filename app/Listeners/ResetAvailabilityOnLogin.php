@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Listeners;
 
-use App\Models\AvailabilityReason;
 use App\Models\User;
 use App\Services\Telephony\Realtime\QueueMemberSyncer;
 use Illuminate\Auth\Events\Login;

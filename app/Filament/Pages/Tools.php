@@ -8,6 +8,7 @@ use BackedEnum;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use UnitEnum;
 
 /**
@@ -157,6 +158,7 @@ class Tools extends Page
         $tool = collect($this->getTools())->firstWhere('id', $id);
         if (! $tool) {
             Notification::make()->title('Unknown tool')->body($id)->danger()->send();
+
             return;
         }
 
@@ -199,7 +201,7 @@ class Tools extends Page
             // picks up the new state immediately instead of
             // waiting on its 60s poll.
             if (in_array($id, ['schedule-run', 'horizon-status', 'cache-clear', 'config-clear'], true)) {
-                \Illuminate\Support\Facades\Cache::forget('system_health:checks');
+                Cache::forget('system_health:checks');
                 $this->dispatch('system-health-updated');
             }
         } catch (\Throwable $e) {

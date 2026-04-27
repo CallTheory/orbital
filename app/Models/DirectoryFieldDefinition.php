@@ -17,6 +17,7 @@ class DirectoryFieldDefinition extends Model
     use BelongsToTeamOrSharedPool;
 
     public const SHARED_PARENT_COLUMN = 'shared_directory_id';
+
     public const TEAM_SHARED_PIVOT_TABLE = 'team_shared_directory';
 
     public const TYPES = [

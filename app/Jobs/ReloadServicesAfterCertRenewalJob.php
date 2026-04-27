@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Services\Telephony\AsteriskAmiService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -46,7 +47,7 @@ class ReloadServicesAfterCertRenewalJob implements ShouldQueue
 
         // Asterisk: reload PJSIP to pick up the new cert on TLS transports
         try {
-            $ami = app(\App\Services\Telephony\AsteriskAmiService::class);
+            $ami = app(AsteriskAmiService::class);
             $ami->reload();
             Log::info('Asterisk PJSIP reloaded after cert renewal');
         } catch (\Throwable $e) {

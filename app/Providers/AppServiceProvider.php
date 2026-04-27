@@ -2,14 +2,24 @@
 
 namespace App\Providers;
 
+use App\Listeners\ResetAvailabilityOnLogin;
 use App\Models\CallQueue;
 use App\Models\Extension;
+use App\Models\Passport\FirstPartyClient;
 use App\Models\RoutingRule;
 use App\Models\SipTrunk;
 use App\Models\User;
 use App\Observers\QuotaObserver;
 use App\Observers\StaffExtensionObserver;
 use App\Observers\TelephonyObserver;
+use App\Services\Bootstrap\Bootstrappers\AsteriskBootstrapper;
+use App\Services\Bootstrap\Bootstrappers\IcecastBootstrapper;
+use App\Services\Bootstrap\Bootstrappers\LiveKitBootstrapper;
+use App\Services\Bootstrap\Bootstrappers\OllamaBootstrapper;
+use App\Services\Bootstrap\Bootstrappers\PgvectorBootstrapper;
+use App\Services\Bootstrap\Bootstrappers\S3BucketBootstrapper;
+use App\Services\Bootstrap\Bootstrappers\SsoSecretsBootstrapper;
+use App\Services\Bootstrap\BootstrapRegistry;
 use App\Services\Clients\ClientPermissionGatekeeper;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Support\Facades\DB;
@@ -26,7 +36,7 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        $this->app->singleton(\App\Services\Bootstrap\BootstrapRegistry::class);
+        $this->app->singleton(BootstrapRegistry::class);
     }
 
     public function boot(): void
@@ -58,7 +68,7 @@ class AppServiceProvider extends ServiceProvider
         // tab happened to leave them on Available. Listener gates on
         // `hasAnyPlatformRole` so client-only users (who don't have
         // an availability state at all) are a cheap no-op.
-        Event::listen(Login::class, \App\Listeners\ResetAvailabilityOnLogin::class);
+        Event::listen(Login::class, ResetAvailabilityOnLogin::class);
 
         // OIDC clients for the in-platform control panels (pgAdmin,
         // MinIO Console, future tools) are first-party — they're
@@ -66,7 +76,7 @@ class AppServiceProvider extends ServiceProvider
         // user consent. `FirstPartyClient` overrides
         // `skipsAuthorization` to return true for our registered
         // client names, so the consent step is skipped entirely.
-        Passport::useClientModel(\App\Models\Passport\FirstPartyClient::class);
+        Passport::useClientModel(FirstPartyClient::class);
 
         // OIDC scope registration — without this, Passport's
         // ScopeRepository rejects every authorize request asking
@@ -114,6 +124,7 @@ class AppServiceProvider extends ServiceProvider
             if ($user->isSuperAdmin()) {
                 return true;
             }
+
             return $user->hasPermissionTo('tooling.pulse');
         });
     }
@@ -125,15 +136,15 @@ class AppServiceProvider extends ServiceProvider
      */
     protected function registerBootstrappers(): void
     {
-        $registry = $this->app->make(\App\Services\Bootstrap\BootstrapRegistry::class);
+        $registry = $this->app->make(BootstrapRegistry::class);
 
         $registry
-            ->register($this->app->make(\App\Services\Bootstrap\Bootstrappers\PgvectorBootstrapper::class))
-            ->register($this->app->make(\App\Services\Bootstrap\Bootstrappers\S3BucketBootstrapper::class))
-            ->register($this->app->make(\App\Services\Bootstrap\Bootstrappers\AsteriskBootstrapper::class))
-            ->register($this->app->make(\App\Services\Bootstrap\Bootstrappers\LiveKitBootstrapper::class))
-            ->register($this->app->make(\App\Services\Bootstrap\Bootstrappers\IcecastBootstrapper::class))
-            ->register($this->app->make(\App\Services\Bootstrap\Bootstrappers\OllamaBootstrapper::class))
+            ->register($this->app->make(PgvectorBootstrapper::class))
+            ->register($this->app->make(S3BucketBootstrapper::class))
+            ->register($this->app->make(AsteriskBootstrapper::class))
+            ->register($this->app->make(LiveKitBootstrapper::class))
+            ->register($this->app->make(IcecastBootstrapper::class))
+            ->register($this->app->make(OllamaBootstrapper::class))
             // SSO secrets — generates shared secrets for the
             // Redis Commander JWT + Grafana reverse-proxy trust
             // chain, and creates OAuth2 clients for pgAdmin and
@@ -141,7 +152,7 @@ class AppServiceProvider extends ServiceProvider
             // whose containers consume the resulting .env values
             // so the admin's first install flow is: pgvector →
             // MinIO → Asterisk → ... → SSO secrets → restart.
-            ->register($this->app->make(\App\Services\Bootstrap\Bootstrappers\SsoSecretsBootstrapper::class));
+            ->register($this->app->make(SsoSecretsBootstrapper::class));
     }
 
     /**

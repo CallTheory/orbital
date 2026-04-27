@@ -18,6 +18,7 @@ class CallLogPolicy
         if ($user->isSuperAdmin()) {
             return true;
         }
+
         return $user->can('call_log.view_any');
     }
 
@@ -40,6 +41,7 @@ class CallLogPolicy
             if (! $record->extension) {
                 return false;
             }
+
             return $record->extension->assignable_type === $user->getMorphClass()
                 && (int) $record->extension->assignable_id === (int) $user->id;
         }
@@ -52,6 +54,7 @@ class CallLogPolicy
         if ($user->isSuperAdmin()) {
             return true;
         }
+
         return $user->can('call_log.export');
     }
 

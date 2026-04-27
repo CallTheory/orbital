@@ -59,11 +59,13 @@ class ProcessEmailWithAgentJob implements ShouldQueue
         $thread = EmailThread::with(['messages', 'team'])->find($this->threadId);
         if (! $thread) {
             Log::warning('agent email job: thread missing', ['thread_id' => $this->threadId]);
+
             return;
         }
 
         if (! $thread->assigned_agent_persona_id) {
             Log::warning('agent email job: no persona assigned', ['thread_id' => $this->threadId]);
+
             return;
         }
 
@@ -73,6 +75,7 @@ class ProcessEmailWithAgentJob implements ShouldQueue
                 'thread_id' => $this->threadId,
                 'persona_id' => $thread->assigned_agent_persona_id,
             ]);
+
             return;
         }
 
@@ -105,6 +108,7 @@ class ProcessEmailWithAgentJob implements ShouldQueue
 
         if (empty($history)) {
             Log::warning('agent email job: empty history', ['thread_id' => $this->threadId]);
+
             return;
         }
 

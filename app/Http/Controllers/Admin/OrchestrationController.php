@@ -5,22 +5,23 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\SaveFlowGraphRequest;
+use App\Http\Requests\SaveOrchestrationRequest;
 use App\Models\AgentPersona;
 use App\Models\CallQueue;
-use App\Models\ClientChannelAssignment;
 use App\Models\ClientDid;
 use App\Models\ClientSlot;
 use App\Models\EmailQueue;
 use App\Models\Extension;
-use App\Models\FlowGraph;
 use App\Models\IntakeFlow;
 use App\Models\IntakeFlowRule;
 use App\Models\IntakeFlowStep;
 use App\Models\IntakeFlowTransition;
 use App\Models\IntakeGoal;
 use App\Models\KnowledgeStore;
+use App\Models\Orchestration;
+use App\Models\OrchestrationBinding;
 use App\Models\Team;
+use App\Services\Flows\BindingResolver;
 use App\Services\Flows\ChannelTriggerSeeder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -28,124 +29,137 @@ use Illuminate\Support\Facades\DB;
 /**
  * JSON API for the Svelte Flow editor.
  *
- *  GET  /api/admin/clients/{client}/flow-graphs
- *    Lightweight list of the client's graphs (name / status / flow
- *    count / active-on-channels summary). Used by the
- *    FlowGraphResource list page and by any future "graph picker"
- *    surface.
+ *  GET  /api/admin/clients/{client}/orchestrations
+ *    Lightweight list of the client's orchestrations (name / flow
+ *    count / which queues they're assigned to). Used by the
+ *    OrchestrationResource list page and by any future picker.
  *
- *  GET  /api/admin/flow-graphs/{graph}
- *    Returns everything the editor needs to render one graph: graph
- *    + client metadata, declared slots (team-scoped), every flow in
- *    the graph (with steps + outbound transitions + rules), the
- *    intake-goal primitive catalog, and the client's data-dictionary
- *    lists (knowledge stores, extensions, call queues, etc.).
+ *  GET  /api/admin/orchestrations/{orchestration}
+ *    Returns everything the editor needs to render one
+ *    orchestration: orchestration + client metadata, declared slots
+ *    (team-scoped), every flow in the orchestration (with steps +
+ *    outbound transitions + rules), the intake-goal primitive
+ *    catalog, and the client's data-dictionary lists (knowledge
+ *    stores, extensions, call queues, etc.).
  *
- *  PUT  /api/admin/flow-graphs/{graph}
- *    Accepts the graph's full canvas state and applies it atomically
- *    — upserts slots (team-scoped) + flows/steps/transitions/rules
- *    (graph-scoped) in one transaction.
+ *  PUT  /api/admin/orchestrations/{orchestration}
+ *    Accepts the orchestration's full canvas state and applies it
+ *    atomically — upserts slots (team-scoped) + flows / steps /
+ *    transitions / rules (orchestration-scoped) in one transaction.
  */
-class FlowGraphController extends Controller
+class OrchestrationController extends Controller
 {
+    public function __construct(
+        protected BindingResolver $bindings,
+    ) {}
+
     /**
-     * GET /api/admin/clients/{client}/flow-graphs
+     * GET /api/admin/clients/{client}/orchestrations
      *
-     * Returns the client's flow graphs as a lightweight list.
+     * Returns the client's orchestrations as a lightweight list.
+     * "Active on" is derived live from the queues that point at
+     * each orchestration. Platform-shared orchestrations
+     * (`team_id IS NULL`) are included as a separate flag so the
+     * client UI can offer them as assignable templates.
      */
     public function index(Team $client): JsonResponse
     {
         abort_unless(request()->user()?->isSuperAdmin(), 403);
 
-        // Ensure the client has its Default graph + 5 channel
-        // assignments. No-op once bootstrapped.
         app(ChannelTriggerSeeder::class)->ensureBootstrap($client);
 
-        $graphs = FlowGraph::query()
-            ->where('team_id', $client->id)
-            ->withCount('flows')
+        $orchestrations = Orchestration::query()
+            ->withoutGlobalScope('team')
+            ->where(function ($q) use ($client) {
+                $q->where('team_id', $client->id)->orWhereNull('team_id');
+            })
+            ->withCount(['flows', 'callQueues', 'emailQueues'])
+            ->with(['callQueues:id,orchestration_id,name', 'emailQueues:id,orchestration_id,name'])
             ->orderBy('name')
             ->get();
 
-        // Derive "which channels this graph is active on" for each
-        // graph from the client's channel_assignments — purely a
-        // display hint for the resource list.
-        $assignments = ClientChannelAssignment::query()
-            ->where('team_id', $client->id)
-            ->get()
-            ->groupBy('flow_graph_id');
-
         return response()->json([
             'client' => ['id' => $client->id, 'name' => $client->name],
-            'graphs' => $graphs->map(fn (FlowGraph $g) => [
-                'id' => $g->id,
-                'name' => $g->name,
-                'description' => $g->description,
-                'status' => $g->status,
-                'flow_count' => $g->flows_count,
-                'active_on_channels' => $assignments->get($g->id, collect())
-                    ->pluck('channel_type')
-                    ->values()
-                    ->all(),
-                'created_at' => $g->created_at?->toIso8601String(),
-                'updated_at' => $g->updated_at?->toIso8601String(),
+            'orchestrations' => $orchestrations->map(fn (Orchestration $o) => [
+                'id' => $o->id,
+                'name' => $o->name,
+                'description' => $o->description,
+                'is_shared' => $o->isShared(),
+                'flow_count' => $o->flows_count,
+                'is_active' => ($o->call_queues_count + $o->email_queues_count) > 0,
+                'assigned_to' => [
+                    'call_queues' => $o->callQueues->map(fn ($q) => ['id' => $q->id, 'name' => $q->name])->values(),
+                    'email_queues' => $o->emailQueues->map(fn ($q) => ['id' => $q->id, 'name' => $q->name])->values(),
+                ],
+                'created_at' => $o->created_at?->toIso8601String(),
+                'updated_at' => $o->updated_at?->toIso8601String(),
             ]),
-            'channel_assignments' => ClientChannelAssignment::query()
-                ->where('team_id', $client->id)
-                ->get()
-                ->map(fn (ClientChannelAssignment $a) => [
-                    'channel_type' => $a->channel_type,
-                    'flow_graph_id' => $a->flow_graph_id,
-                ])->values(),
         ]);
     }
 
     /**
-     * GET /api/admin/flow-graphs/{graph}
+     * GET /api/admin/orchestrations/{graph}
      *
      * Editor payload — one graph's worth of flows, plus team-scoped
      * metadata the editor needs.
      */
-    public function show(FlowGraph $graph): JsonResponse
+    public function show(Orchestration $orchestration): JsonResponse
     {
         abort_unless(request()->user()?->isSuperAdmin(), 403);
 
-        $client = $graph->team;
+        $client = $orchestration->team;
+        $isShared = $orchestration->isShared();
 
-        // Backfill triggers inside this specific graph. No-op once
-        // all five channel-trigger flows exist here.
-        $this->ensureGraphHasChannelTriggers($graph);
+        // Backfill channel-trigger flows inside this orchestration.
+        // No-op once all five exist.
+        $this->ensureOrchestrationHasChannelTriggers($orchestration);
 
         $flows = IntakeFlow::query()
             ->withoutGlobalScope('team')
-            ->where('flow_graph_id', $graph->id)
+            ->where('orchestration_id', $orchestration->id)
             ->with(['steps.intakeGoal', 'transitionsOut'])
             ->orderBy('display_order')
             ->orderBy('id')
             ->get();
 
-        return response()->json([
-            'graph' => [
-                'id' => $graph->id,
-                'name' => $graph->name,
-                'description' => $graph->description,
-                'status' => $graph->status,
-            ],
-            'client' => [
-                'id' => $client->id,
-                'name' => $client->name,
-            ],
-            'slots' => ClientSlot::query()
-                ->where('team_id', $client->id)
-                ->orderBy('name')
+        // For per-client orchestrations, resolve binding keys back to
+        // concrete picker values so the editor's existing dropdowns
+        // render their selection. For shared orchestrations the
+        // binding keys pass through and the frontend renders a
+        // binding-key input instead.
+        $bindingsByKey = $isShared
+            ? []
+            : OrchestrationBinding::query()
+                ->withoutGlobalScope('team')
+                ->where('team_id', $orchestration->team_id)
+                ->where('orchestration_id', $orchestration->id)
                 ->get()
-                ->map(fn (ClientSlot $s) => [
-                    'id' => $s->id,
-                    'name' => $s->name,
-                    'type' => $s->type,
-                    'choices' => $s->choices,
-                    'description' => $s->description,
-                ]),
+                ->keyBy('binding_key')
+                ->all();
+
+        return response()->json([
+            'orchestration' => [
+                'id' => $orchestration->id,
+                'name' => $orchestration->name,
+                'description' => $orchestration->description,
+                'is_shared' => $isShared,
+            ],
+            'client' => $client
+                ? ['id' => $client->id, 'name' => $client->name]
+                : null,
+            'slots' => $isShared
+                ? []
+                : ClientSlot::query()
+                    ->where('team_id', $client->id)
+                    ->orderBy('name')
+                    ->get()
+                    ->map(fn (ClientSlot $s) => [
+                        'id' => $s->id,
+                        'name' => $s->name,
+                        'type' => $s->type,
+                        'choices' => $s->choices,
+                        'description' => $s->description,
+                    ]),
             'flows' => $flows->map(fn (IntakeFlow $f) => [
                 'id' => $f->id,
                 'client_id' => (string) $f->id,
@@ -167,7 +181,13 @@ class FlowGraphController extends Controller
                     'intake_goal_id' => $s->intake_goal_id,
                     'intake_goal_key' => $s->intakeGoal?->key,
                     'position' => $s->position,
-                    'step_params' => $s->step_params ?? [],
+                    'step_params' => $s->intakeGoal
+                        ? $this->bindings->resolveStepParams(
+                            $s->intakeGoal,
+                            $s->step_params ?? [],
+                            $bindingsByKey,
+                        )
+                        : ($s->step_params ?? []),
                 ]),
                 'transitions_out' => $f->transitionsOut->map(fn (IntakeFlowTransition $t) => [
                     'id' => $t->id,
@@ -205,86 +225,138 @@ class FlowGraphController extends Controller
                     'max_transitions' => $g->max_transitions,
                     'exits' => $g->exits,
                 ]),
-            'knowledge_stores' => KnowledgeStore::query()
-                ->where('team_id', $client->id)
-                ->orderBy('name')
-                ->get()
-                ->map(fn (KnowledgeStore $k) => [
-                    'id' => $k->id,
-                    'name' => $k->name,
-                ]),
-            // Data-dictionary payloads the new pickers read from.
-            'extensions' => Extension::query()
-                ->withoutGlobalScope('team')
-                ->where('team_id', $client->id)
-                ->orderBy('number')
-                ->get()
-                ->map(fn (Extension $e) => [
-                    'id' => $e->id,
-                    'number' => $e->number,
-                    'label' => $e->label,
-                    'type' => $e->type,
-                ]),
-            'call_queues' => CallQueue::query()
-                ->withoutGlobalScope('team')
-                ->where('team_id', $client->id)
-                ->orderBy('name')
-                ->get()
-                ->map(fn (CallQueue $q) => [
-                    'id' => $q->id,
-                    'name' => $q->name,
-                    'strategy' => $q->strategy,
-                ]),
-            'email_queues' => EmailQueue::query()
-                ->withoutGlobalScope('team')
-                ->where('team_id', $client->id)
-                ->orderBy('name')
-                ->get()
-                ->map(fn (EmailQueue $q) => [
-                    'id' => $q->id,
-                    'name' => $q->name,
-                ]),
-            'agent_personas' => AgentPersona::query()
-                ->withoutGlobalScope('team')
-                ->where('team_id', $client->id)
-                ->where('is_active', true)
-                ->orderBy('name')
-                ->get()
-                ->map(fn (AgentPersona $p) => [
-                    'id' => $p->id,
-                    'name' => $p->name,
-                    'role' => $p->role,
-                ]),
-            'dids' => ClientDid::query()
-                ->where('team_id', $client->id)
-                ->where('is_active', true)
-                ->orderBy('priority')
-                ->orderBy('number')
-                ->get()
-                ->map(fn (ClientDid $d) => [
-                    'id' => $d->id,
-                    'number' => $d->number,
-                    'label' => $d->label,
-                ]),
+            // Data-dictionary payloads the editor's pickers read from.
+            // Shared orchestrations have no client to scope these to —
+            // the editor switches to binding-key-input mode and these
+            // arrays stay empty.
+            'knowledge_stores' => $isShared
+                ? []
+                : KnowledgeStore::query()
+                    ->where('team_id', $client->id)
+                    ->orderBy('name')
+                    ->get()
+                    ->map(fn (KnowledgeStore $k) => [
+                        'id' => $k->id,
+                        'name' => $k->name,
+                    ]),
+            'extensions' => $isShared
+                ? []
+                : Extension::query()
+                    ->withoutGlobalScope('team')
+                    ->where('team_id', $client->id)
+                    ->orderBy('number')
+                    ->get()
+                    ->map(fn (Extension $e) => [
+                        'id' => $e->id,
+                        'number' => $e->number,
+                        'label' => $e->label,
+                        'type' => $e->type,
+                    ]),
+            'call_queues' => $isShared
+                ? []
+                : CallQueue::query()
+                    ->withoutGlobalScope('team')
+                    ->where('team_id', $client->id)
+                    ->orderBy('name')
+                    ->get()
+                    ->map(fn (CallQueue $q) => [
+                        'id' => $q->id,
+                        'name' => $q->name,
+                        'strategy' => $q->strategy,
+                    ]),
+            'email_queues' => $isShared
+                ? []
+                : EmailQueue::query()
+                    ->withoutGlobalScope('team')
+                    ->where('team_id', $client->id)
+                    ->orderBy('name')
+                    ->get()
+                    ->map(fn (EmailQueue $q) => [
+                        'id' => $q->id,
+                        'name' => $q->name,
+                    ]),
+            'agent_personas' => $isShared
+                ? []
+                : AgentPersona::query()
+                    ->withoutGlobalScope('team')
+                    ->where('team_id', $client->id)
+                    ->where('is_active', true)
+                    ->orderBy('name')
+                    ->get()
+                    ->map(fn (AgentPersona $p) => [
+                        'id' => $p->id,
+                        'name' => $p->name,
+                        'role' => $p->role,
+                    ]),
+            'dids' => $isShared
+                ? []
+                : ClientDid::query()
+                    ->where('team_id', $client->id)
+                    ->where('is_active', true)
+                    ->orderBy('priority')
+                    ->orderBy('number')
+                    ->get()
+                    ->map(fn (ClientDid $d) => [
+                        'id' => $d->id,
+                        'number' => $d->number,
+                        'label' => $d->label,
+                    ]),
+            // Bindings declared by this orchestration: resource_type
+            // per binding_key (and the concrete value for private
+            // orchestrations). Used by the editor's BindingsPanel when
+            // editing a shared orchestration, and by the picker
+            // components when surfacing "what binding does this field
+            // resolve through".
+            'bindings' => $this->bindingDefinitions($orchestration, $bindingsByKey),
         ]);
     }
 
-    public function update(SaveFlowGraphRequest $request, FlowGraph $graph): JsonResponse
+    /**
+     * Build the editor's `bindings` payload entry. For private
+     * orchestrations, emits the actual binding rows (with concrete
+     * resource ids) so the editor can pre-fill picker selections. For
+     * shared orchestrations, emits only `(binding_key, resource_type)`
+     * — values come from each assigning client's bindings.
+     *
+     * @param  array<string, OrchestrationBinding>  $bindingsByKey
+     * @return array<int, array<string, mixed>>
+     */
+    protected function bindingDefinitions(Orchestration $orchestration, array $bindingsByKey): array
+    {
+        if (! $orchestration->isShared()) {
+            return collect($bindingsByKey)
+                ->values()
+                ->map(fn (OrchestrationBinding $b) => [
+                    'binding_key' => $b->binding_key,
+                    'resource_type' => $b->resource_type,
+                    'resource_id' => $b->resource_id,
+                    'resource_ids' => $b->resource_ids,
+                ])
+                ->all();
+        }
+
+        return collect($orchestration->bindingDefinitions())
+            ->map(fn (array $def) => $def + ['resource_id' => null, 'resource_ids' => null])
+            ->all();
+    }
+
+    public function update(SaveOrchestrationRequest $request, Orchestration $orchestration): JsonResponse
     {
         $payload = $request->validated();
-        $client = $graph->team;
+        $client = $orchestration->team;
 
-        DB::transaction(function () use ($client, $graph, $payload) {
-            $this->applySlots($client, $payload['slots'] ?? []);
-            $clientIdToFlowId = $this->applyFlows($graph, $payload['flows'] ?? []);
-            $this->applyTransitions($graph, $payload['transitions'] ?? [], $clientIdToFlowId);
-
-            // Routing resolution at runtime reads the queue → channel
-            // assignment → graph chain directly; no synthetic
-            // routing_rules need to be materialized from the canvas.
+        DB::transaction(function () use ($client, $orchestration, $payload) {
+            // Slots live on the owning client. Shared orchestrations
+            // have no client, so slot edits are a no-op there — the
+            // running client's slots are what runtime resolves.
+            if ($client) {
+                $this->applySlots($client, $payload['slots'] ?? []);
+            }
+            $clientIdToFlowId = $this->applyFlows($orchestration, $payload['flows'] ?? []);
+            $this->applyTransitions($orchestration, $payload['transitions'] ?? [], $clientIdToFlowId);
         });
 
-        return $this->show($graph);
+        return $this->show($orchestration);
     }
 
     /**
@@ -295,10 +367,10 @@ class FlowGraphController extends Controller
      * editor opens a freshly-created draft graph that has no flows
      * yet.
      */
-    protected function ensureGraphHasChannelTriggers(FlowGraph $graph): void
+    protected function ensureOrchestrationHasChannelTriggers(Orchestration $orchestration): void
     {
         $existing = IntakeFlow::withoutGlobalScope('team')
-            ->where('flow_graph_id', $graph->id)
+            ->where('orchestration_id', $orchestration->id)
             ->whereIn('trigger_type', IntakeFlow::CHANNEL_TRIGGERS)
             ->pluck('trigger_type')
             ->all();
@@ -318,8 +390,8 @@ class FlowGraphController extends Controller
             }
             [$name, $x, $y] = $meta;
             IntakeFlow::create([
-                'team_id' => $graph->team_id,
-                'flow_graph_id' => $graph->id,
+                'team_id' => $orchestration->team_id,
+                'orchestration_id' => $orchestration->id,
                 'name' => $name,
                 'trigger_type' => $triggerType,
                 'kind' => IntakeFlow::KIND_CALL_FLOW,
@@ -362,24 +434,24 @@ class FlowGraphController extends Controller
      * @param  array<int, array<string, mixed>>  $flows
      * @return array<string, int> map of client-side id → real flow id
      */
-    protected function applyFlows(FlowGraph $graph, array $flows): array
+    protected function applyFlows(Orchestration $orchestration, array $flows): array
     {
         $clientIdMap = [];
         $keepIds = [];
 
         foreach ($flows as $row) {
             $flow = ! empty($row['id'])
-                ? IntakeFlow::withoutGlobalScope('team')->where('flow_graph_id', $graph->id)->find($row['id'])
+                ? IntakeFlow::withoutGlobalScope('team')->where('orchestration_id', $orchestration->id)->find($row['id'])
                 : new IntakeFlow([
-                    'team_id' => $graph->team_id,
-                    'flow_graph_id' => $graph->id,
+                    'team_id' => $orchestration->team_id,
+                    'orchestration_id' => $orchestration->id,
                 ]);
             if (! $flow) {
                 continue;
             }
             $flow->fill([
-                'team_id' => $graph->team_id,
-                'flow_graph_id' => $graph->id,
+                'team_id' => $orchestration->team_id,
+                'orchestration_id' => $orchestration->id,
                 'name' => $row['name'],
                 'description' => $row['description'] ?? null,
                 'is_active' => (bool) ($row['is_active'] ?? true),
@@ -400,7 +472,7 @@ class FlowGraphController extends Controller
         // Detach dropped flows within this graph — steps + transitions
         // cascade via FK.
         IntakeFlow::withoutGlobalScope('team')
-            ->where('flow_graph_id', $graph->id)
+            ->where('orchestration_id', $orchestration->id)
             ->when($keepIds, fn ($q) => $q->whereNotIn('id', $keepIds))
             ->get()
             ->each(fn (IntakeFlow $f) => $f->delete());
@@ -414,6 +486,8 @@ class FlowGraphController extends Controller
     protected function applySteps(IntakeFlow $flow, array $steps): void
     {
         $goalIdByKey = IntakeGoal::query()->pluck('id', 'key');
+        $goalsById = IntakeGoal::query()->get()->keyBy('id');
+        $orchestration = $flow->orchestration;
         $keepIds = [];
 
         foreach ($steps as $row) {
@@ -434,6 +508,22 @@ class FlowGraphController extends Controller
                 'position' => $row['position'],
                 'step_params' => $row['step_params'] ?? [],
             ])->save();
+
+            // Normalize step_params: any concrete picker IDs become
+            // binding keys + corresponding orchestration_bindings rows.
+            // Idempotent — already-stringified binding keys pass
+            // through unchanged.
+            if ($orchestration && ($goal = $goalsById[$goalId] ?? null)) {
+                $normalized = $this->bindings->normalizeStepParams(
+                    $step,
+                    $goal,
+                    $step->step_params ?? [],
+                    $orchestration,
+                );
+                $step->step_params = $normalized;
+                $step->save();
+            }
+
             $keepIds[] = $step->id;
         }
 
@@ -499,7 +589,7 @@ class FlowGraphController extends Controller
      * @param  array<int, array<string, mixed>>  $transitions
      * @param  array<string, int>  $clientIdToFlowId
      */
-    protected function applyTransitions(FlowGraph $graph, array $transitions, array $clientIdToFlowId): void
+    protected function applyTransitions(Orchestration $orchestration, array $transitions, array $clientIdToFlowId): void
     {
         $flowIds = array_values($clientIdToFlowId);
         $keepIds = [];
@@ -533,7 +623,7 @@ class FlowGraphController extends Controller
         // Only prune transitions originating from flows within this
         // graph. Other graphs' transitions are untouched.
         $graphFlowIds = IntakeFlow::withoutGlobalScope('team')
-            ->where('flow_graph_id', $graph->id)
+            ->where('orchestration_id', $orchestration->id)
             ->pluck('id');
         if ($graphFlowIds->isNotEmpty()) {
             IntakeFlowTransition::whereIn('from_flow_id', $graphFlowIds)

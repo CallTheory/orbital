@@ -128,6 +128,7 @@ class OllamaBootstrapper implements Bootstrapper
         if (str_starts_with($default, 'ollama:')) {
             return substr($default, strlen('ollama:'));
         }
+
         return 'nomic-embed-text';
     }
 
@@ -135,6 +136,7 @@ class OllamaBootstrapper implements Bootstrapper
     {
         try {
             $response = Http::timeout(2)->get($base.'/api/tags');
+
             return $response->successful();
         } catch (Throwable) {
             return false;
@@ -149,6 +151,7 @@ class OllamaBootstrapper implements Bootstrapper
                 return false;
             }
             $models = collect($response->json('models') ?? []);
+
             return $models->pluck('name')->contains(function ($m) use ($name) {
                 // Ollama stores names with tags like 'nomic-embed-text:latest'
                 return str_starts_with((string) $m, $name);

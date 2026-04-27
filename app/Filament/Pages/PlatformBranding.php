@@ -88,6 +88,7 @@ class PlatformBranding extends Page implements HasForms
                 ->title('Platform branding saved')
                 ->success()
                 ->send();
+
             return;
         }
 

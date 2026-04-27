@@ -8,6 +8,10 @@ use App\Filament\Resources\PlatformRoleResource\Pages;
 use App\Filament\Support\RoleBadge;
 use BackedEnum;
 use Database\Seeders\PermissionCatalogSeeder;
+use Filament\Actions\BulkActionGroup;
+use Filament\Actions\DeleteAction;
+use Filament\Actions\DeleteBulkAction;
+use Filament\Actions\EditAction;
 use Filament\Forms;
 use Filament\Forms\Components\CheckboxList;
 use Filament\Resources\Resource;
@@ -204,13 +208,13 @@ class PlatformRoleResource extends Resource
             ])
             ->defaultSort('name')
             ->actions([
-                \Filament\Actions\EditAction::make(),
-                \Filament\Actions\DeleteAction::make()
+                EditAction::make(),
+                DeleteAction::make()
                     ->visible(fn (Role $record) => $record->name !== self::BUILTIN_ROLE),
             ])
             ->bulkActions([
-                \Filament\Actions\BulkActionGroup::make([
-                    \Filament\Actions\DeleteBulkAction::make(),
+                BulkActionGroup::make([
+                    DeleteBulkAction::make(),
                 ]),
             ]);
     }
@@ -241,6 +245,7 @@ class PlatformRoleResource extends Resource
             $action = substr($name, strlen($prefix) + 1);
             $options[$name] = $action;
         }
+
         return $options;
     }
 }

@@ -41,7 +41,6 @@ class JsonLogicRenderer
         return $this->renderNode($logic);
     }
 
-    /** @param mixed $node */
     protected function renderNode(mixed $node): string
     {
         // Literal scalar.
@@ -52,6 +51,7 @@ class JsonLogicRenderer
         // Array of literals (operand list passed raw).
         if (array_is_list($node)) {
             $parts = array_map(fn ($n) => $this->renderNode($n), $node);
+
             return implode(', ', $parts);
         }
 
@@ -65,18 +65,18 @@ class JsonLogicRenderer
         return match ($op) {
             '==', '===' => sprintf('%s is %s', $this->renderNode($args[0] ?? null), $this->renderNode($args[1] ?? null)),
             '!=', '!==' => sprintf('%s is not %s', $this->renderNode($args[0] ?? null), $this->renderNode($args[1] ?? null)),
-            '<'         => sprintf('%s is less than %s', $this->renderNode($args[0] ?? null), $this->renderNode($args[1] ?? null)),
-            '<='        => sprintf('%s is at most %s', $this->renderNode($args[0] ?? null), $this->renderNode($args[1] ?? null)),
-            '>'         => sprintf('%s is greater than %s', $this->renderNode($args[0] ?? null), $this->renderNode($args[1] ?? null)),
-            '>='        => sprintf('%s is at least %s', $this->renderNode($args[0] ?? null), $this->renderNode($args[1] ?? null)),
-            '!!'        => sprintf('%s is set', $this->renderNode($args[0] ?? null)),
-            '!'         => sprintf('%s is not set', $this->renderNode($args[0] ?? null)),
-            'in'        => sprintf('%s contains %s', $this->renderNode($args[1] ?? null), $this->renderNode($args[0] ?? null)),
+            '<' => sprintf('%s is less than %s', $this->renderNode($args[0] ?? null), $this->renderNode($args[1] ?? null)),
+            '<=' => sprintf('%s is at most %s', $this->renderNode($args[0] ?? null), $this->renderNode($args[1] ?? null)),
+            '>' => sprintf('%s is greater than %s', $this->renderNode($args[0] ?? null), $this->renderNode($args[1] ?? null)),
+            '>=' => sprintf('%s is at least %s', $this->renderNode($args[0] ?? null), $this->renderNode($args[1] ?? null)),
+            '!!' => sprintf('%s is set', $this->renderNode($args[0] ?? null)),
+            '!' => sprintf('%s is not set', $this->renderNode($args[0] ?? null)),
+            'in' => sprintf('%s contains %s', $this->renderNode($args[1] ?? null), $this->renderNode($args[0] ?? null)),
             'startsWith' => sprintf('%s starts with %s', $this->renderNode($args[0] ?? null), $this->renderNode($args[1] ?? null)),
             'and', 'AND' => $this->joinParts($args, ' and '),
-            'or',  'OR'  => $this->joinParts($args, ' or '),
-            'var'        => $this->renderVar($args[0] ?? ''),
-            default      => sprintf('(%s: %s)', $op, implode(', ', array_map(fn ($a) => $this->renderNode($a), $args))),
+            'or',  'OR' => $this->joinParts($args, ' or '),
+            'var' => $this->renderVar($args[0] ?? ''),
+            default => sprintf('(%s: %s)', $op, implode(', ', array_map(fn ($a) => $this->renderNode($a), $args))),
         };
     }
 
@@ -84,6 +84,7 @@ class JsonLogicRenderer
     protected function joinParts(array $parts, string $sep): string
     {
         $rendered = array_map(fn ($p) => $this->renderNode($p), $parts);
+
         return implode($sep, $rendered);
     }
 
@@ -103,6 +104,7 @@ class JsonLogicRenderer
         if (is_string($value)) {
             return '"'.$value.'"';
         }
+
         return (string) $value;
     }
 }

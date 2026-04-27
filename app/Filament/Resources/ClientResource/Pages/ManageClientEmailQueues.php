@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace App\Filament\Resources\ClientResource\Pages;
 
 use App\Filament\Resources\ClientResource;
+use App\Filament\Support\OrchestrationBindingFormFactory;
 use App\Models\AgentGroup;
 use App\Models\AgentPersona;
 use App\Models\EmailQueue;
+use App\Models\Orchestration;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
+use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ManageRelatedRecords;
 use Filament\Schemas\Schema;
 use Filament\Tables;
@@ -95,6 +98,23 @@ class ManageClientEmailQueues extends ManageRelatedRecords
 
                 Forms\Components\Toggle::make('is_active')->default(true),
 
+                Forms\Components\Select::make('orchestration_id')
+                    ->label('Orchestration')
+                    ->options(fn () => Orchestration::query()
+                        ->withoutGlobalScope('team')
+                        ->where(function ($q) {
+                            $q->where('team_id', $this->getOwnerRecord()->id)
+                                ->orWhereNull('team_id');
+                        })
+                        ->orderBy('team_id')
+                        ->orderBy('name')
+                        ->get()
+                        ->mapWithKeys(fn (Orchestration $o) => [
+                            $o->id => $o->name.($o->isShared() ? ' — Platform' : ''),
+                        ]))
+                    ->placeholder('None — queue holds threads but runs no AI flow')
+                    ->helperText('The orchestration this queue runs when an inbound email matches one of its addresses. Platform-shared orchestrations are tagged "Platform" — assign one, then click "Bindings" on the row to map its handles to your resources.'),
+
                 Forms\Components\TagsInput::make('matched_addresses')
                     ->label('Matched addresses / local-part patterns')
                     ->placeholder('e.g. support, billing, alarms')
@@ -123,6 +143,9 @@ class ManageClientEmailQueues extends ManageRelatedRecords
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('strategy')
                     ->badge(),
+                Tables\Columns\TextColumn::make('orchestration.name')
+                    ->label('Orchestration')
+                    ->placeholder('— none —'),
                 Tables\Columns\TextColumn::make('agentGroup.name')
                     ->label('Operator group')
                     ->placeholder('Open — all'),
@@ -144,6 +167,25 @@ class ManageClientEmailQueues extends ManageRelatedRecords
             ])
             ->actions([
                 Actions\EditAction::make(),
+                Actions\Action::make('bindings')
+                    ->label('Bindings')
+                    ->icon('heroicon-o-link')
+                    ->color('info')
+                    ->modalHeading(fn (EmailQueue $record) => "Bindings — {$record->name}")
+                    ->modalDescription('This queue uses a platform-shared orchestration. Map each binding handle to one of this client\'s resources so the orchestration runs against your data.')
+                    ->visible(fn (EmailQueue $record) => $record->orchestration?->isShared() ?? false)
+                    ->fillForm(fn (EmailQueue $record) => app(OrchestrationBindingFormFactory::class)
+                        ->loadValues($record->orchestration, $this->getOwnerRecord()))
+                    ->schema(fn (EmailQueue $record): array => app(OrchestrationBindingFormFactory::class)
+                        ->fields($record->orchestration, $this->getOwnerRecord()))
+                    ->action(function (EmailQueue $record, array $data) {
+                        app(OrchestrationBindingFormFactory::class)
+                            ->save($record->orchestration, $this->getOwnerRecord(), $data);
+                        Notification::make()
+                            ->title('Bindings saved')
+                            ->success()
+                            ->send();
+                    }),
                 Actions\DeleteAction::make(),
             ])
             ->bulkActions([

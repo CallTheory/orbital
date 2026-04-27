@@ -56,6 +56,7 @@ class AsteriskClusterActivity
                 'reachable' => $channels['reachable'],
             ];
         }
+
         return $out;
     }
 
@@ -77,6 +78,7 @@ class AsteriskClusterActivity
                 'port' => $port,
                 'error' => $errstr,
             ]);
+
             return ['count' => 0, 'reachable' => false];
         }
 
@@ -89,6 +91,7 @@ class AsteriskClusterActivity
             }
             $channels = $this->countChannels($socket);
             $this->send($socket, ['Action' => 'Logoff']);
+
             return ['count' => $channels, 'reachable' => true];
         } finally {
             @fclose($socket);
@@ -119,17 +122,19 @@ class AsteriskClusterActivity
             foreach ($rows as $r) {
                 $out[(string) $r->reg_server] = (int) $r->n;
             }
+
             return $out;
         } catch (\Throwable $e) {
             Log::warning('asterisk-activity: registration query failed', [
                 'error' => $e->getMessage(),
             ]);
+
             return [];
         }
     }
 
     /**
-     * @param  resource $sock
+     * @param  resource  $sock
      */
     protected function login($sock): bool
     {
@@ -141,6 +146,7 @@ class AsteriskClusterActivity
             // our action/response exchanges.
             'Events' => 'off',
         ]);
+
         return str_contains($resp, 'Success');
     }
 
@@ -150,7 +156,7 @@ class AsteriskClusterActivity
      * on the wire, so we look for that prefix and then check for
      * the '!'-delimited channel format.
      *
-     * @param  resource $sock
+     * @param  resource  $sock
      */
     protected function countChannels($sock): int
     {
@@ -166,6 +172,7 @@ class AsteriskClusterActivity
                 $count++;
             }
         }
+
         return $count;
     }
 
@@ -174,7 +181,7 @@ class AsteriskClusterActivity
      * operator softphones (WSS), hardware phones, and AI agent
      * bridge endpoints.
      *
-     * @param  resource $sock
+     * @param  resource  $sock
      */
     protected function countContacts($sock): int
     {
@@ -193,6 +200,7 @@ class AsteriskClusterActivity
                 $count++;
             }
         }
+
         return $count;
     }
 
@@ -221,8 +229,8 @@ class AsteriskClusterActivity
     /**
      * Send an action + read until the blank-line terminator.
      *
-     * @param  resource $sock
-     * @param  array<string, string> $action
+     * @param  resource  $sock
+     * @param  array<string, string>  $action
      */
     protected function send($sock, array $action): string
     {
@@ -255,6 +263,7 @@ class AsteriskClusterActivity
                 break;
             }
         }
+
         return $response;
     }
 }

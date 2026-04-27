@@ -7,7 +7,7 @@ use App\Http\Controllers\Api\ExtensionController;
 use App\Http\Controllers\Api\InboundMailController;
 use App\Http\Controllers\Api\KnowledgeController;
 use App\Http\Controllers\Api\TlsRenewalWebhookController;
-use App\Http\Controllers\Admin\FlowGraphController;
+use App\Http\Controllers\Admin\OrchestrationController;
 use App\Http\Controllers\Api\VoicemailWebhookController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -93,22 +93,21 @@ Route::post('/call-sessions/{sessionKey}/field', [CallSessionController::class, 
 Route::post('/call-sessions/{sessionKey}/advance', [CallSessionController::class, 'advance']);
 
 /**
- * Flow graph API — backs the Svelte Flow visual editor. Session-
+ * Orchestration API — backs the Svelte Flow visual editor. Session-
  * cookie auth (same-origin) via the web guard; the editor opens in
  * a popup window on the same host so the existing Laravel session
  * just works. Super-admin only, enforced in the controller.
  */
 Route::middleware(['web', 'auth'])->group(function () {
-    // Client-scoped: list the client's flow graphs (used by the
-    // Filament FlowGraphResource and the admin graph picker).
-    Route::get('/admin/clients/{client}/flow-graphs', [FlowGraphController::class, 'index'])
-        ->name('api.admin.flow-graphs.index');
+    // Client-scoped: list the client's orchestrations.
+    Route::get('/admin/clients/{client}/orchestrations', [OrchestrationController::class, 'index'])
+        ->name('api.admin.orchestrations.index');
 
-    // Graph-scoped: load / save one graph's full canvas state.
-    Route::get('/admin/flow-graphs/{graph}', [FlowGraphController::class, 'show'])
-        ->name('api.admin.flow-graphs.show');
-    Route::put('/admin/flow-graphs/{graph}', [FlowGraphController::class, 'update'])
-        ->name('api.admin.flow-graphs.update');
+    // Orchestration-scoped: load / save one orchestration's canvas state.
+    Route::get('/admin/orchestrations/{orchestration}', [OrchestrationController::class, 'show'])
+        ->name('api.admin.orchestrations.show');
+    Route::put('/admin/orchestrations/{orchestration}', [OrchestrationController::class, 'update'])
+        ->name('api.admin.orchestrations.update');
 });
 
 /**

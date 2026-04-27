@@ -16,6 +16,7 @@ class CreateAgentPersonaTemplate extends CreateRecord
         // Templates always have team_id = null and template_id = null.
         $data['team_id'] = null;
         $data['template_id'] = null;
+
         return $data;
     }
 }

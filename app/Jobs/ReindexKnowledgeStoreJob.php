@@ -40,9 +40,7 @@ class ReindexKnowledgeStoreJob implements ShouldQueue
 
     private const BATCH_SIZE = 32;
 
-    public function __construct(public readonly int $storeId)
-    {
-    }
+    public function __construct(public readonly int $storeId) {}
 
     public function handle(EmbeddingService $embeddings, IndexMaintenance $indexMaintenance): void
     {

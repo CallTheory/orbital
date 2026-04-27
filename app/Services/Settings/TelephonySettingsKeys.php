@@ -15,26 +15,35 @@ final class TelephonySettingsKeys
     // ─── Unmatched inbound calls ────────────────────────────────────────
     /** What to do when an inbound DID does not match any client. */
     public const UNMATCHED_ACTION = 'telephony.unmatched.action';
+
     /** SIP response code used when action = reject. */
     public const UNMATCHED_REJECT_CODE = 'telephony.unmatched.reject_code';
+
     /** TTS message played when action = play_message. */
     public const UNMATCHED_MESSAGE = 'telephony.unmatched.message';
+
     /** Client ID to forward to when action = route_to_tenant. */
     public const UNMATCHED_CATCHALL_TENANT_ID = 'telephony.unmatched.catchall_tenant_id';
 
     // ─── Outage / holding behavior ──────────────────────────────────────
     /** Maximum seconds to hold before falling back. */
     public const OUTAGE_MAX_HOLD_SECONDS = 'telephony.outage.max_hold_seconds';
+
     /** What to do after max hold time / when normal paths are unreachable. */
     public const OUTAGE_FALLBACK_ACTION = 'telephony.outage.fallback_action';
+
     /** SIP response code used when fallback_action = reject. */
     public const OUTAGE_REJECT_CODE = 'telephony.outage.reject_code';
+
     /** TTS message played during outage. */
     public const OUTAGE_MESSAGE = 'telephony.outage.message';
+
     /** Email to notify whenever outage handling fires (any fallback action). */
     public const OUTAGE_NOTIFY_EMAIL = 'telephony.outage.notify_email';
+
     /** Minimum minutes between outage notifications to the same email. */
     public const OUTAGE_NOTIFY_COOLDOWN_MINUTES = 'telephony.outage.notify_cooldown_minutes';
+
     /** Music-on-hold class to play while holding. */
     public const OUTAGE_HOLD_MUSIC = 'telephony.outage.hold_music';
 

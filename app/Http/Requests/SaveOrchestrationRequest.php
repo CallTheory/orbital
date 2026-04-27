@@ -20,7 +20,7 @@ use Illuminate\Validation\Rule;
  * treated as a candidate for create / update / delete based on
  * whether its `id` field matches an existing row.
  */
-class SaveFlowGraphRequest extends FormRequest
+class SaveOrchestrationRequest extends FormRequest
 {
     public function authorize(): bool
     {

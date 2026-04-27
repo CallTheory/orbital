@@ -75,22 +75,22 @@ class IntakeGoalLibrarySeeder extends Seeder
     {
         // Per-key overrides first.
         $byKey = [
-            'verify_caller'   => ['matched', 'not_matched'],
-            'gather_boolean'  => ['yes', 'no'],
-            'gather_choice'   => null,   // one transition per configured option
-            'branch_if'       => ['true', 'false'],
+            'verify_caller' => ['matched', 'not_matched'],
+            'gather_boolean' => ['yes', 'no'],
+            'gather_choice' => null,   // one transition per configured option
+            'branch_if' => ['true', 'false'],
             'look_up_contact' => ['found', 'not_found'],
             // Channel triggers: matched routing rule vs unmatched fallback.
-            'trigger_inbound_phone'  => ['matched', 'fallback'],
-            'trigger_inbound_email'  => ['matched', 'fallback'],
-            'trigger_inbound_sms'    => ['matched', 'fallback'],
-            'trigger_inbound_wctp'   => ['matched', 'fallback'],
+            'trigger_inbound_phone' => ['matched', 'fallback'],
+            'trigger_inbound_email' => ['matched', 'fallback'],
+            'trigger_inbound_sms' => ['matched', 'fallback'],
+            'trigger_inbound_wctp' => ['matched', 'fallback'],
             'trigger_outbound_phone' => ['matched', 'fallback'],
             // Matches without a fixed outcome set stay unbounded —
             // each DID / local-part rule is its own transition.
-            'match_did'          => null,
-            'match_email_local'  => null,
-            'match_inbox_of'     => null,
+            'match_did' => null,
+            'match_email_local' => null,
+            'match_inbox_of' => null,
         ];
         if (array_key_exists($key, $byKey)) {
             return $byKey[$key];
@@ -98,11 +98,11 @@ class IntakeGoalLibrarySeeder extends Seeder
 
         // Category defaults.
         return match ($category) {
-            'queue', 'assign'    => [],                                       // terminal
-            'action'             => ['continue'],                             // single forward
-            'intake'             => ['continue', 'rejected', 'failure'],      // gather primitives
+            'queue', 'assign' => [],                                       // terminal
+            'action' => ['continue'],                             // single forward
+            'intake' => ['continue', 'rejected', 'failure'],      // gather primitives
             'match', 'trigger', 'control' => null,                            // branchy / unbounded
-            default              => ['continue'],
+            default => ['continue'],
         };
     }
 

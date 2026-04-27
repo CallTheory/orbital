@@ -101,6 +101,7 @@ class DisclosureRenderer
             Log::info('disclosure renderer: OPENAI_API_KEY not set, skipping TTS', [
                 'path' => $path,
             ]);
+
             return null;
         }
 
@@ -123,6 +124,7 @@ class DisclosureRenderer
                     'status' => $response->status(),
                     'body' => substr((string) $response->body(), 0, 500),
                 ]);
+
                 return null;
             }
 
@@ -132,6 +134,7 @@ class DisclosureRenderer
             Log::warning('disclosure renderer: TTS request threw', [
                 'error' => $e->getMessage(),
             ]);
+
             return null;
         }
 

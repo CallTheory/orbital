@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -42,9 +41,9 @@ class FailoverAuditLog extends Model
     /**
      * Write one audit row. Truncates output to keep the DB honest.
      *
-     * @param  string  $tier     e.g. "postgres", "valkey", "kamailio"
-     * @param  string  $action   e.g. "switchover", "drain", "activate"
-     * @param  string|null $target  node/server URI; null for cluster-wide
+     * @param  string  $tier  e.g. "postgres", "valkey", "kamailio"
+     * @param  string  $action  e.g. "switchover", "drain", "activate"
+     * @param  string|null  $target  node/server URI; null for cluster-wide
      */
     public static function record(
         string $tier,

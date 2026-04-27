@@ -29,6 +29,7 @@ class ClientInvitation extends Model
     use HasFactory;
 
     public const ROLE_PORTAL_USER = 'portal_user';
+
     public const ROLE_ACCOUNT_MANAGER = 'account_manager';
 
     protected $fillable = [

@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 namespace App\Services\Knowledge;
 
+use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeStore;
-use Illuminate\Support\Collection;
 use InvalidArgumentException;
 use Pgvector\Laravel\Vector;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 /**
  * Vector-search front-end for a knowledge store. The service is the
@@ -28,8 +29,7 @@ class RetrievalService
 {
     public function __construct(
         private readonly EmbeddingService $embeddings,
-    ) {
-    }
+    ) {}
 
     /**
      * Run a top-K cosine-distance search across one or more stores.
@@ -66,7 +66,7 @@ class RetrievalService
 
         // pgvector's cosine distance operator is `<=>`. Lower = more similar.
         // We convert to a similarity score (1 - distance) on the way out.
-        $rows = \App\Models\KnowledgeChunk::query()
+        $rows = KnowledgeChunk::query()
             ->select([
                 'id',
                 'store_id',
@@ -99,7 +99,7 @@ class RetrievalService
      * @param  array<int, int>  $storeIds
      * @return array<int, array<string, mixed>>
      *
-     * @throws \Symfony\Component\HttpKernel\Exception\HttpException on mismatch
+     * @throws HttpException on mismatch
      */
     public function searchForTeam(int $teamId, array $storeIds, string $query, int $topK = 5): array
     {

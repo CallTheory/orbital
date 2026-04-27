@@ -10,6 +10,7 @@ use App\Services\Clients\ClientProvisioner;
 use BackedEnum;
 use Filament\Forms;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -95,6 +96,7 @@ class RoleResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         $teamId = auth()->user()?->current_team_id;
+
         return parent::getEloquentQuery()
             ->when($teamId, fn (Builder $q) => $q->where('team_id', $teamId), fn (Builder $q) => $q->whereRaw('1 = 0'));
     }
@@ -102,7 +104,7 @@ class RoleResource extends Resource
     public static function form(Schema $schema): Schema
     {
         return $schema->schema([
-            \Filament\Schemas\Components\Section::make('Role details')
+            Section::make('Role details')
                 ->schema([
                     Forms\Components\TextInput::make('name')
                         ->required()
@@ -114,7 +116,7 @@ class RoleResource extends Resource
                             : 'Short identifier shown on the Users page when assigning roles.'),
                 ]),
 
-            \Filament\Schemas\Components\Section::make('Permissions')
+            Section::make('Permissions')
                 ->description('The set of capabilities this role grants. Options reflect what your platform operator has enabled for this client.')
                 ->schema([
                     Forms\Components\CheckboxList::make('permissions')

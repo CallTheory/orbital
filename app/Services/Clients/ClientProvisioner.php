@@ -9,6 +9,7 @@ use App\Models\EmailQueue;
 use App\Models\EmailRoutingRule;
 use App\Models\Team;
 use App\Models\User;
+use App\Services\Flows\ChannelTriggerSeeder;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
@@ -68,10 +69,12 @@ class ClientProvisioner
     ];
 
     public const ROLE_CLIENT_ADMIN = 'client_admin';
+
     public const ROLE_CLIENT_USER = 'client_user';
 
     public function __construct(
         protected ClientPermissionGatekeeper $gatekeeper,
+        protected ChannelTriggerSeeder $channelTriggerSeeder,
     ) {}
 
     /**
@@ -91,6 +94,7 @@ class ClientProvisioner
             $this->createTenantAdminRole($team);
             $this->seedDefaultDirectoryFields($team);
             $this->seedDefaultEmailQueue($team);
+            $this->channelTriggerSeeder->ensureBootstrap($team);
 
             if ($initialTenantUser) {
                 $this->assignInitialAdmin($team, $initialTenantUser);

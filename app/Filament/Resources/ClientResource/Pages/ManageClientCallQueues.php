@@ -5,12 +5,16 @@ declare(strict_types=1);
 namespace App\Filament\Resources\ClientResource\Pages;
 
 use App\Filament\Resources\ClientResource;
+use App\Filament\Support\OrchestrationBindingFormFactory;
 use App\Models\AgentGroup;
 use App\Models\AgentPersona;
+use App\Models\CallQueue;
+use App\Models\Orchestration;
 use App\Models\QueueStrategyTemplate;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
+use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ManageRelatedRecords;
 use Filament\Schemas\Schema;
 use Filament\Tables;
@@ -52,6 +56,22 @@ class ManageClientCallQueues extends ManageRelatedRecords
                     ->default(fn () => QueueStrategyTemplate::where('is_default', true)->value('id'))
                     ->required()
                     ->helperText('Platform-curated strategy template (strategy + timeout + retry + wrapup). Manage in Platform → Queue Strategies.'),
+                Forms\Components\Select::make('orchestration_id')
+                    ->label('Orchestration')
+                    ->options(fn () => Orchestration::query()
+                        ->withoutGlobalScope('team')
+                        ->where(function ($q) {
+                            $q->where('team_id', $this->getOwnerRecord()->id)
+                                ->orWhereNull('team_id');
+                        })
+                        ->orderBy('team_id')
+                        ->orderBy('name')
+                        ->get()
+                        ->mapWithKeys(fn (Orchestration $o) => [
+                            $o->id => $o->name.($o->isShared() ? ' — Platform' : ''),
+                        ]))
+                    ->placeholder('None — queue runs without flow logic')
+                    ->helperText('The orchestration this queue runs when one of its DIDs receives a call. Platform-shared orchestrations are tagged "Platform" — pick one of those, then click "Bindings" on the row to map its handles to your client\'s personas / queues.'),
                 Forms\Components\TextInput::make('max_callers')
                     ->numeric()
                     ->default(0)
@@ -91,6 +111,9 @@ class ManageClientCallQueues extends ManageRelatedRecords
                     ->label('Strategy')
                     ->badge()
                     ->placeholder('— legacy —'),
+                Tables\Columns\TextColumn::make('orchestration.name')
+                    ->label('Orchestration')
+                    ->placeholder('— none —'),
                 Tables\Columns\TextColumn::make('overflowAgent.name')
                     ->label('Overflow AI')
                     ->placeholder('None'),
@@ -100,6 +123,25 @@ class ManageClientCallQueues extends ManageRelatedRecords
             ])
             ->actions([
                 Actions\EditAction::make(),
+                Actions\Action::make('bindings')
+                    ->label('Bindings')
+                    ->icon('heroicon-o-link')
+                    ->color('info')
+                    ->modalHeading(fn (CallQueue $record) => "Bindings — {$record->name}")
+                    ->modalDescription('This queue uses a platform-shared orchestration. Map each binding handle to one of this client\'s resources so the orchestration runs against your data.')
+                    ->visible(fn (CallQueue $record) => $record->orchestration?->isShared() ?? false)
+                    ->fillForm(fn (CallQueue $record) => app(OrchestrationBindingFormFactory::class)
+                        ->loadValues($record->orchestration, $this->getOwnerRecord()))
+                    ->schema(fn (CallQueue $record): array => app(OrchestrationBindingFormFactory::class)
+                        ->fields($record->orchestration, $this->getOwnerRecord()))
+                    ->action(function (CallQueue $record, array $data) {
+                        app(OrchestrationBindingFormFactory::class)
+                            ->save($record->orchestration, $this->getOwnerRecord(), $data);
+                        Notification::make()
+                            ->title('Bindings saved')
+                            ->success()
+                            ->send();
+                    }),
                 Actions\DeleteAction::make(),
             ])
             ->bulkActions([

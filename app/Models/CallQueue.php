@@ -34,6 +34,7 @@ class CallQueue extends Model
 
     protected $fillable = [
         'strategy_template_id',
+        'orchestration_id',
         'team_id',
         'name',
         'strategy',
@@ -106,6 +107,17 @@ class CallQueue extends Model
     public function strategyTemplate(): BelongsTo
     {
         return $this->belongsTo(QueueStrategyTemplate::class, 'strategy_template_id');
+    }
+
+    /**
+     * The orchestration this queue runs when a call comes in. Null
+     * means the queue exists but has no flow logic attached —
+     * inbound calls still hunt for operators per the queue strategy
+     * but the AI side does nothing until an author assigns one.
+     */
+    public function orchestration(): BelongsTo
+    {
+        return $this->belongsTo(Orchestration::class);
     }
 
     /**

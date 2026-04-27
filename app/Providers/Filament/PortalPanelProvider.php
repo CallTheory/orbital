@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace App\Providers\Filament;
 
+use App\Filament\Auth\EditProfile;
+use App\Filament\AvatarProviders\LocalAvatarProvider;
+use App\Filament\Pages\Security;
 use App\Http\Middleware\PanelRedirect;
 use App\Http\Middleware\SetPermissionsTeamContext;
+use App\Support\Branding;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -14,6 +18,7 @@ use Filament\Navigation\MenuItem;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
+use Filament\View\PanelsRenderHook;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
@@ -36,20 +41,20 @@ class PortalPanelProvider extends PanelProvider
         return $panel
             ->id('portal')
             ->path('portal')
-            ->profile(page: \App\Filament\Auth\EditProfile::class, isSimple: false)
+            ->profile(page: EditProfile::class, isSimple: false)
             ->brandName(fn () => (string) config('orbital.portal_name', 'Customer Portal'))
-            ->brandLogo(fn () => \App\Support\Branding::portalLogoLightUrl())
-            ->darkModeBrandLogo(fn () => \App\Support\Branding::portalLogoDarkUrl())
+            ->brandLogo(fn () => Branding::portalLogoLightUrl())
+            ->darkModeBrandLogo(fn () => Branding::portalLogoDarkUrl())
             ->brandLogoHeight('2rem')
-            ->favicon(fn () => \App\Support\Branding::portalFaviconUrl())
+            ->favicon(fn () => Branding::portalFaviconUrl())
             ->colors([
-                'primary' => \App\Support\Branding::portalPrimaryColor(),
+                'primary' => Branding::portalPrimaryColor(),
                 'danger' => Color::Red,
                 'warning' => Color::Amber,
                 'success' => Color::Emerald,
             ])
             // Offline-first avatar provider — see AdminPanelProvider.
-            ->defaultAvatarProvider(\App\Filament\AvatarProviders\LocalAvatarProvider::class)
+            ->defaultAvatarProvider(LocalAvatarProvider::class)
             ->navigationGroups([
                 'Activity',
                 'Administration',
@@ -58,7 +63,7 @@ class PortalPanelProvider extends PanelProvider
             ->discoverResources(in: app_path('Filament/Portal/Resources'), for: 'App\\Filament\\Portal\\Resources')
             ->pages([
                 // Shared security page — 2FA, password, sessions.
-                \App\Filament\Pages\Security::class,
+                Security::class,
             ])
             ->userMenuItems([
                 // Layout mirrors AdminPanelProvider — see that file
@@ -100,7 +105,7 @@ class PortalPanelProvider extends PanelProvider
                 Authenticate::class,
             ])
             ->renderHook(
-                \Filament\View\PanelsRenderHook::HEAD_END,
+                PanelsRenderHook::HEAD_END,
                 fn (): string => view('filament.partials.panel-styles')->render(),
             );
     }

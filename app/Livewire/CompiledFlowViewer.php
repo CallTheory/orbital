@@ -115,6 +115,7 @@ class CompiledFlowViewer extends Component
 
         if (! $persona) {
             $this->compiled = [];
+
             return;
         }
 
@@ -169,6 +170,7 @@ class CompiledFlowViewer extends Component
                 return $f;
             }
         }
+
         return $flows[0] ?? [];
     }
 

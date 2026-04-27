@@ -9,7 +9,6 @@ use App\Models\KnowledgeStore;
 use App\Services\Knowledge\RetrievalService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 
 /**
  * Knowledge retrieval API. Consumed by:
@@ -29,8 +28,7 @@ class KnowledgeController extends Controller
 {
     public function __construct(
         private readonly RetrievalService $retrieval,
-    ) {
-    }
+    ) {}
 
     public function search(Request $request): JsonResponse
     {
@@ -71,6 +69,7 @@ class KnowledgeController extends Controller
         $workerToken = (string) config('services.agent_worker.token');
         if ($workerToken !== '' && hash_equals($workerToken, (string) $request->bearerToken())) {
             $firstStore = KnowledgeStore::withoutGlobalScope('team')->find($storeIds[0] ?? 0);
+
             return $firstStore?->team_id;
         }
 

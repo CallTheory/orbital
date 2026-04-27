@@ -87,6 +87,7 @@ class TelephonyObserver
     {
         if ($verb === 'delete') {
             $this->queueSyncer->delete($queue);
+
             return;
         }
 

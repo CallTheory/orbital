@@ -32,8 +32,7 @@ class RenderDisclosurePromptJob implements ShouldQueue
 
     public function __construct(
         public readonly string $message,
-    ) {
-    }
+    ) {}
 
     public function handle(DisclosureRenderer $renderer): void
     {

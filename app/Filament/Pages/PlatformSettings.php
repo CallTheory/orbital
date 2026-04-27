@@ -179,6 +179,7 @@ class PlatformSettings extends Page implements HasForms
                 ->title('Settings saved')
                 ->success()
                 ->send();
+
             return;
         }
 

@@ -9,8 +9,11 @@ use Illuminate\Support\Facades\Log;
 class AsteriskAmiService
 {
     protected string $host;
+
     protected int $port;
+
     protected string $username;
+
     protected string $secret;
 
     /** @var resource|null */
@@ -132,6 +135,7 @@ class AsteriskAmiService
                 'port' => $port,
                 'error' => $errstr,
             ]);
+
             return false;
         }
 
@@ -150,6 +154,7 @@ class AsteriskAmiService
                     'host' => $host,
                     'response' => mb_substr($login, 0, 200),
                 ]);
+
                 return false;
             }
 
@@ -192,6 +197,7 @@ class AsteriskAmiService
                 break;
             }
         }
+
         return $response;
     }
 

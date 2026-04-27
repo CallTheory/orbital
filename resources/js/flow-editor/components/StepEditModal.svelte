@@ -66,6 +66,15 @@
                     This primitive has no parameters to configure.
                 </div>
             {:else}
+                {#if graph.isShared}
+                    <p class="orbital-step-edit__shared-banner">
+                        This is a platform-shared orchestration. Picker fields use binding-key
+                        handles instead of concrete resources — each assigning client maps the
+                        keys to their own personas, queues, and extensions when they wire this
+                        orchestration into a queue.
+                    </p>
+                {/if}
+
                 <div class="orbital-step-edit__grid">
                     {#each primitive.data_fields as f}
                         <ParamField
@@ -79,6 +88,7 @@
                             agentPersonas={graph.agentPersonas}
                             dids={graph.dids}
                             flows={graph.flows}
+                            isShared={graph.isShared}
                         />
                     {/each}
                 </div>

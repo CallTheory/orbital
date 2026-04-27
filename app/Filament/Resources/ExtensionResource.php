@@ -7,8 +7,12 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\ExtensionResource\Pages;
 use App\Models\Extension;
 use BackedEnum;
+use Filament\Actions\BulkActionGroup;
+use Filament\Actions\DeleteBulkAction;
+use Filament\Actions\EditAction;
 use Filament\Forms;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -119,7 +123,7 @@ class ExtensionResource extends Resource
                     ->default('sip_phone')
                     ->required()
                     ->live()
-                    ->afterStateUpdated(function ($state, \Filament\Schemas\Components\Utilities\Set $set) {
+                    ->afterStateUpdated(function ($state, Set $set) {
                         $set('transport', self::defaultTransportFor($state));
                     }),
                 Forms\Components\Select::make('transport')
@@ -191,11 +195,11 @@ class ExtensionResource extends Resource
                     ->options(self::deviceTypeOptions()),
             ])
             ->actions([
-                \Filament\Actions\EditAction::make(),
+                EditAction::make(),
             ])
             ->bulkActions([
-                \Filament\Actions\BulkActionGroup::make([
-                    \Filament\Actions\DeleteBulkAction::make(),
+                BulkActionGroup::make([
+                    DeleteBulkAction::make(),
                 ]),
             ]);
     }

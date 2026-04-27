@@ -53,6 +53,7 @@ class VoicemailWebhookController extends Controller
             Log::warning('voicemail-webhook: no client matches mailbox', [
                 'mailbox' => $data['mailbox'],
             ]);
+
             // 202: we accept the webhook to keep Asterisk happy, but
             // there's nothing to do here. Logs capture the miss.
             return response()->json(['ok' => true, 'matched' => false], 202);

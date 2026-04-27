@@ -71,8 +71,9 @@ class SmartIngestExtractor
 
     protected function extractPdf(string $path): string
     {
-        $parser = new PdfParser();
+        $parser = new PdfParser;
         $pdf = $parser->parseFile($path);
+
         return trim($pdf->getText());
     }
 
@@ -81,7 +82,7 @@ class SmartIngestExtractor
         // Re-use the tabular importer to read headers + rows, then
         // stringify as a markdown table so the model sees the column
         // structure explicitly.
-        $importer = new TabularImportService();
+        $importer = new TabularImportService;
         $rows = $importer->readRows($path);
         if (empty($rows)) {
             return '';
@@ -98,6 +99,7 @@ class SmartIngestExtractor
             );
             $lines[] = '| '.implode(' | ', $cells).' |';
         }
+
         return implode("\n", $lines);
     }
 
@@ -109,6 +111,7 @@ class SmartIngestExtractor
         $body = $parts[1] ?? $raw;
         // De-quote common forward artifacts
         $body = preg_replace('/^>+\s?/m', '', $body) ?? $body;
+
         return trim($body);
     }
 
@@ -119,6 +122,7 @@ class SmartIngestExtractor
             return '';
         }
         $lines = preg_split('/\r?\n/', $raw) ?: [];
+
         return implode("\n", array_slice($lines, 0, $maxLines));
     }
 

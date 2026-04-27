@@ -90,6 +90,7 @@ class IdTokenSigner
     public function keyId(): string
     {
         $publicKey = file_get_contents(Passport::keyPath('oauth-public.key'));
+
         return substr(hash('sha256', $publicKey), 0, 16);
     }
 
@@ -101,6 +102,7 @@ class IdTokenSigner
         if ($key === false) {
             throw new \RuntimeException('Failed to load Passport private key for OIDC signing.');
         }
+
         return $key;
     }
 

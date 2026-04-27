@@ -23,7 +23,9 @@ use Illuminate\Support\Facades\Crypt;
 class PlatformSettingsRepository
 {
     protected const CACHE_PREFIX = 'platform_setting:';
+
     protected const CACHE_TTL_SECONDS = 300;
+
     protected const ALL_CACHE_KEY = 'platform_settings:all';
 
     /**
@@ -58,6 +60,7 @@ class PlatformSettingsRepository
         foreach ($keys as $key) {
             $out[$key] = $this->get($key, $defaults[$key] ?? null);
         }
+
         return $out;
     }
 

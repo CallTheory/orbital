@@ -75,6 +75,7 @@ class SipProxy extends Page
         if (! config('telephony.kamailio.enabled')) {
             return false;
         }
+
         return auth()->user()?->isSuperAdmin() ?? false;
     }
 
@@ -151,8 +152,7 @@ class SipProxy extends Page
             ->icon('heroicon-o-pause')
             ->color('warning')
             ->requiresConfirmation()
-            ->modalHeading(fn (array $arguments): string =>
-                "Drain {$arguments['backend']}")
+            ->modalHeading(fn (array $arguments): string => "Drain {$arguments['backend']}")
             ->modalDescription(
                 'Stops NEW traffic to this Asterisk on both paths: '.
                 'inbound SIP trunk calls (Kamailio) and operator '.
@@ -190,8 +190,7 @@ class SipProxy extends Page
             ->icon('heroicon-o-x-circle')
             ->color('danger')
             ->requiresConfirmation()
-            ->modalHeading(fn (array $arguments): string =>
-                "Hard-disable {$arguments['backend']}")
+            ->modalHeading(fn (array $arguments): string => "Hard-disable {$arguments['backend']}")
             ->modalDescription(
                 'Immediately stops ALL traffic to this backend AND '.
                 'stops Kamailio probing. Use Drain instead for planned '.
@@ -223,8 +222,9 @@ class SipProxy extends Page
     protected function summarize(array $r): string
     {
         $parts = [];
-        $parts[] = 'Kamailio: ' . ($r['kamailio'] ? 'ok' : 'FAILED');
-        $parts[] = 'HAProxy: ' . ($r['haproxy'] ? 'ok' : 'FAILED');
+        $parts[] = 'Kamailio: '.($r['kamailio'] ? 'ok' : 'FAILED');
+        $parts[] = 'HAProxy: '.($r['haproxy'] ? 'ok' : 'FAILED');
+
         return implode(' · ', $parts);
     }
 }

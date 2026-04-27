@@ -181,6 +181,7 @@ class OutboundReplyService
         if ($team && $team->account_number) {
             return "{$team->account_number}@{$domain}";
         }
+
         return (string) config('mail.from.address');
     }
 }

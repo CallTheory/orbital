@@ -35,6 +35,7 @@ class TrunkSyncer
     {
         if (! $trunk->is_active) {
             $this->delete($trunk);
+
             return;
         }
 
@@ -113,6 +114,7 @@ class TrunkSyncer
         if (empty($codecs)) {
             return 'ulaw,alaw';
         }
+
         return implode(',', $codecs);
     }
 

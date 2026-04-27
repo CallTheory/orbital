@@ -51,8 +51,11 @@ class FailoverCentral extends Page
     protected string $view = 'filament.pages.failover-central';
 
     public ?array $patroni = null;
+
     public ?array $sentinel = null;
+
     public ?array $seaweed = null;
+
     public array $haproxyServers = [];
 
     public static function canAccess(): bool
@@ -81,6 +84,7 @@ class FailoverCentral extends Page
             $grouped[$s['pxname']][] = $s;
         }
         ksort($grouped);
+
         return $grouped;
     }
 
@@ -138,6 +142,7 @@ class FailoverCentral extends Page
                 return 'warn';
             }
         }
+
         return 'ok';
     }
 
@@ -159,6 +164,7 @@ class FailoverCentral extends Page
                 return 'warn';
             }
         }
+
         return 'ok';
     }
 
@@ -190,6 +196,7 @@ class FailoverCentral extends Page
         if (! empty($this->seaweed['filers']) && $filersUp < count($this->seaweed['filers'])) {
             return 'warn';
         }
+
         return 'ok';
     }
 
@@ -259,6 +266,7 @@ class FailoverCentral extends Page
                 $worst = 'warn';
             }
         }
+
         return $worst;
     }
 
@@ -299,6 +307,7 @@ class FailoverCentral extends Page
                 return str_replace('_', ' ', (string) $m['role']);
             }
         }
+
         return null;
     }
 
@@ -312,9 +321,10 @@ class FailoverCentral extends Page
         // directly, otherwise fall back to the last byte of the IP.
         $matches = function (array $node) use ($name): bool {
             $ip = (string) ($node['ip'] ?? '');
+
             return $ip === $name
-                || str_starts_with($ip, $name . '.')
-                || str_ends_with($ip, '.' . $name);
+                || str_starts_with($ip, $name.'.')
+                || str_ends_with($ip, '.'.$name);
         };
 
         $master = $this->sentinel['master'] ?? null;
@@ -326,6 +336,7 @@ class FailoverCentral extends Page
                 return 'replica';
             }
         }
+
         return null;
     }
 
@@ -351,6 +362,7 @@ class FailoverCentral extends Page
         $members = $this->patroni['members'] ?? [];
         usort($members, fn ($a, $b) => $rank($a['role']) <=> $rank($b['role'])
             ?: strcmp((string) $a['name'], (string) $b['name']));
+
         return $members;
     }
 
@@ -395,6 +407,7 @@ class FailoverCentral extends Page
                         ->danger()
                         ->title('Confirmation did not match')
                         ->send();
+
                     return;
                 }
                 // Record the intent BEFORE firing so we get an
@@ -456,6 +469,7 @@ class FailoverCentral extends Page
                         ->danger()
                         ->title('Confirmation did not match')
                         ->send();
+
                     return;
                 }
                 [$ok, $out] = app(SentinelClient::class)->forceFailover();
@@ -497,6 +511,7 @@ class FailoverCentral extends Page
             // without visible tag is a valid candidate.
             $out[$m['name']] = "{$m['name']} ({$m['role']}, lag={$m['lag']}MB)";
         }
+
         return $out;
     }
 }

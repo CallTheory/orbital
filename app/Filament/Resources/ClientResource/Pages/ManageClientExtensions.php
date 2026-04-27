@@ -10,6 +10,7 @@ use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
 use Filament\Resources\Pages\ManageRelatedRecords;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -56,7 +57,7 @@ class ManageClientExtensions extends ManageRelatedRecords
                         ->pluck('name', 'id'))
                     ->searchable()
                     ->visible(fn (callable $get) => $get('type') === 'ai_agent')
-                    ->afterStateUpdated(function ($state, \Filament\Schemas\Components\Utilities\Set $set) {
+                    ->afterStateUpdated(function ($state, Set $set) {
                         $set('assignable_type', $state ? AgentPersona::class : null);
                     }),
                 Forms\Components\Hidden::make('assignable_type'),

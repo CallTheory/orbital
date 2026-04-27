@@ -26,11 +26,13 @@ class CreateAdminUser extends Command
 
         if (! $name || ! $email || ! $password) {
             $this->error('Name, email, and password are all required.');
+
             return self::FAILURE;
         }
 
         if (User::where('email', $email)->exists()) {
             $this->error("A user with email {$email} already exists.");
+
             return self::FAILURE;
         }
 

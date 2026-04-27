@@ -33,6 +33,7 @@ class RenderDisclosuresCommand extends Command
 
         if (empty($messages)) {
             $this->info('No disclosure messages configured. Nothing to render.');
+
             return self::SUCCESS;
         }
 
@@ -46,6 +47,7 @@ class RenderDisclosuresCommand extends Command
             $path = $renderer->pathFor($message);
             if ($path === null) {
                 $skipped++;
+
                 continue;
             }
 
@@ -59,6 +61,7 @@ class RenderDisclosuresCommand extends Command
             if ($result === null) {
                 $failed++;
                 $this->warn(sprintf('  ✗ (%s) %s', implode(', ', $origins), $this->preview($message)));
+
                 continue;
             }
 
@@ -113,6 +116,7 @@ class RenderDisclosuresCommand extends Command
     protected function preview(string $message): string
     {
         $flat = preg_replace('/\s+/', ' ', $message) ?? '';
+
         return strlen($flat) > 70 ? substr($flat, 0, 67).'…' : $flat;
     }
 }

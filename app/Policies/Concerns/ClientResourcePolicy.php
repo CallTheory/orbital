@@ -26,6 +26,7 @@ trait ClientResourcePolicy
         if ($user->isSuperAdmin()) {
             return true;
         }
+
         return $user->can($this->permissionPrefix().'.view_any');
     }
 
@@ -37,6 +38,7 @@ trait ClientResourcePolicy
         if (! $this->sameTenant($user, $record)) {
             return false;
         }
+
         return $user->can($this->permissionPrefix().'.view');
     }
 
@@ -45,6 +47,7 @@ trait ClientResourcePolicy
         if ($user->isSuperAdmin()) {
             return true;
         }
+
         return $user->can($this->permissionPrefix().'.create');
     }
 
@@ -56,6 +59,7 @@ trait ClientResourcePolicy
         if (! $this->sameTenant($user, $record)) {
             return false;
         }
+
         return $user->can($this->permissionPrefix().'.update');
     }
 
@@ -67,6 +71,7 @@ trait ClientResourcePolicy
         if (! $this->sameTenant($user, $record)) {
             return false;
         }
+
         return $user->can($this->permissionPrefix().'.delete');
     }
 

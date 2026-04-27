@@ -5,16 +5,28 @@ declare(strict_types=1);
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\UsersResource\Pages;
+use App\Filament\Support\RoleBadge;
+use App\Models\Team;
 use App\Models\User;
+use App\Services\Telephony\PlatformExtensionAllocator;
 use BackedEnum;
+use Filament\Actions\BulkAction;
+use Filament\Actions\BulkActionGroup;
+use Filament\Actions\DeleteBulkAction;
+use Filament\Actions\EditAction;
 use Filament\Forms;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Grid;
+use Filament\Schemas\Components\Group;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\HtmlString;
 use Laravel\Fortify\Actions\DisableTwoFactorAuthentication;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
@@ -85,7 +97,7 @@ class UsersResource extends Resource
                 $query->select(\DB::raw(1))
                     ->from($modelHasRoles)
                     ->whereColumn($modelHasRoles.'.model_id', 'users.id')
-                    ->where($modelHasRoles.'.model_type', \App\Models\User::class)
+                    ->where($modelHasRoles.'.model_type', User::class)
                     ->whereNull($modelHasRoles.'.team_id');
             });
     }
@@ -99,11 +111,11 @@ class UsersResource extends Resource
                 // memberships sits in the right third and grows
                 // independently as staff get attached to more
                 // customers (account managers, impersonation testing).
-                \Filament\Schemas\Components\Grid::make(3)
+                Grid::make(3)
                     ->columnSpanFull()
                     ->schema([
-                        \Filament\Schemas\Components\Group::make([
-                            \Filament\Schemas\Components\Section::make('Account')
+                        Group::make([
+                            Section::make('Account')
                                 ->icon('heroicon-o-user')
                                 ->schema([
                                     Forms\Components\TextInput::make('name')
@@ -133,7 +145,7 @@ class UsersResource extends Resource
                                 ])
                                 ->columns(2),
 
-                            \Filament\Schemas\Components\Section::make('Softphone')
+                            Section::make('Softphone')
                                 ->icon('heroicon-o-phone')
                                 ->description('SIP credentials for this staff member\'s browser softphone. Auto-allocated on user creation.')
                                 ->schema([
@@ -143,7 +155,7 @@ class UsersResource extends Resource
                                         ->dehydrated(false)
                                         ->afterStateHydrated(function (Forms\Components\TextInput $component, ?User $record) {
                                             if ($record) {
-                                                $ext = app(\App\Services\Telephony\PlatformExtensionAllocator::class)
+                                                $ext = app(PlatformExtensionAllocator::class)
                                                     ->extensionFor($record);
                                                 $component->state($ext?->number ?? '(not yet allocated)');
                                             }
@@ -154,7 +166,7 @@ class UsersResource extends Resource
                                         ->dehydrated(false)
                                         ->afterStateHydrated(function (Forms\Components\TextInput $component, ?User $record) {
                                             if ($record) {
-                                                $ext = app(\App\Services\Telephony\PlatformExtensionAllocator::class)
+                                                $ext = app(PlatformExtensionAllocator::class)
                                                     ->extensionFor($record);
                                                 $component->state($ext?->sip_username ?? '—');
                                             }
@@ -167,7 +179,7 @@ class UsersResource extends Resource
                                         ->dehydrated(false)
                                         ->afterStateHydrated(function (Forms\Components\TextInput $component, ?User $record) {
                                             if ($record) {
-                                                $ext = app(\App\Services\Telephony\PlatformExtensionAllocator::class)
+                                                $ext = app(PlatformExtensionAllocator::class)
                                                     ->extensionFor($record);
                                                 $component->state($ext?->sip_password ?? '—');
                                             }
@@ -178,14 +190,14 @@ class UsersResource extends Resource
                         ])
                             ->columnSpan(2),
 
-                        \Filament\Schemas\Components\Section::make('Client memberships')
+                        Section::make('Client memberships')
                             ->description('Clients this staff member is attached to.')
                             ->schema([
                                 Forms\Components\Placeholder::make('clients')
                                     ->hiddenLabel()
                                     ->content(function (?User $record) {
                                         if (! $record) {
-                                            return new \Illuminate\Support\HtmlString(
+                                            return new HtmlString(
                                                 '<span class="text-sm text-gray-500 dark:text-gray-400">Client memberships appear after the account is created.</span>'
                                             );
                                         }
@@ -193,7 +205,7 @@ class UsersResource extends Resource
                                         // Exclude Jetstream personal teams — the Platform
                                         // and user-specific personal teams aren't real
                                         // customers and would just be noise on this list.
-                                        $clients = \App\Models\Team::query()
+                                        $clients = Team::query()
                                             ->where('personal_team', false)
                                             ->whereIn('id', \DB::table('team_user')
                                                 ->where('user_id', $record->id)
@@ -202,7 +214,7 @@ class UsersResource extends Resource
                                             ->get(['id', 'name', 'account_number']);
 
                                         if ($clients->isEmpty()) {
-                                            return new \Illuminate\Support\HtmlString(
+                                            return new HtmlString(
                                                 '<span class="text-sm text-gray-500 dark:text-gray-400">Not attached to any client.</span>'
                                             );
                                         }
@@ -212,11 +224,12 @@ class UsersResource extends Resource
                                             $acct = $t->account_number
                                                 ? ' <span class="text-gray-500 dark:text-gray-400">· #'.e($t->account_number).'</span>'
                                                 : '';
-                                            $url = \App\Filament\Resources\ClientResource::getUrl('users', ['record' => $t->id]);
+                                            $url = ClientResource::getUrl('users', ['record' => $t->id]);
+
                                             return '<li style="display: list-item; list-style-type: disc;"><a href="'.$url.'" class="text-primary-600 hover:underline dark:text-primary-400">'.$name.'</a>'.$acct.'</li>';
                                         })->implode('');
 
-                                        return new \Illuminate\Support\HtmlString(
+                                        return new HtmlString(
                                             '<ul style="list-style: disc; padding-left: 1.25rem;" class="space-y-4 text-sm">'.$rows.'</ul>'
                                         );
                                     }),
@@ -240,7 +253,7 @@ class UsersResource extends Resource
                 Tables\Columns\TextColumn::make('platform_role')
                     ->label('Role')
                     ->html()
-                    ->getStateUsing(fn (User $record) => \App\Filament\Support\RoleBadge::forName(
+                    ->getStateUsing(fn (User $record) => RoleBadge::forName(
                         self::platformRoleFor($record),
                     )->toHtml()),
                 Tables\Columns\TextColumn::make('created_at')
@@ -250,11 +263,11 @@ class UsersResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->actions([
-                \Filament\Actions\EditAction::make(),
+                EditAction::make(),
             ])
             ->bulkActions([
-                \Filament\Actions\BulkActionGroup::make([
-                    \Filament\Actions\BulkAction::make('sendPasswordReset')
+                BulkActionGroup::make([
+                    BulkAction::make('sendPasswordReset')
                         ->label('Send password reset')
                         ->icon('heroicon-o-envelope')
                         ->color('gray')
@@ -262,7 +275,7 @@ class UsersResource extends Resource
                         ->modalHeading('Send password reset to selected users?')
                         ->modalDescription('Each user will get a reset-link email that expires in 60 minutes.')
                         ->deselectRecordsAfterCompletion()
-                        ->action(function (\Illuminate\Database\Eloquent\Collection $records) {
+                        ->action(function (Collection $records) {
                             $sent = 0;
                             $failed = 0;
                             foreach ($records as $user) {
@@ -275,7 +288,7 @@ class UsersResource extends Resource
                                 ->{$failed > 0 ? 'warning' : 'success'}()
                                 ->send();
                         }),
-                    \Filament\Actions\BulkAction::make('resetTwoFactor')
+                    BulkAction::make('resetTwoFactor')
                         ->label('Reset 2FA')
                         ->icon('heroicon-o-shield-exclamation')
                         ->color('warning')
@@ -284,7 +297,7 @@ class UsersResource extends Resource
                         ->modalDescription('This disables 2FA on every selected account. Users with 2FA configured will be able to sign in with just their password until they re-enroll from their Security page. Users who never enrolled are unaffected.')
                         ->modalSubmitActionLabel('Reset 2FA')
                         ->deselectRecordsAfterCompletion()
-                        ->action(function (\Illuminate\Database\Eloquent\Collection $records) {
+                        ->action(function (Collection $records) {
                             $disabler = app(DisableTwoFactorAuthentication::class);
                             $reset = 0;
                             foreach ($records as $user) {
@@ -299,7 +312,7 @@ class UsersResource extends Resource
                                 ->success()
                                 ->send();
                         }),
-                    \Filament\Actions\DeleteBulkAction::make(),
+                    DeleteBulkAction::make(),
                 ]),
             ]);
     }
@@ -324,6 +337,7 @@ class UsersResource extends Resource
 
         try {
             $user->unsetRelation('roles');
+
             return $user->roles->pluck('name')->first();
         } finally {
             $registrar->setPermissionsTeamId($original);

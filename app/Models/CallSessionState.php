@@ -60,6 +60,7 @@ class CallSessionState extends Model
         $this->fields = $fields;
         $this->last_field_at = now();
         $this->save();
+
         return $fields;
     }
 }

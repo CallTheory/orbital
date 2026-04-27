@@ -8,6 +8,7 @@ use App\Filament\Auth\EditProfile;
 use App\Filament\AvatarProviders\LocalAvatarProvider;
 use App\Http\Middleware\PanelRedirect;
 use App\Http\Middleware\SetPermissionsTeamContext;
+use App\Support\Branding;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -49,12 +50,12 @@ class AdminPanelProvider extends PanelProvider
             // between them based on the active color mode. The 512×128
             // uploaded logo already contains the wordmark, so no
             // separate text span here.
-            ->brandLogo(fn () => \App\Support\Branding::platformLogoLightUrl())
-            ->darkModeBrandLogo(fn () => \App\Support\Branding::platformLogoDarkUrl())
+            ->brandLogo(fn () => Branding::platformLogoLightUrl())
+            ->darkModeBrandLogo(fn () => Branding::platformLogoDarkUrl())
             ->brandLogoHeight('2rem')
-            ->favicon(fn () => \App\Support\Branding::platformFaviconUrl())
+            ->favicon(fn () => Branding::platformFaviconUrl())
             ->colors([
-                'primary' => \App\Support\Branding::adminPrimaryColor(),
+                'primary' => Branding::adminPrimaryColor(),
                 'danger' => Color::Red,
                 'warning' => Color::Amber,
                 'success' => Color::Emerald,

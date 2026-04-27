@@ -35,6 +35,7 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
             if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
                 return true;
             }
+
             return method_exists($user, 'hasPermissionTo')
                 ? $user->hasPermissionTo('tooling.horizon')
                 : false;

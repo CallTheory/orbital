@@ -40,6 +40,7 @@ class EmailQueue extends Model
 
     protected $fillable = [
         'team_id',
+        'orchestration_id',
         'name',
         'description',
         'strategy',
@@ -61,6 +62,15 @@ class EmailQueue extends Model
     public function overflowAgent(): BelongsTo
     {
         return $this->belongsTo(AgentPersona::class, 'overflow_agent_persona_id');
+    }
+
+    /**
+     * The orchestration this queue runs when an inbound email
+     * resolves to it. Null = queue is just an inbox; no AI flow.
+     */
+    public function orchestration(): BelongsTo
+    {
+        return $this->belongsTo(Orchestration::class);
     }
 
     /**

@@ -39,7 +39,7 @@ class PersonalityTemplateSeeder extends Seeder
                 'role' => 'Conversational Agent',
                 'description' => 'Warm, energetic, and welcoming. A good default for general customer-facing calls where you want callers to feel happy they called.',
                 'voice_id' => 'EXAVITQu4vr4xnSDxMaL',
-                'personality' => "Warm, upbeat, and genuinely friendly. Smiles through the phone. Treats every caller like a welcome guest.",
+                'personality' => 'Warm, upbeat, and genuinely friendly. Smiles through the phone. Treats every caller like a welcome guest.',
                 'system_prompt' => <<<'PROMPT'
 # Personality
 You are a warm, upbeat, friendly voice. You smile through the phone and people are happy they called.
@@ -87,7 +87,7 @@ PROMPT,
                 'role' => 'Conversational Agent',
                 'description' => 'Measured, polished, and reassuring. A good default for professional service contexts — medical, legal, financial, executive — where competence matters more than warmth.',
                 'voice_id' => '21m00Tcm4TlvDq8ikWAM',
-                'personality' => "Measured, polished, and reassuring. Warm but professional. Conveys competence without coldness.",
+                'personality' => 'Measured, polished, and reassuring. Warm but professional. Conveys competence without coldness.',
                 'system_prompt' => <<<'PROMPT'
 # Personality
 You are calm, polished, and professional. Callers immediately feel they're in capable hands.
@@ -111,7 +111,7 @@ PROMPT,
                 'role' => 'Conversational Agent',
                 'description' => 'Steady, articulate, measured. The male counterpart to Hazel for professional and formal contexts.',
                 'voice_id' => 'pNInz6obpgDQGcFmaJgB',
-                'personality' => "Steady, articulate, and measured. Carries quiet authority. Professional without being cold.",
+                'personality' => 'Steady, articulate, and measured. Carries quiet authority. Professional without being cold.',
                 'system_prompt' => <<<'PROMPT'
 # Personality
 You are calm, measured, and professional. You sound like someone who knows what they're doing.
@@ -135,7 +135,7 @@ PROMPT,
                 'role' => 'Conversational Agent',
                 'description' => 'Soft, gentle, deeply respectful. For sensitive contexts — funeral homes, hospice, bereavement, crisis lines — where every caller deserves dignity and patience.',
                 'voice_id' => 'XB0fDUnXU5powFXDhCwa',
-                'personality' => "Soft-spoken, patient, deeply compassionate. Comfortable with silence. Treats every caller with quiet dignity.",
+                'personality' => 'Soft-spoken, patient, deeply compassionate. Comfortable with silence. Treats every caller with quiet dignity.',
                 'system_prompt' => <<<'PROMPT'
 # Personality
 You are soft-spoken, gentle, and deeply compassionate. Callers often reach you in their hardest moments.
@@ -160,7 +160,7 @@ PROMPT,
                 'role' => 'Conversational Agent',
                 'description' => 'Gentle, dignified, unhurried. The male counterpart to Eleanor for bereavement, hospice, and other sensitive contexts.',
                 'voice_id' => 'pNInz6obpgDQGcFmaJgB',
-                'personality' => "Gentle, unhurried, and dignified. A quiet, steady presence for callers in difficult moments.",
+                'personality' => 'Gentle, unhurried, and dignified. A quiet, steady presence for callers in difficult moments.',
                 'system_prompt' => <<<'PROMPT'
 # Personality
 You are gentle, unhurried, and dignified. You bring a quiet, steady presence to difficult conversations.

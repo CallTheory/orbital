@@ -94,8 +94,27 @@ export type EmailQueueDTO = { id: number; name: string };
 export type AgentPersonaDTO = { id: number; name: string; role: string | null };
 export type DidDTO = { id: number; number: string; label: string | null };
 
+export type BindingDTO = {
+    binding_key: string;
+    resource_type:
+        | 'agent_persona'
+        | 'call_queue'
+        | 'email_queue'
+        | 'extension'
+        | 'did_set'
+        | 'knowledge_store';
+    resource_id: number | null;
+    resource_ids: number[] | null;
+};
+
 export type FlowGraphDTO = {
-    client: { id: number; name: string };
+    orchestration: {
+        id: number;
+        name: string;
+        description: string | null;
+        is_shared: boolean;
+    };
+    client: { id: number; name: string } | null;
     slots: SlotDTO[];
     flows: FlowDTO[];
     primitives: PrimitiveDTO[];
@@ -105,6 +124,7 @@ export type FlowGraphDTO = {
     email_queues: EmailQueueDTO[];
     agent_personas: AgentPersonaDTO[];
     dids: DidDTO[];
+    bindings: BindingDTO[];
 };
 
 function getCsrfToken(): string {
@@ -128,19 +148,19 @@ async function request<T>(url: string, init: RequestInit = {}): Promise<T> {
     return (await response.json()) as T;
 }
 
-export function fetchFlowGraph(graphId: number): Promise<FlowGraphDTO> {
-    return request(`/api/admin/flow-graphs/${graphId}`);
+export function fetchFlowGraph(orchestrationId: number): Promise<FlowGraphDTO> {
+    return request(`/api/admin/orchestrations/${orchestrationId}`);
 }
 
 export function saveFlowGraph(
-    graphId: number,
+    orchestrationId: number,
     payload: {
         slots: SlotDTO[];
         flows: Array<Omit<FlowDTO, 'transitions_out'>>;
         transitions: TransitionDTO[];
     },
 ): Promise<FlowGraphDTO> {
-    return request(`/api/admin/flow-graphs/${graphId}`, {
+    return request(`/api/admin/orchestrations/${orchestrationId}`, {
         method: 'PUT',
         body: JSON.stringify(payload),
     });

@@ -9,7 +9,6 @@ use App\Services\Clients\ClientPermissionGatekeeper;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Database\Eloquent\Model;
-use Spatie\Permission\PermissionRegistrar;
 
 class CreateRole extends CreateRecord
 {

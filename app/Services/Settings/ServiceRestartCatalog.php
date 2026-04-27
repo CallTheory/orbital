@@ -40,6 +40,7 @@ final class ServiceRestartCatalog
                     $svc->writeAllDialplans();
                     $svc->writeDialplanIndex();
                     $ok = $svc->reloadAsterisk();
+
                     return [
                         'ok' => $ok,
                         'message' => $ok
@@ -55,9 +56,11 @@ final class ServiceRestartCatalog
                 'handler' => function (): array {
                     try {
                         Artisan::call('horizon:terminate');
+
                         return ['ok' => true, 'message' => 'Horizon workers signalled to restart.'];
                     } catch (\Throwable $e) {
                         Log::warning('service-restart: horizon:terminate failed', ['err' => $e->getMessage()]);
+
                         return ['ok' => false, 'message' => 'horizon:terminate failed: '.$e->getMessage()];
                     }
                 },
@@ -76,6 +79,7 @@ final class ServiceRestartCatalog
     public static function labelsFor(array $slugs): array
     {
         $handlers = self::handlers();
+
         return array_values(array_map(
             fn (string $slug) => $handlers[$slug]['label'],
             array_filter($slugs, fn (string $slug) => isset($handlers[$slug])),

@@ -37,8 +37,7 @@ final class CompiledFlow
         public readonly array $operatorView,
         public readonly ?int $flowId,
         public readonly string $resolutionSource,
-    ) {
-    }
+    ) {}
 
     /**
      * @return array<string, mixed>

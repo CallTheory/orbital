@@ -232,6 +232,7 @@ class TelephonySettings extends Page implements HasForms
                 ->success()
                 ->title('Telephony settings saved')
                 ->send();
+
             return;
         }
 

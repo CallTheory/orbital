@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace App\Filament\Resources\ClientResource\Pages;
 
+use App\Filament\Resources\AllUsersResource;
 use App\Filament\Resources\ClientResource;
 use App\Mail\ClientInvitationMail;
-use App\Models\Team;
 use App\Models\ClientInvitation;
+use App\Models\Team;
 use App\Models\User;
+use App\Services\Clients\ClientProvisioner;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
@@ -93,7 +95,7 @@ class ManageClientUsers extends ManageRelatedRecords
             // so the operator has full account controls (password reset,
             // 2FA, verification) without duplicating UI here. Client-
             // specific removal lives in the bulk actions below.
-            ->recordUrl(fn (User $record): string => \App\Filament\Resources\AllUsersResource::getUrl('edit', ['record' => $record]))
+            ->recordUrl(fn (User $record): string => AllUsersResource::getUrl('edit', ['record' => $record]))
             ->headerActions([
                 Actions\Action::make('attach_existing')
                     ->label('Add existing user')
@@ -119,6 +121,7 @@ class ManageClientUsers extends ManageRelatedRecords
                                 ->all())
                             ->getOptionLabelUsing(function ($value) {
                                 $u = User::find($value);
+
                                 return $u ? "{$u->name} ({$u->email})" : (string) $value;
                             })
                             ->helperText('Only users not already attached to this client are listed.'),
@@ -177,6 +180,7 @@ class ManageClientUsers extends ManageRelatedRecords
                                     ->body(implode("\n", $blocked))
                                     ->persistent()
                                     ->send();
+
                                 return;
                             }
                             foreach ($records as $user) {
@@ -209,6 +213,7 @@ class ManageClientUsers extends ManageRelatedRecords
                                     ->body(implode("\n", $blocked))
                                     ->persistent()
                                     ->send();
+
                                 return;
                             }
                             $count = $records->count();
@@ -278,8 +283,8 @@ class ManageClientUsers extends ManageRelatedRecords
         ]);
 
         $spatieRoles = $role === 'admin'
-            ? [\App\Services\Clients\ClientProvisioner::ROLE_CLIENT_ADMIN, \App\Services\Clients\ClientProvisioner::ROLE_CLIENT_USER]
-            : [\App\Services\Clients\ClientProvisioner::ROLE_CLIENT_USER];
+            ? [ClientProvisioner::ROLE_CLIENT_ADMIN, ClientProvisioner::ROLE_CLIENT_USER]
+            : [ClientProvisioner::ROLE_CLIENT_USER];
 
         $registrar = app(PermissionRegistrar::class);
         $previous = $registrar->getPermissionsTeamId();
@@ -322,6 +327,7 @@ class ManageClientUsers extends ManageRelatedRecords
                 ->warning()
                 ->title("{$email} is already a member of this client.")
                 ->send();
+
             return;
         }
 

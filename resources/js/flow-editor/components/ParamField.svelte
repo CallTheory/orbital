@@ -43,6 +43,7 @@
         agentPersonas = [],
         dids = [],
         flows = [],
+        isShared = false,
     }: {
         field: FieldDescriptor;
         params: Record<string, unknown>;
@@ -54,7 +55,31 @@
         agentPersonas?: AgentPersonaDTO[];
         dids?: DidDTO[];
         flows?: FlowDTO[];
+        isShared?: boolean;
     } = $props();
+
+    // Picker types whose values resolve through orchestration_bindings
+    // — those need a binding-key input on shared orchestrations
+    // instead of a concrete resource picker.
+    const PICKER_TYPES = new Set([
+        'agent_persona_picker',
+        'call_queue_picker',
+        'email_queue_picker',
+        'extension_picker',
+        'did_picker',
+        'knowledge_store_list',
+    ]);
+
+    const RESOURCE_TYPE_LABEL: Record<string, string> = {
+        agent_persona_picker: 'agent persona',
+        call_queue_picker: 'call queue',
+        email_queue_picker: 'email queue',
+        extension_picker: 'extension',
+        did_picker: 'DIDs',
+        knowledge_store_list: 'knowledge stores',
+    };
+
+    const showBindingHandle = $derived(isShared && PICKER_TYPES.has(field.type ?? ''));
 
     // Action group flows (kind === 'action_group') — surfaced to the
     // `action_group_picker` field type. Derived so the picker updates
@@ -95,7 +120,23 @@
         {label}{#if field.required}<span style="color: #fca5a5; margin-left: 0.25rem;">*</span>{/if}
     </span>
 
-    {#if type === 'textarea'}
+    {#if showBindingHandle}
+        <!-- Shared orchestration: pickers become binding-key inputs.
+             The author types a stable handle (e.g. "primary_agent");
+             each assigning client supplies their own concrete resource
+             via the queue's bindings panel. -->
+        <input
+            type="text"
+            value={asString(params[field.key])}
+            oninput={(e) => update((e.currentTarget as HTMLInputElement).value)}
+            placeholder={`binding key — ${RESOURCE_TYPE_LABEL[type] ?? 'resource'}`}
+            pattern="^[a-z][a-z0-9_]*$"
+            style="background: var(--oflow-bg); color: var(--oflow-text); border: 1px solid var(--oflow-border); border-radius: 0.25rem; padding: 0.375rem 0.5rem; font-size: 0.75rem; font-family: var(--oflow-mono, monospace);"
+        />
+        <span style="color: var(--oflow-muted); font-size: 0.6875rem;">
+            Handle for a {RESOURCE_TYPE_LABEL[type] ?? 'resource'}. Each client maps this to one of their own when they assign this orchestration to a queue.
+        </span>
+    {:else if type === 'textarea'}
         <textarea
             rows="3"
             value={asString(params[field.key])}

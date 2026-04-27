@@ -8,6 +8,7 @@ use App\Models\Concerns\BelongsToTeam;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -63,7 +64,7 @@ class Extension extends Model
      * Agent group memberships — polymorphic. A hardware extension can be
      * a member of one or more platform agent groups.
      */
-    public function agentGroupMemberships(): \Illuminate\Database\Eloquent\Relations\MorphMany
+    public function agentGroupMemberships(): MorphMany
     {
         return $this->morphMany(AgentGroupMember::class, 'member');
     }

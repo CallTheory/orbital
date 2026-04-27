@@ -59,7 +59,7 @@ class IntakeFlow extends Model
 
     protected $fillable = [
         'team_id',
-        'flow_graph_id',
+        'orchestration_id',
         'name',
         'description',
         'trigger_type',
@@ -81,12 +81,13 @@ class IntakeFlow extends Model
     }
 
     /**
-     * Parent flow graph — the named bundle this flow lives inside.
-     * Every intake_flow belongs to exactly one graph (NOT NULL FK).
+     * Parent orchestration — the named bundle this flow lives
+     * inside. Every intake_flow belongs to exactly one orchestration
+     * (NOT NULL FK).
      */
-    public function flowGraph(): BelongsTo
+    public function orchestration(): BelongsTo
     {
-        return $this->belongsTo(FlowGraph::class);
+        return $this->belongsTo(Orchestration::class);
     }
 
     /**

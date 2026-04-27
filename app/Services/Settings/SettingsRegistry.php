@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Settings;
 
+use Filament\Support\Colors\Color;
+
 /**
  * Single source of truth for every DB-backed runtime setting in the panel.
  *
@@ -938,7 +940,7 @@ final class SettingsRegistry
     /**
      * Shared option map for the three "primary color" selects (admin,
      * operator, portal). Every value matches a public constant on
-     * {@see \Filament\Support\Colors\Color} so the Branding helper
+     * {@see Color} so the Branding helper
      * can resolve it dynamically with `constant(...)`. Grayscales
      * are intentionally omitted — these are accent colors.
      *

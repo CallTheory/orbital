@@ -99,6 +99,7 @@ class IcecastProxy
                 'target' => $target,
                 'error' => $e->getMessage(),
             ]);
+
             return response()->json(
                 ['error' => 'icecast_upstream_unreachable', 'message' => $e->getMessage()],
                 502,
@@ -310,6 +311,7 @@ class IcecastProxy
         if ($slash === false) {
             return '';
         }
+
         return substr($upstreamPath, 0, $slash + 1);
     }
 }

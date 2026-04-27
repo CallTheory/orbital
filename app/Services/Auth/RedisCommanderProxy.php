@@ -58,6 +58,7 @@ class RedisCommanderProxy
                 'target' => $target,
                 'error' => $e->getMessage(),
             ]);
+
             return response()->json(
                 ['error' => 'redis_commander_upstream_unreachable', 'message' => $e->getMessage()],
                 502,

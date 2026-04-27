@@ -7,6 +7,9 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\IntakeGoalResource\Pages;
 use App\Models\IntakeGoal;
 use BackedEnum;
+use Filament\Actions\BulkActionGroup;
+use Filament\Actions\DeleteBulkAction;
+use Filament\Actions\EditAction;
 use Filament\Forms;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
@@ -278,11 +281,11 @@ class IntakeGoalResource extends Resource
             ])
             ->defaultSort('key')
             ->actions([
-                \Filament\Actions\EditAction::make(),
+                EditAction::make(),
             ])
             ->bulkActions([
-                \Filament\Actions\BulkActionGroup::make([
-                    \Filament\Actions\DeleteBulkAction::make(),
+                BulkActionGroup::make([
+                    DeleteBulkAction::make(),
                 ]),
             ]);
     }

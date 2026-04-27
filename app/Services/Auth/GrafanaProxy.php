@@ -107,6 +107,7 @@ class GrafanaProxy
                 'target' => $target,
                 'error' => $e->getMessage(),
             ]);
+
             return response()->json(
                 ['error' => 'grafana_upstream_unreachable', 'message' => $e->getMessage()],
                 502,

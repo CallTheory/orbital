@@ -7,6 +7,8 @@ namespace App\Http\Controllers\Mail;
 use App\Http\Controllers\Controller;
 use App\Models\EmailAttachment;
 use App\Models\EmailMessage;
+use App\Models\Team;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Storage;
@@ -89,7 +91,7 @@ class AttachmentDownloadController extends Controller
      * Abort with 403 unless the user has access to the client
      * that owns this attachment.
      */
-    private function authorizeAccess(\App\Models\User $user, EmailAttachment $attachment): void
+    private function authorizeAccess(User $user, EmailAttachment $attachment): void
     {
         if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
             return;
@@ -108,7 +110,7 @@ class AttachmentDownloadController extends Controller
         // message relation to avoid an N+1 on repeat downloads.
         $ownerTeamId = $attachment->message?->team_id;
         abort_unless($ownerTeamId !== null, 403);
-        $team = \App\Models\Team::find($ownerTeamId);
+        $team = Team::find($ownerTeamId);
         abort_unless($team && $user->belongsToTeam($team), 403);
     }
 }

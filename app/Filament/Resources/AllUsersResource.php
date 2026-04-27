@@ -5,15 +5,21 @@ declare(strict_types=1);
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\AllUsersResource\Pages;
+use App\Models\Team;
 use App\Models\User;
 use BackedEnum;
+use Filament\Actions\BulkActionGroup;
+use Filament\Actions\DeleteBulkAction;
 use Filament\Forms;
-use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Grid;
+use Filament\Schemas\Components\Group;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\HtmlString;
 use UnitEnum;
 
 /**
@@ -120,11 +126,11 @@ class AllUsersResource extends Resource
             // is load-bearing here — without it, the Grid renders
             // inside a single column unit of the form's outer schema
             // and ends up pinned to ~50% of the page width.
-            \Filament\Schemas\Components\Grid::make(3)
+            Grid::make(3)
                 ->columnSpanFull()
                 ->schema([
-                    \Filament\Schemas\Components\Group::make([
-                        \Filament\Schemas\Components\Section::make('Account')
+                    Group::make([
+                        Section::make('Account')
                             ->schema([
                                 // Password is intentionally NOT editable here.
                                 // Changing a password always goes through the
@@ -142,7 +148,7 @@ class AllUsersResource extends Resource
                             ])
                             ->columns(2),
 
-                        \Filament\Schemas\Components\Section::make('Audit')
+                        Section::make('Audit')
                             ->schema([
                                 // Disabled TextInputs instead of Placeholders
                                 // so the read-only metadata sits visually
@@ -176,7 +182,7 @@ class AllUsersResource extends Resource
                     ])
                         ->columnSpan(2),
 
-                    \Filament\Schemas\Components\Section::make('Client memberships')
+                    Section::make('Client memberships')
                         ->description('Clients this user is attached to.')
                         ->schema([
                             Forms\Components\Placeholder::make('clients')
@@ -186,7 +192,7 @@ class AllUsersResource extends Resource
                                     // keeps the list to actual customer
                                     // clients only, not Platform / per-user
                                     // personal teams.
-                                    $clients = \App\Models\Team::query()
+                                    $clients = Team::query()
                                         ->where('personal_team', false)
                                         ->whereIn('id', \DB::table('team_user')
                                             ->where('user_id', $record->id)
@@ -195,7 +201,7 @@ class AllUsersResource extends Resource
                                         ->get(['id', 'name', 'account_number']);
 
                                     if ($clients->isEmpty()) {
-                                        return new \Illuminate\Support\HtmlString(
+                                        return new HtmlString(
                                             '<span class="text-sm text-gray-500 dark:text-gray-400">Not attached to any client.</span>'
                                         );
                                     }
@@ -205,7 +211,8 @@ class AllUsersResource extends Resource
                                         $acct = $t->account_number
                                             ? ' <span class="text-gray-500 dark:text-gray-400">· #'.e($t->account_number).'</span>'
                                             : '';
-                                        $url = \App\Filament\Resources\ClientResource::getUrl('users', ['record' => $t->id]);
+                                        $url = ClientResource::getUrl('users', ['record' => $t->id]);
+
                                         // Inline `display: list-item` + the
                                         // margin on the <ul> bypass Filament's
                                         // global list reset, which neuters
@@ -213,7 +220,7 @@ class AllUsersResource extends Resource
                                         return '<li style="display: list-item; list-style-type: disc;"><a href="'.$url.'" class="text-primary-600 hover:underline dark:text-primary-400">'.$name.'</a>'.$acct.'</li>';
                                     })->implode('');
 
-                                    return new \Illuminate\Support\HtmlString(
+                                    return new HtmlString(
                                         '<ul style="list-style: disc; padding-left: 1.25rem;" class="space-y-4 text-sm">'.$rows.'</ul>'
                                     );
                                 }),
@@ -287,8 +294,8 @@ class AllUsersResource extends Resource
             // the obvious thing.
             ->recordUrl(fn (User $record): string => static::getUrl('edit', ['record' => $record]))
             ->bulkActions([
-                \Filament\Actions\BulkActionGroup::make([
-                    \Filament\Actions\DeleteBulkAction::make(),
+                BulkActionGroup::make([
+                    DeleteBulkAction::make(),
                 ]),
             ])
             ->defaultSort('created_at', 'desc');

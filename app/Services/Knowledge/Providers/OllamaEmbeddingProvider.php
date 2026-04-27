@@ -35,9 +35,7 @@ class OllamaEmbeddingProvider implements EmbeddingProvider
         'all-minilm' => 384,
     ];
 
-    public function __construct(private string $model = 'nomic-embed-text')
-    {
-    }
+    public function __construct(private string $model = 'nomic-embed-text') {}
 
     public function embed(string $text): array
     {
@@ -59,6 +57,7 @@ class OllamaEmbeddingProvider implements EmbeddingProvider
         }
 
         $body = $response->json();
+
         return array_map('floatval', $body['embedding'] ?? []);
     }
 

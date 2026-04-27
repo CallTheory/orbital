@@ -136,6 +136,7 @@ SVG;
     private function backgroundFor(string $name): string
     {
         $index = crc32(mb_strtolower($name)) % count(self::PALETTE);
+
         return self::PALETTE[$index];
     }
 }

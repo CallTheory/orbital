@@ -27,13 +27,12 @@ class OpenAIEmbeddingProvider implements EmbeddingProvider
         'text-embedding-ada-002' => 1536,
     ];
 
-    public function __construct(private string $model = 'text-embedding-3-small')
-    {
-    }
+    public function __construct(private string $model = 'text-embedding-3-small') {}
 
     public function embed(string $text): array
     {
         $result = $this->embedBatch([$text]);
+
         return $result[0] ?? [];
     }
 

@@ -6,6 +6,7 @@ namespace App\Filament\Portal\Pages;
 
 use App\Models\CallLog;
 use BackedEnum;
+use Filament\Actions\Action;
 use Filament\Pages\Page;
 use Filament\Tables;
 use Filament\Tables\Concerns\InteractsWithTable;
@@ -85,7 +86,7 @@ class CallHistory extends Page implements HasTable
             ->defaultSort('started_at', 'desc')
             ->defaultPaginationPageOption(25)
             ->actions([
-                \Filament\Actions\Action::make('play')
+                Action::make('play')
                     ->label('Play')
                     ->icon('heroicon-o-play-circle')
                     ->color('primary')

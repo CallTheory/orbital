@@ -93,6 +93,7 @@ class PortalBranding extends Page implements HasForms
                 ->title('Portal branding saved')
                 ->success()
                 ->send();
+
             return;
         }
 

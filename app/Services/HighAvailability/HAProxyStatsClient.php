@@ -45,6 +45,7 @@ class HAProxyStatsClient
                 $csv = Http::timeout($this->timeout)
                     ->get("http://{$host}:{$this->port}/stats;csv")
                     ->body();
+
                 return $this->parseCsv($csv, $host);
             } catch (\Throwable $e) {
                 Log::warning('haproxy.stats: {host} unreachable', [
@@ -53,6 +54,7 @@ class HAProxyStatsClient
                 ]);
             }
         }
+
         return [];
     }
 
@@ -113,6 +115,7 @@ class HAProxyStatsClient
                 ]);
             }
         }
+
         return [$allOk, "{$action} {$backend}/{$server} — ".implode('; ', $results)];
     }
 
@@ -133,6 +136,7 @@ class HAProxyStatsClient
             }
             if (str_starts_with($line, '# ')) {
                 $header = str_getcsv(substr($line, 2), ',', '"', '\\');
+
                 continue;
             }
             if ($header === null) {
@@ -161,6 +165,7 @@ class HAProxyStatsClient
                 'addr' => $row['addr'] ?? '',
             ];
         }
+
         return $rows;
     }
 }

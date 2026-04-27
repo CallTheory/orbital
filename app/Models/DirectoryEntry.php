@@ -27,6 +27,7 @@ class DirectoryEntry extends Model
     use SoftDeletes;
 
     public const SHARED_PARENT_COLUMN = 'shared_directory_id';
+
     public const TEAM_SHARED_PIVOT_TABLE = 'team_shared_directory';
 
     protected $fillable = [
@@ -58,6 +59,7 @@ class DirectoryEntry extends Model
     public function value(string $key, mixed $default = null): mixed
     {
         $values = $this->values ?? [];
+
         return $values[$key] ?? $default;
     }
 
@@ -100,6 +102,7 @@ class DirectoryEntry extends Model
         }
 
         $raw = $this->value($definition->key);
+
         return $raw === null || $raw === '' ? null : (string) $raw;
     }
 
@@ -117,10 +120,10 @@ class DirectoryEntry extends Model
 
         if ($this->shared_directory_id !== null) {
             $query->where('shared_directory_id', $this->shared_directory_id)
-                  ->whereNull('team_id');
+                ->whereNull('team_id');
         } else {
             $query->where('team_id', $this->team_id)
-                  ->whereNull('shared_directory_id');
+                ->whereNull('shared_directory_id');
         }
 
         $this->resolvedRoleFields[$role] = $query->first();

@@ -7,8 +7,8 @@ namespace App\Filament\Resources\UsersResource\Pages;
 use App\Filament\Resources\UsersResource;
 use App\Models\Team;
 use App\Models\User;
-use App\Services\Telephony\PlatformExtensionAllocator;
 use App\Services\Clients\ClientProvisioner;
+use App\Services\Telephony\PlatformExtensionAllocator;
 use Filament\Actions;
 use Filament\Forms;
 use Filament\Notifications\Notification;
@@ -127,6 +127,7 @@ class EditUser extends EditRecord
                             $currentIds = \DB::table('team_user')
                                 ->where('user_id', $record->id)
                                 ->pluck('team_id');
+
                             return Team::query()
                                 ->where('personal_team', false)
                                 ->whereNotIn('id', $currentIds)
@@ -196,6 +197,7 @@ class EditUser extends EditRecord
     protected function mutateFormDataBeforeFill(array $data): array
     {
         $data['role'] = UsersResource::platformRoleFor($this->record);
+
         return $data;
     }
 

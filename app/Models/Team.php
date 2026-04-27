@@ -93,14 +93,9 @@ class Team extends JetstreamTeam
         return $this->hasMany(IntakeFlow::class);
     }
 
-    public function flowGraphs(): HasMany
+    public function orchestrations(): HasMany
     {
-        return $this->hasMany(FlowGraph::class);
-    }
-
-    public function channelAssignments(): HasMany
-    {
-        return $this->hasMany(ClientChannelAssignment::class);
+        return $this->hasMany(Orchestration::class);
     }
 
     public function knowledgeStores(): HasMany

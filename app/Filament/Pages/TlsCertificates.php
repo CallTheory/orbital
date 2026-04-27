@@ -7,6 +7,7 @@ namespace App\Filament\Pages;
 use App\Services\CertificateService;
 use BackedEnum;
 use Filament\Actions\Action;
+use Filament\Forms\Components\Toggle;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use UnitEnum;
@@ -55,6 +56,7 @@ class TlsCertificates extends Page
         if (! config('tls.enabled')) {
             return false;
         }
+
         return auth()->user()?->isSuperAdmin() ?? false;
     }
 
@@ -104,7 +106,7 @@ class TlsCertificates extends Page
                     .(config('tls.dns_provider') ?: '(no provider configured)')
                     .' DNS provider. Uses the staging server by default — check "Production" to issue a real cert.')
                 ->schema([
-                    \Filament\Forms\Components\Toggle::make('production')
+                    Toggle::make('production')
                         ->label('Production (real cert)')
                         ->default(false)
                         ->helperText('Off = Let\'s Encrypt staging (for testing, browsers show warnings). On = production cert (rate-limited, trusted by browsers).'),

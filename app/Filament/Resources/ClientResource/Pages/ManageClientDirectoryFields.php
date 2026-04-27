@@ -12,7 +12,9 @@ use Filament\Actions;
 use Filament\Forms;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ManageRelatedRecords;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
+use Filament\Support\Exceptions\Halt;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Support\Str;
@@ -42,7 +44,7 @@ class ManageClientDirectoryFields extends ManageRelatedRecords
     {
         return $schema
             ->schema([
-                \Filament\Schemas\Components\Section::make('Field')
+                Section::make('Field')
                     ->columns(2)
                     ->schema([
                         Forms\Components\TextInput::make('label')
@@ -84,7 +86,7 @@ class ManageClientDirectoryFields extends ManageRelatedRecords
                             ->helperText('Pick a semantic role so call-time features can find this field by purpose, not by slug.'),
                     ]),
 
-                \Filament\Schemas\Components\Section::make('Options')
+                Section::make('Options')
                     ->visible(fn (Forms\Get $get): bool => in_array($get('type'), ['select', 'multi_select'], true))
                     ->schema([
                         Forms\Components\Repeater::make('options')
@@ -97,7 +99,7 @@ class ManageClientDirectoryFields extends ManageRelatedRecords
                             ->helperText('One value per row. Saved as a flat array.'),
                     ]),
 
-                \Filament\Schemas\Components\Section::make('Display')
+                Section::make('Display')
                     ->columns(2)
                     ->schema([
                         Forms\Components\TextInput::make('placeholder')->maxLength(255),
@@ -137,6 +139,7 @@ class ManageClientDirectoryFields extends ManageRelatedRecords
                         $team = $this->getOwnerRecord();
                         $this->guardUniqueRole($team, $data['role'] ?? 'none', null);
                         $data = $this->coerceOptions($data);
+
                         return DirectoryFieldDefinition::create([...$data, 'team_id' => $team->id]);
                     }),
             ])
@@ -148,6 +151,7 @@ class ManageClientDirectoryFields extends ManageRelatedRecords
                         $this->guardUniqueRole($team, $data['role'] ?? 'none', $record->id);
                         $data = $this->coerceOptions($data);
                         $record->update($data);
+
                         return $record;
                     }),
                 Actions\DeleteAction::make(),
@@ -179,7 +183,7 @@ class ManageClientDirectoryFields extends ManageRelatedRecords
                 ->persistent()
                 ->send();
 
-            throw \Filament\Support\Exceptions\Halt::halt();
+            throw Halt::halt();
         }
     }
 
@@ -191,6 +195,7 @@ class ManageClientDirectoryFields extends ManageRelatedRecords
     {
         if (! in_array($data['type'] ?? null, ['select', 'multi_select'], true)) {
             $data['options'] = null;
+
             return $data;
         }
 
@@ -208,6 +213,7 @@ class ManageClientDirectoryFields extends ManageRelatedRecords
             }
         }
         $data['options'] = array_values(array_filter($flat, fn ($v) => $v !== ''));
+
         return $data;
     }
 }

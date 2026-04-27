@@ -86,6 +86,7 @@ class ProvidersSettings extends Page implements HasForms
                 ->title('Provider credentials saved')
                 ->success()
                 ->send();
+
             return;
         }
 

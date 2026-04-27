@@ -104,6 +104,7 @@ class AsteriskBootstrapper implements Bootstrapper
             return false;
         }
         fclose($sock);
+
         return true;
     }
 }

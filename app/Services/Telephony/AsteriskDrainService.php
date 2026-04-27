@@ -9,6 +9,7 @@ use App\Models\Extension;
 use App\Models\User;
 use App\Services\HighAvailability\HAProxyStatsClient;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Coordinates drain across Kamailio dispatcher (inbound SIP trunks)
@@ -51,7 +52,7 @@ class AsteriskDrainService
      */
     public function drain(string $backend): array
     {
-        \Illuminate\Support\Facades\Log::info('asterisk-drain: drain() called', [
+        Log::info('asterisk-drain: drain() called', [
             'backend' => $backend,
         ]);
 
@@ -61,7 +62,7 @@ class AsteriskDrainService
             'drain',
         );
 
-        [$haproxyOk, ] = $this->haproxy->disableServer(
+        [$haproxyOk] = $this->haproxy->disableServer(
             self::HAPROXY_WSS_BACKEND,
             $backend,
         );
@@ -82,7 +83,7 @@ class AsteriskDrainService
             ->values()
             ->all();
 
-        \Illuminate\Support\Facades\Log::info('asterisk-drain: affected endpoints lookup', [
+        Log::info('asterisk-drain: affected endpoints lookup', [
             'backend' => $backend,
             'affected_endpoints' => $affectedEndpoints,
             'count' => count($affectedEndpoints),
@@ -108,7 +109,7 @@ class AsteriskDrainService
             'active',
         );
 
-        [$haproxyOk, ] = $this->haproxy->enableServer(
+        [$haproxyOk] = $this->haproxy->enableServer(
             self::HAPROXY_WSS_BACKEND,
             $backend,
         );
@@ -135,7 +136,7 @@ class AsteriskDrainService
             ->unique()
             ->values();
 
-        \Illuminate\Support\Facades\Log::info('asterisk-drain: notifying affected users', [
+        Log::info('asterisk-drain: notifying affected users', [
             'backend' => $backend,
             'affected_endpoints' => $affectedEndpoints,
             'user_ids' => $userIds->all(),
@@ -162,7 +163,7 @@ class AsteriskDrainService
             'disable',
         );
 
-        [$haproxyOk, ] = $this->haproxy->disableServer(
+        [$haproxyOk] = $this->haproxy->disableServer(
             self::HAPROXY_WSS_BACKEND,
             $backend,
         );

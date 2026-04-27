@@ -10,6 +10,10 @@ use App\Jobs\ReindexKnowledgeStoreJob;
 use App\Models\KnowledgeStore;
 use App\Services\Knowledge\EmbeddingService;
 use BackedEnum;
+use Filament\Actions\Action;
+use Filament\Actions\BulkActionGroup;
+use Filament\Actions\DeleteBulkAction;
+use Filament\Actions\EditAction;
 use Filament\Forms;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
@@ -165,7 +169,7 @@ class KnowledgeStoreResource extends Resource
                     ->relationship('team', 'name', fn ($query) => $query->where('personal_team', false)),
             ])
             ->actions([
-                \Filament\Actions\Action::make('ingest')
+                Action::make('ingest')
                     ->label('Ingest')
                     ->icon('heroicon-o-arrow-up-tray')
                     ->color('success')
@@ -224,7 +228,7 @@ class KnowledgeStoreResource extends Resource
                             ->success()
                             ->send();
                     }),
-                \Filament\Actions\Action::make('reindex')
+                Action::make('reindex')
                     ->label('Reindex')
                     ->icon('heroicon-o-arrow-path')
                     ->color('warning')
@@ -241,11 +245,11 @@ class KnowledgeStoreResource extends Resource
                             ->success()
                             ->send();
                     }),
-                \Filament\Actions\EditAction::make(),
+                EditAction::make(),
             ])
             ->bulkActions([
-                \Filament\Actions\BulkActionGroup::make([
-                    \Filament\Actions\DeleteBulkAction::make(),
+                BulkActionGroup::make([
+                    DeleteBulkAction::make(),
                 ]),
             ]);
     }

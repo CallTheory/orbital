@@ -38,8 +38,7 @@ final class CallRecordingPolicy
         // the call continues.
         public readonly ?string $disclosurePromptPath,
         public readonly string $source,
-    ) {
-    }
+    ) {}
 
     public function toArray(): array
     {

@@ -52,6 +52,7 @@ class PrometheusProxy
                 'target' => $target,
                 'error' => $e->getMessage(),
             ]);
+
             return response()->json(
                 ['error' => 'prometheus_upstream_unreachable', 'message' => $e->getMessage()],
                 502,
@@ -100,6 +101,7 @@ class PrometheusProxy
                     if (str_starts_with($url, '/') && ! str_starts_with($url, $prefix)) {
                         return $prefix.$url;
                     }
+
                     return $url;
                 }, $values);
             }

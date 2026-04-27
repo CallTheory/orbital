@@ -62,6 +62,7 @@ class SentinelClient
                 ]);
             }
         }
+
         return null;
     }
 
@@ -79,6 +80,7 @@ class SentinelClient
             try {
                 $c = $this->connect($host);
                 $result = $c->executeRaw(['SENTINEL', 'failover', $this->masterName]);
+
                 return [$result === 'OK', (string) $result];
             } catch (\Throwable $e) {
                 Log::warning('sentinel.failover: {host} unreachable', [
@@ -87,6 +89,7 @@ class SentinelClient
                 ]);
             }
         }
+
         return [false, 'no sentinel reachable'];
     }
 
@@ -105,7 +108,7 @@ class SentinelClient
      * Redis's SENTINEL command returns flat [key,value,key,value,...]
      * arrays. This converts them to assoc arrays for sane access.
      *
-     * @param  list<mixed> $pairs
+     * @param  list<mixed>  $pairs
      * @return array<string, string>
      */
     protected function pairsToAssoc(array $pairs): array
@@ -115,6 +118,7 @@ class SentinelClient
         for ($i = 0; $i + 1 < $count; $i += 2) {
             $out[(string) $pairs[$i]] = (string) $pairs[$i + 1];
         }
+
         return $out;
     }
 }

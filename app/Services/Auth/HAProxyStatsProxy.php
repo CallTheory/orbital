@@ -52,6 +52,7 @@ class HAProxyStatsProxy
                 'target' => $target,
                 'error' => $e->getMessage(),
             ]);
+
             return response()->json(
                 ['error' => 'haproxy_upstream_unreachable', 'message' => $e->getMessage()],
                 502,
@@ -98,6 +99,7 @@ class HAProxyStatsProxy
                     if (str_starts_with($url, '/') && ! str_starts_with($url, $prefix)) {
                         return $prefix.$url;
                     }
+
                     return $url;
                 }, $values);
             }

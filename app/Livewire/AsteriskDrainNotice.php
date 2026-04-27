@@ -74,8 +74,8 @@ class AsteriskDrainNotice extends Component
         // multiple mounts of this component listening — two
         // identical IDs hit Filament's "update, don't stack"
         // path so the operator sees one toast per drain.
-        $drainId = 'asterisk-drain-' . (string) ($data['backend'] ?? 'unknown')
-            . '-' . (string) ($data['at'] ?? (string) time());
+        $drainId = 'asterisk-drain-'.(string) ($data['backend'] ?? 'unknown')
+            .'-'.(string) ($data['at'] ?? (string) time());
 
         $notification = Notification::make($drainId)
             ->title('Maintenance starting on your telephony server')

@@ -7,8 +7,8 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\CallLogResource\Pages;
 use App\Models\CallLog;
 use BackedEnum;
+use Filament\Actions\Action;
 use Filament\Resources\Resource;
-use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
@@ -97,7 +97,7 @@ class CallLogResource extends Resource
                     ->relationship('team', 'name', fn ($query) => $query->where('personal_team', false)),
             ])
             ->actions([
-                \Filament\Actions\Action::make('play')
+                Action::make('play')
                     ->label('Play')
                     ->icon('heroicon-o-play-circle')
                     ->color('primary')

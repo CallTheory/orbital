@@ -16,10 +16,12 @@ use Filament\Actions;
 use Filament\Forms;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ManageRelatedRecords;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Collection;
 
 /**
  * Client's own phone book. The people the client's business interacts
@@ -60,6 +62,7 @@ class ManageClientDirectory extends ManageRelatedRecords
             ->multiple()
             ->relationship('tags', 'name', function ($query) {
                 $teamId = $this->getOwnerRecord()->id;
+
                 return $query->where(function ($q) use ($teamId) {
                     $q->whereNull('team_id')->orWhere('team_id', $teamId);
                 });
@@ -138,7 +141,7 @@ class ManageClientDirectory extends ManageRelatedRecords
             ]);
     }
 
-    protected function loadDefinitions(): \Illuminate\Support\Collection
+    protected function loadDefinitions(): Collection
     {
         /** @var Team $team */
         $team = $this->getOwnerRecord();
@@ -171,7 +174,7 @@ class ManageClientDirectory extends ManageRelatedRecords
                     ->live()
                     ->helperText('Upload a .csv or .xlsx file. First row must be column headers.'),
 
-                \Filament\Schemas\Components\Section::make('Column mapping')
+                Section::make('Column mapping')
                     ->description('Match each column in your file to one of this client\'s directory fields. Leave blank to skip a column.')
                     ->visible(fn (Forms\Get $get): bool => filled($get('file')))
                     ->schema(function (Forms\Get $get): array {
@@ -207,6 +210,7 @@ class ManageClientDirectory extends ManageRelatedRecords
                                 ->default($default)
                                 ->native(false);
                         }
+
                         return $fields;
                     }),
             ])
@@ -216,6 +220,7 @@ class ManageClientDirectory extends ManageRelatedRecords
                 $path = $this->resolveUploadPath($data['file'] ?? null);
                 if ($path === null) {
                     Notification::make()->title('No file to import')->danger()->send();
+
                     return;
                 }
 
@@ -265,6 +270,7 @@ class ManageClientDirectory extends ManageRelatedRecords
         if (is_string($file) && is_file($file)) {
             return $file;
         }
+
         return null;
     }
 }

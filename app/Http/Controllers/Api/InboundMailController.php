@@ -119,6 +119,7 @@ class InboundMailController extends Controller
                 ->where('account_number', $parts['account_number'])
                 ->where('personal_team', false)
                 ->first();
+
             return $team
                 ? ['ok' => true, 'team_id' => $team->id]
                 : ['ok' => false, 'team_id' => null];

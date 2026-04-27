@@ -71,12 +71,12 @@ trait BelongsToTeamOrSharedPool
 
             $builder->where(function (Builder $q) use ($table, $currentTeam, $sharedCol, $pivot) {
                 $q->where("{$table}.team_id", $currentTeam->id)
-                  ->orWhereIn("{$table}.{$sharedCol}", function ($sub) use ($currentTeam, $sharedCol, $pivot) {
-                      $sub->select($sharedCol)
-                          ->from($pivot)
-                          ->where('team_id', $currentTeam->id)
-                          ->where('is_active', true);
-                  });
+                    ->orWhereIn("{$table}.{$sharedCol}", function ($sub) use ($currentTeam, $sharedCol, $pivot) {
+                        $sub->select($sharedCol)
+                            ->from($pivot)
+                            ->where('team_id', $currentTeam->id)
+                            ->where('is_active', true);
+                    });
             });
         });
 

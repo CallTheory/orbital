@@ -52,6 +52,7 @@ class PgAdminProxy
                 'target' => $target,
                 'error' => $e->getMessage(),
             ]);
+
             return response()->json(
                 ['error' => 'pgadmin_upstream_unreachable', 'message' => $e->getMessage()],
                 502,

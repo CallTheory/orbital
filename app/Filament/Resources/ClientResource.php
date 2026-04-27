@@ -7,6 +7,7 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\ClientResource\Pages;
 use App\Models\Team;
 use App\Services\Clients\ClientPermissionGatekeeper;
+use App\Services\Voicemail\VoicemailTranscriber;
 use BackedEnum;
 use Database\Seeders\PermissionCatalogSeeder;
 use Filament\Actions\BulkActionGroup;
@@ -15,8 +16,10 @@ use Filament\Actions\EditAction;
 use Filament\Forms;
 use Filament\Resources\Pages\Page;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Tabs;
 use Filament\Schemas\Components\Tabs\Tab;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -217,7 +220,7 @@ class ClientResource extends Resource
                                     ->content('Configure how voicemails left in this client\'s mailbox get transcribed before they are emailed out. Audio is always attached; transcripts are inline in the email body when a provider is selected.')
                                     ->columnSpanFull(),
 
-                                \Filament\Schemas\Components\Section::make('Greeting')
+                                Section::make('Greeting')
                                     ->description('What callers hear before the beep.')
                                     ->schema([
                                         Forms\Components\Select::make('voicemail_greeting_mode')
@@ -235,7 +238,7 @@ class ClientResource extends Resource
                                             ->maxLength(1000)
                                             ->placeholder('Hi — you\'ve reached Acme Co. We can\'t take your call right now. Please leave your name, number, and a brief message after the beep.')
                                             ->helperText('Gets TTS-rendered into a WAV the Asterisk dialplan plays before the caller records. Re-rendered automatically on save.')
-                                            ->visible(fn (\Filament\Schemas\Components\Utilities\Get $get) => $get('voicemail_greeting_mode') === 'custom_tts'),
+                                            ->visible(fn (Get $get) => $get('voicemail_greeting_mode') === 'custom_tts'),
                                         Forms\Components\Select::make('voicemail_greeting_voice_provider')
                                             ->label('Voice provider')
                                             ->options([
@@ -244,101 +247,101 @@ class ClientResource extends Resource
                                             ])
                                             ->default('openai')
                                             ->native(false)
-                                            ->visible(fn (\Filament\Schemas\Components\Utilities\Get $get) => $get('voicemail_greeting_mode') === 'custom_tts'),
+                                            ->visible(fn (Get $get) => $get('voicemail_greeting_mode') === 'custom_tts'),
                                         Forms\Components\TextInput::make('voicemail_greeting_voice_id')
                                             ->label('Voice')
                                             ->helperText('OpenAI voices: alloy, echo, fable, onyx, nova, shimmer. ElevenLabs: paste a voice ID from your library.')
                                             ->placeholder('alloy')
-                                            ->visible(fn (\Filament\Schemas\Components\Utilities\Get $get) => $get('voicemail_greeting_mode') === 'custom_tts'),
+                                            ->visible(fn (Get $get) => $get('voicemail_greeting_mode') === 'custom_tts'),
                                     ]),
 
-                                \Filament\Schemas\Components\Section::make('Transcription')
+                                Section::make('Transcription')
                                     ->description('Convert the recorded audio to text in the notification email.')
                                     ->schema([
-                                Forms\Components\Select::make('voicemail_transcription_provider')
-                                    ->label('Transcription provider')
-                                    ->options(\App\Services\Voicemail\VoicemailTranscriber::PROVIDERS)
-                                    ->default('none')
-                                    ->live()
-                                    ->native(false)
-                                    ->helperText('Pick "Whisper (local)" if you want to stay off the public internet; pick a cloud provider for higher accuracy or multilingual support.'),
-                                // Cloud provider API key — shown for any
-                                // provider that isn't "none" or the
-                                // local whisper.cpp server.
-                                Forms\Components\TextInput::make('voicemail_transcription_config.api_key')
-                                    ->label('API key')
-                                    ->password()
-                                    ->revealable()
-                                    ->helperText('Stored encrypted. Rotate by replacing the value here.')
-                                    ->visible(fn (\Filament\Schemas\Components\Utilities\Get $get) => in_array(
-                                        $get('voicemail_transcription_provider'),
-                                        ['openai_whisper', 'deepgram', 'elevenlabs'],
-                                        true,
-                                    )),
-                                Forms\Components\TextInput::make('voicemail_transcription_config.model')
-                                    ->label('Model')
-                                    ->helperText('Optional — defaults to whisper-1 (OpenAI) or nova-2 (Deepgram).')
-                                    ->visible(fn (\Filament\Schemas\Components\Utilities\Get $get) => in_array(
-                                        $get('voicemail_transcription_provider'),
-                                        ['openai_whisper', 'deepgram'],
-                                        true,
-                                    )),
-                                Forms\Components\TextInput::make('voicemail_transcription_config.model_id')
-                                    ->label('Model ID')
-                                    ->helperText('Optional — defaults to scribe_v1.')
-                                    ->visible(fn (\Filament\Schemas\Components\Utilities\Get $get) => $get('voicemail_transcription_provider') === 'elevenlabs'),
-                                // Whisper (local) — pick one of the ggml
-                                // models baked into the whisper-local
-                                // image. The list here must stay in sync
-                                // with the WHISPER_MODELS compose build
-                                // arg; models not bundled will return a
-                                // clear HTTP 400 from the service with
-                                // the available set listed.
-                                Forms\Components\Select::make('voicemail_transcription_config.model')
-                                    ->label('Whisper model')
-                                    ->options([
-                                        'tiny.en' => 'tiny.en — English-only, fastest (~75MB)',
-                                        'tiny' => 'tiny — multilingual, fastest (~75MB)',
-                                        'base.en' => 'base.en — English-only, balanced (~142MB)',
-                                        'base' => 'base — multilingual, balanced (~142MB)',
-                                        'small.en' => 'small.en — English-only, higher accuracy (~466MB)',
-                                        'small' => 'small — multilingual, higher accuracy (~466MB)',
-                                        'medium.en' => 'medium.en — English-only, slower (~1.5GB)',
-                                        'medium' => 'medium — multilingual, slower (~1.5GB)',
-                                        'large-v3-turbo' => 'large-v3-turbo — multilingual, best size/accuracy (~809MB)',
-                                        'large-v3' => 'large-v3 — multilingual, highest accuracy (~3GB)',
-                                    ])
-                                    ->default('base.en')
-                                    ->native(false)
-                                    ->helperText('Models with `.en` only understand English. Multilingual variants accept any language whisper supports — leave Language blank to auto-detect.')
-                                    ->visible(fn (\Filament\Schemas\Components\Utilities\Get $get) => $get('voicemail_transcription_provider') === 'whisper_local'),
-                                Forms\Components\Select::make('voicemail_transcription_config.language')
-                                    ->label('Language')
-                                    ->options([
-                                        '' => 'Auto-detect (multilingual only)',
-                                        'en' => 'English',
-                                        'es' => 'Spanish',
-                                        'fr' => 'French',
-                                        'de' => 'German',
-                                        'it' => 'Italian',
-                                        'pt' => 'Portuguese',
-                                        'nl' => 'Dutch',
-                                        'pl' => 'Polish',
-                                        'ru' => 'Russian',
-                                        'uk' => 'Ukrainian',
-                                        'zh' => 'Chinese',
-                                        'ja' => 'Japanese',
-                                        'ko' => 'Korean',
-                                        'ar' => 'Arabic',
-                                        'hi' => 'Hindi',
-                                    ])
-                                    ->native(false)
-                                    ->default('')
-                                    ->helperText('Forces whisper to interpret audio as this language. Leave blank to let the model decide (only works on multilingual models). Ignored entirely by `.en` models.')
-                                    ->visible(fn (\Filament\Schemas\Components\Utilities\Get $get) => $get('voicemail_transcription_provider') === 'whisper_local'),
-                                Forms\Components\Placeholder::make('voicemail_local_note')
-                                    ->content('Whisper (local) uses the in-cluster whisper-local service — no credentials needed, no outbound internet. Available models are set at image build time via the WHISPER_MODELS compose env var.')
-                                    ->visible(fn (\Filament\Schemas\Components\Utilities\Get $get) => $get('voicemail_transcription_provider') === 'whisper_local'),
+                                        Forms\Components\Select::make('voicemail_transcription_provider')
+                                            ->label('Transcription provider')
+                                            ->options(VoicemailTranscriber::PROVIDERS)
+                                            ->default('none')
+                                            ->live()
+                                            ->native(false)
+                                            ->helperText('Pick "Whisper (local)" if you want to stay off the public internet; pick a cloud provider for higher accuracy or multilingual support.'),
+                                        // Cloud provider API key — shown for any
+                                        // provider that isn't "none" or the
+                                        // local whisper.cpp server.
+                                        Forms\Components\TextInput::make('voicemail_transcription_config.api_key')
+                                            ->label('API key')
+                                            ->password()
+                                            ->revealable()
+                                            ->helperText('Stored encrypted. Rotate by replacing the value here.')
+                                            ->visible(fn (Get $get) => in_array(
+                                                $get('voicemail_transcription_provider'),
+                                                ['openai_whisper', 'deepgram', 'elevenlabs'],
+                                                true,
+                                            )),
+                                        Forms\Components\TextInput::make('voicemail_transcription_config.model')
+                                            ->label('Model')
+                                            ->helperText('Optional — defaults to whisper-1 (OpenAI) or nova-2 (Deepgram).')
+                                            ->visible(fn (Get $get) => in_array(
+                                                $get('voicemail_transcription_provider'),
+                                                ['openai_whisper', 'deepgram'],
+                                                true,
+                                            )),
+                                        Forms\Components\TextInput::make('voicemail_transcription_config.model_id')
+                                            ->label('Model ID')
+                                            ->helperText('Optional — defaults to scribe_v1.')
+                                            ->visible(fn (Get $get) => $get('voicemail_transcription_provider') === 'elevenlabs'),
+                                        // Whisper (local) — pick one of the ggml
+                                        // models baked into the whisper-local
+                                        // image. The list here must stay in sync
+                                        // with the WHISPER_MODELS compose build
+                                        // arg; models not bundled will return a
+                                        // clear HTTP 400 from the service with
+                                        // the available set listed.
+                                        Forms\Components\Select::make('voicemail_transcription_config.model')
+                                            ->label('Whisper model')
+                                            ->options([
+                                                'tiny.en' => 'tiny.en — English-only, fastest (~75MB)',
+                                                'tiny' => 'tiny — multilingual, fastest (~75MB)',
+                                                'base.en' => 'base.en — English-only, balanced (~142MB)',
+                                                'base' => 'base — multilingual, balanced (~142MB)',
+                                                'small.en' => 'small.en — English-only, higher accuracy (~466MB)',
+                                                'small' => 'small — multilingual, higher accuracy (~466MB)',
+                                                'medium.en' => 'medium.en — English-only, slower (~1.5GB)',
+                                                'medium' => 'medium — multilingual, slower (~1.5GB)',
+                                                'large-v3-turbo' => 'large-v3-turbo — multilingual, best size/accuracy (~809MB)',
+                                                'large-v3' => 'large-v3 — multilingual, highest accuracy (~3GB)',
+                                            ])
+                                            ->default('base.en')
+                                            ->native(false)
+                                            ->helperText('Models with `.en` only understand English. Multilingual variants accept any language whisper supports — leave Language blank to auto-detect.')
+                                            ->visible(fn (Get $get) => $get('voicemail_transcription_provider') === 'whisper_local'),
+                                        Forms\Components\Select::make('voicemail_transcription_config.language')
+                                            ->label('Language')
+                                            ->options([
+                                                '' => 'Auto-detect (multilingual only)',
+                                                'en' => 'English',
+                                                'es' => 'Spanish',
+                                                'fr' => 'French',
+                                                'de' => 'German',
+                                                'it' => 'Italian',
+                                                'pt' => 'Portuguese',
+                                                'nl' => 'Dutch',
+                                                'pl' => 'Polish',
+                                                'ru' => 'Russian',
+                                                'uk' => 'Ukrainian',
+                                                'zh' => 'Chinese',
+                                                'ja' => 'Japanese',
+                                                'ko' => 'Korean',
+                                                'ar' => 'Arabic',
+                                                'hi' => 'Hindi',
+                                            ])
+                                            ->native(false)
+                                            ->default('')
+                                            ->helperText('Forces whisper to interpret audio as this language. Leave blank to let the model decide (only works on multilingual models). Ignored entirely by `.en` models.')
+                                            ->visible(fn (Get $get) => $get('voicemail_transcription_provider') === 'whisper_local'),
+                                        Forms\Components\Placeholder::make('voicemail_local_note')
+                                            ->content('Whisper (local) uses the in-cluster whisper-local service — no credentials needed, no outbound internet. Available models are set at image build time via the WHISPER_MODELS compose env var.')
+                                            ->visible(fn (Get $get) => $get('voicemail_transcription_provider') === 'whisper_local'),
                                     ]),
                             ]),
                     ])
@@ -408,11 +411,11 @@ class ClientResource extends Resource
             // Routing rules + email rules are no longer user-edited;
             // per-channel matching lives on the queue row (DIDs on
             // CallQueue, matched_addresses on EmailQueue) and flow
-            // resolution walks Queue → ClientChannelAssignment →
-            // FlowGraph. Sub-pages were removed.
+            // resolution walks Queue → Orchestration. Sub-pages were
+            // removed.
             Pages\ManageClientEmailQueues::class,
             Pages\ManageClientPersonas::class,
-            Pages\ManageClientFlows::class,
+            Pages\ManageClientOrchestrations::class,
             Pages\ManageClientUsers::class,
             Pages\ManageClientDirectory::class,
             Pages\ManageClientDirectoryFields::class,
@@ -432,7 +435,7 @@ class ClientResource extends Resource
             // derive from the flow editor canvas on save.
             'email-queues' => Pages\ManageClientEmailQueues::route('/{record}/email-queues'),
             'personas' => Pages\ManageClientPersonas::route('/{record}/personas'),
-            'intake-flows' => Pages\ManageClientFlows::route('/{record}/intake-flows'),
+            'orchestrations' => Pages\ManageClientOrchestrations::route('/{record}/orchestrations'),
             'users' => Pages\ManageClientUsers::route('/{record}/users'),
             'directory' => Pages\ManageClientDirectory::route('/{record}/directory'),
             'directory-fields' => Pages\ManageClientDirectoryFields::route('/{record}/directory-fields'),

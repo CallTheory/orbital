@@ -17,7 +17,9 @@ use Illuminate\Database\Eloquent\Model;
 class HoldMusicClass extends Model
 {
     public const TYPE_BUILTIN = 'builtin';
+
     public const TYPE_STREAM = 'stream';
+
     public const TYPE_FILES = 'files';
 
     public const DEFAULT_CLASS_NAME = 'default';

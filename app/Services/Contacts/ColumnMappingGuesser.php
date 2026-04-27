@@ -41,7 +41,7 @@ class ColumnMappingGuesser
     /**
      * Mapping options for the Directory import dropdown.
      *
-     * @return array<string, string>  ['' => '— Skip —', 'field_key' => 'Field label', …]
+     * @return array<string, string> ['' => '— Skip —', 'field_key' => 'Field label', …]
      */
     public function optionsForDirectory(int $teamId): array
     {
@@ -69,6 +69,7 @@ class ColumnMappingGuesser
         foreach ($definitions->sortBy('sort_order') as $def) {
             $options[$def->key] = $def->label;
         }
+
         return $options;
     }
 

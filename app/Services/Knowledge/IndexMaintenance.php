@@ -68,7 +68,7 @@ class IndexMaintenance
         // can't run inside the Laravel transaction that dispatches the
         // job — we accept a brief lock on the table during creation.
         $sql = "CREATE INDEX {$indexName} "
-            ."ON knowledge_chunks "
+            .'ON knowledge_chunks '
             ."USING hnsw ((embedding::vector({$dims})) vector_cosine_ops) "
             ."WHERE vector_dims(embedding) = {$dims}";
 

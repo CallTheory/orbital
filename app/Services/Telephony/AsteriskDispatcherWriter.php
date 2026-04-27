@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Services\Telephony;
 
 use App\Models\AsteriskBackend;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * Writes the Kamailio dispatcher.list file from the
@@ -49,6 +49,7 @@ class AsteriskDispatcherWriter
             Log::error('asterisk-dispatcher: failed to write dispatcher.list', [
                 'path' => $this->path,
             ]);
+
             return ['wrote' => false, 'reloaded' => []];
         }
 
@@ -102,7 +103,7 @@ class AsteriskDispatcherWriter
             }
         }
 
-        return implode("\n", $lines) . "\n";
+        return implode("\n", $lines)."\n";
     }
 
     /**
@@ -124,7 +125,7 @@ class AsteriskDispatcherWriter
         $results = [];
         foreach ($urls as $url) {
             try {
-                $resp = \Illuminate\Support\Facades\Http::timeout(3)
+                $resp = Http::timeout(3)
                     ->withHeaders(['Content-Type' => 'application/json'])
                     ->post($url, [
                         'jsonrpc' => '2.0',

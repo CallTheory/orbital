@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Models\AgentPersona;
+use App\Models\CallQueue;
+use App\Models\Extension;
+use App\Models\SipTrunk;
 use App\Services\Telephony\AsteriskAmiService;
 use App\Services\Telephony\LiveKitConfigService;
 use Illuminate\Console\Command;
@@ -40,10 +44,10 @@ class TelephonyStatus extends Command
         // Database counts
         $this->newLine();
         $this->info('  Database Summary:');
-        $this->line('    Extensions: '.\App\Models\Extension::withoutGlobalScopes()->count());
-        $this->line('    SIP Trunks: '.\App\Models\SipTrunk::withoutGlobalScopes()->count());
-        $this->line('    AI Agents:  '.\App\Models\AgentPersona::withoutGlobalScopes()->where('is_active', true)->count());
-        $this->line('    Queues:     '.\App\Models\CallQueue::withoutGlobalScopes()->count());
+        $this->line('    Extensions: '.Extension::withoutGlobalScopes()->count());
+        $this->line('    SIP Trunks: '.SipTrunk::withoutGlobalScopes()->count());
+        $this->line('    AI Agents:  '.AgentPersona::withoutGlobalScopes()->where('is_active', true)->count());
+        $this->line('    Queues:     '.CallQueue::withoutGlobalScopes()->count());
 
         return self::SUCCESS;
     }

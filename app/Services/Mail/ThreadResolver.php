@@ -105,6 +105,7 @@ class ThreadResolver
         }
         $cleaned = preg_replace('/^\s*((re|fwd?|fw|sv|antw)\s*:\s*)+/i', '', $subject) ?? $subject;
         $cleaned = trim($cleaned);
+
         return $cleaned === '' ? null : Str::limit($cleaned, 1000, '');
     }
 
@@ -127,6 +128,7 @@ class ThreadResolver
         foreach (($message->cc_addresses ?? []) as $addr) {
             $all[] = is_array($addr) ? ($addr['address'] ?? null) : $addr;
         }
+
         return array_values(array_unique(array_filter(array_map(
             fn ($a) => $a ? strtolower((string) $a) : null,
             $all,

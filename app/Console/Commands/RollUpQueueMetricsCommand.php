@@ -151,6 +151,7 @@ class RollUpQueueMetricsCommand extends Command
         if (preg_match('/^t(\d+)_/', $name, $m)) {
             return (int) $m[1];
         }
+
         return null;
     }
 }

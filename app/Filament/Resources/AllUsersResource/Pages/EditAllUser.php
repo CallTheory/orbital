@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Filament\Resources\AllUsersResource\Pages;
 
 use App\Filament\Resources\AllUsersResource;
+use App\Filament\Resources\UsersResource;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Clients\ClientProvisioner;
@@ -36,9 +37,10 @@ class EditAllUser extends EditRecord
 
         if ($user && AllUsersResource::isStaffUser($user)) {
             $this->redirect(
-                \App\Filament\Resources\UsersResource::getUrl('edit', ['record' => $user]),
+                UsersResource::getUrl('edit', ['record' => $user]),
                 navigate: true,
             );
+
             return;
         }
 
@@ -140,6 +142,7 @@ class EditAllUser extends EditRecord
                                 $currentIds = \DB::table('team_user')
                                     ->where('user_id', $record->id)
                                     ->pluck('team_id');
+
                                 return Team::query()
                                     ->where('personal_team', false)
                                     ->whereNotIn('id', $currentIds)

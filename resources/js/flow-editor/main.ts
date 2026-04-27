@@ -1,11 +1,11 @@
 // Entry point for the Svelte Flow editor — loaded by the blade shell
-// at /admin/flow-editor/{graph}. Runs only on that popup URL; the
-// rest of the admin panel doesn't ship this bundle.
+// at /admin/flow-editor/{orchestration}. Runs only on that popup URL;
+// the rest of the admin panel doesn't ship this bundle.
 //
 // The root element is rendered by the blade view with
-// `data-graph-id`, `data-graph-name`, `data-client-id`,
-// `data-client-name` and an optional `data-focus-flow-id`. Those
-// are passed to the Svelte app as props.
+// `data-orchestration-id`, `data-orchestration-name`,
+// `data-client-id`, `data-client-name` and an optional
+// `data-focus-flow-id`. Those are passed to the Svelte app as props.
 
 import { mount } from 'svelte';
 import App from './App.svelte';
@@ -19,11 +19,12 @@ if (!host) {
     );
 }
 
-const graphId = Number(host.dataset.graphId ?? '0');
-if (!graphId) {
-    throw new Error('flow-editor: missing data-graph-id on root element.');
+const orchestrationId = Number(host.dataset.orchestrationId ?? '0');
+if (!orchestrationId) {
+    throw new Error('flow-editor: missing data-orchestration-id on root element.');
 }
 
+const isShared = host.dataset.isShared === '1';
 const clientId = Number(host.dataset.clientId ?? '0');
 
 const focusFlowIdRaw = host.dataset.focusFlowId;
@@ -32,10 +33,12 @@ const focusFlowId = focusFlowIdRaw ? Number(focusFlowIdRaw) : null;
 mount(App, {
     target: host,
     props: {
-        graphId,
-        clientId,
+        orchestrationId,
+        isShared,
+        clientId: isShared ? null : clientId,
         focusFlowId,
-        graphName: host.dataset.graphName ?? 'Default',
-        clientName: host.dataset.clientName ?? 'Client',
+        orchestrationName: host.dataset.orchestrationName ?? 'Default',
+        clientName: isShared ? 'Platform' : (host.dataset.clientName ?? 'Client'),
+        closeUrl: host.dataset.closeUrl ?? '/admin/orchestrations',
     },
 });

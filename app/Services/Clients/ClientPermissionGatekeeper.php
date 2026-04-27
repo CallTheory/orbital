@@ -62,6 +62,7 @@ class ClientPermissionGatekeeper
     public function filterToAllowed(Team $team, array $requested): array
     {
         $allowed = $this->allowedPermissionsFor($team);
+
         return array_values(array_intersect($requested, $allowed));
     }
 

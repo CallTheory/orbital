@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Support;
 
+use Filament\Support\Colors\Color;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -123,7 +124,7 @@ final class Branding
      */
     protected static function resolvePalette(mixed $name, string $default): array
     {
-        $class = \Filament\Support\Colors\Color::class;
+        $class = Color::class;
         $candidate = is_string($name) && $name !== '' ? $name : $default;
 
         foreach ([$candidate, $default] as $attempt) {

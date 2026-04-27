@@ -7,6 +7,7 @@ namespace Database\Seeders;
 use App\Models\AgentGroup;
 use App\Models\AgentPersona;
 use App\Models\CallQueue;
+use App\Models\ClientDid;
 use App\Models\Extension;
 use App\Models\IntakeFlow;
 use App\Models\IntakeFlowStep;
@@ -14,9 +15,9 @@ use App\Models\IntakeGoal;
 use App\Models\RoutingRule;
 use App\Models\SipTrunk;
 use App\Models\Team;
-use App\Models\ClientDid;
 use App\Models\User;
 use App\Services\Clients\ClientProvisioner;
+use App\Services\Flows\ChannelTriggerSeeder;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
@@ -48,6 +49,7 @@ class TemplateClientSeeder extends Seeder
         $operatorGroup = AgentGroup::where('name', 'all-operators')->first();
         if (! $operatorGroup) {
             $this->command?->warn('TemplateClientSeeder: all-operators group missing — run DemoClientSeeder first.');
+
             return;
         }
 
@@ -215,7 +217,7 @@ class TemplateClientSeeder extends Seeder
 
         Extension::create([
             'team_id' => $team->id,
-            'number' => '9' . $team->account_number,
+            'number' => '9'.$team->account_number,
             'type' => 'ai_agent',
             'label' => 'Overflow AI',
             'assignable_type' => $persona->getMorphClass(),
@@ -231,11 +233,11 @@ class TemplateClientSeeder extends Seeder
             'gather_text', 'gather_phone', 'save_message',
         ])->get()->keyBy('key');
 
-        $defaultGraph = app(\App\Services\Flows\ChannelTriggerSeeder::class)->ensureBootstrap($team);
+        $defaultGraph = app(ChannelTriggerSeeder::class)->ensureBootstrap($team);
 
         $flow = IntakeFlow::create([
             'team_id' => $team->id,
-            'flow_graph_id' => $defaultGraph->id,
+            'orchestration_id' => $defaultGraph->id,
             'name' => 'Overflow Default',
             'is_active' => true,
         ]);

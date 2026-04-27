@@ -76,6 +76,7 @@ class LocalPartParser
         if ($candidate === '' || ! ctype_digit($candidate)) {
             return null;
         }
+
         return $candidate;
     }
 }

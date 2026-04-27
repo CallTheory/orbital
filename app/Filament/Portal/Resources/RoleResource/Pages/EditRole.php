@@ -6,7 +6,6 @@ namespace App\Filament\Portal\Resources\RoleResource\Pages;
 
 use App\Filament\Portal\Resources\RoleResource;
 use App\Services\Clients\ClientPermissionGatekeeper;
-use App\Services\Clients\ClientProvisioner;
 use Filament\Actions;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
@@ -19,6 +18,7 @@ class EditRole extends EditRecord
     protected function getHeaderActions(): array
     {
         $record = $this->record;
+
         return [
             Actions\DeleteAction::make()
                 ->visible(fn () => ! RoleResource::isProtectedRole($record))
@@ -50,6 +50,7 @@ class EditRole extends EditRecord
         /** @var Model $record */
         $record = $this->record;
         $data['permissions'] = $record->permissions->pluck('name')->all();
+
         return $data;
     }
 

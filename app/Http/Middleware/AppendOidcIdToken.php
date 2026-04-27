@@ -111,6 +111,7 @@ class AppendOidcIdToken
         if (is_array($scope)) {
             return in_array('openid', $scope, true);
         }
+
         return false;
     }
 
@@ -133,6 +134,7 @@ class AppendOidcIdToken
             return null;
         }
         $claims = json_decode($payload, true);
+
         return is_array($claims) ? $claims : null;
     }
 }

@@ -8,6 +8,7 @@ use App\Models\AvailabilityReason;
 use App\Models\User;
 use App\Services\Telephony\Realtime\QueueMemberSyncer;
 use Filament\Notifications\Notification;
+use Illuminate\Support\Facades\Cache;
 use Livewire\Component;
 
 /**
@@ -63,6 +64,7 @@ class AvailabilitySelector extends Component
 
         if (! in_array($value, $allowedSlugs, true)) {
             $this->status = $user->availability_status;
+
             return;
         }
 
@@ -92,7 +94,7 @@ class AvailabilitySelector extends Component
         // availability-aware surfaces refresh in the same tick
         // without waiting for the next poll.
         $this->dispatch('availability-updated', status: $value);
-        \Illuminate\Support\Facades\Cache::forget('operator:'.auth()->id().':email_inbox_badge');
+        Cache::forget('operator:'.auth()->id().':email_inbox_badge');
         $this->dispatch('refresh-sidebar');
     }
 
@@ -139,6 +141,7 @@ class AvailabilitySelector extends Component
         if ($slug === AvailabilityReason::AVAILABLE) {
             return null;
         }
+
         return AvailabilityReason::query()->where('slug', $slug)->first();
     }
 }

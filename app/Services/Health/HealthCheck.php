@@ -21,7 +21,9 @@ namespace App\Services\Health;
 final class HealthCheck
 {
     public const OK = 'ok';
+
     public const WARN = 'warn';
+
     public const DOWN = 'down';
 
     /**

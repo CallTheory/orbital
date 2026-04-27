@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Contacts;
 
+use App\Models\DirectoryFieldDefinition;
 use Filament\Forms;
 use Illuminate\Support\Collection;
 
@@ -24,7 +25,7 @@ use Illuminate\Support\Collection;
 class FieldFormBuilder
 {
     /**
-     * @param  Collection<int, \App\Models\DirectoryFieldDefinition>  $definitions
+     * @param  Collection<int, DirectoryFieldDefinition>  $definitions
      * @return array<int, Forms\Components\Field>
      */
     public function build(Collection $definitions): array
@@ -97,6 +98,7 @@ class FieldFormBuilder
             }
             $out[$opt] = $opt;
         }
+
         return $out;
     }
 }

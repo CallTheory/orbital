@@ -36,8 +36,7 @@ class IngestService
     public function __construct(
         private readonly EmbeddingService $embeddings,
         private readonly IndexMaintenance $indexMaintenance,
-    ) {
-    }
+    ) {}
 
     /**
      * Ingest a file from disk into the store.
@@ -45,6 +44,7 @@ class IngestService
     public function ingestFile(KnowledgeStore $store, string $path, string $label): int
     {
         $text = $this->extractTextFromFile($path);
+
         return $this->ingestText($store, $text, sourceType: 'file', sourceRef: $label);
     }
 
@@ -59,6 +59,7 @@ class IngestService
         }
 
         $text = $this->stripHtml($response->body());
+
         return $this->ingestText($store, $text, sourceType: 'url', sourceRef: $url);
     }
 
@@ -77,6 +78,7 @@ class IngestService
             $chunks = $this->chunk($text);
             if (empty($chunks)) {
                 $store->update(['ingest_status' => 'idle']);
+
                 return 0;
             }
 
@@ -148,11 +150,13 @@ class IngestService
         $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
 
         if ($ext === 'pdf') {
-            $parser = new PdfParser();
+            $parser = new PdfParser;
+
             return $parser->parseFile($path)->getText();
         }
 
         $contents = file_get_contents($path);
+
         return $contents === false ? '' : $contents;
     }
 
@@ -210,6 +214,7 @@ class IngestService
                 foreach ($this->hardSplit($paragraph) as $piece) {
                     $chunks[] = $piece;
                 }
+
                 continue;
             }
 
@@ -218,6 +223,7 @@ class IngestService
             if ($current !== '' && mb_strlen($current) + 2 + $paragraphLength > self::CHUNK_CHARS) {
                 $chunks[] = $current;
                 $current = $paragraph;
+
                 continue;
             }
 
@@ -263,6 +269,7 @@ class IngestService
         $html = preg_replace('#<(script|style)[^>]*>.*?</\1>#is', '', $html) ?? $html;
         $text = strip_tags($html);
         $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
         return trim(preg_replace('/\s+/u', ' ', $text) ?? '');
     }
 }

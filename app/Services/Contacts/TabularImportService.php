@@ -33,6 +33,7 @@ class TabularImportService
         if ($format === 'csv') {
             $csv = Reader::createFromPath($path, 'r');
             $csv->setHeaderOffset(0);
+
             return $csv->getHeader();
         }
 
@@ -45,6 +46,7 @@ class TabularImportService
             }
             break;
         }
+
         return array_values(array_filter($headers, fn ($h) => $h !== ''));
     }
 
@@ -61,6 +63,7 @@ class TabularImportService
         if ($format === 'csv') {
             $csv = Reader::createFromPath($path, 'r');
             $csv->setHeaderOffset(0);
+
             return array_values(iterator_to_array($csv->getRecords()));
         }
 
@@ -80,6 +83,7 @@ class TabularImportService
             if ($firstRow) {
                 $headers = $values;
                 $firstRow = false;
+
                 continue;
             }
 
@@ -130,12 +134,14 @@ class TabularImportService
                 $out[] = $mapped;
             }
         }
+
         return $out;
     }
 
     private function detectFormat(string $path): string
     {
         $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+
         return match ($ext) {
             'csv', 'txt' => 'csv',
             'xlsx', 'xls', 'ods' => 'xlsx',

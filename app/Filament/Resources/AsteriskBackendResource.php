@@ -8,6 +8,10 @@ use App\Filament\Resources\AsteriskBackendResource\Pages;
 use App\Models\AsteriskBackend;
 use App\Services\Telephony\AsteriskDispatcherWriter;
 use BackedEnum;
+use Filament\Actions\BulkActionGroup;
+use Filament\Actions\DeleteAction;
+use Filament\Actions\DeleteBulkAction;
+use Filament\Actions\EditAction;
 use Filament\Forms;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
@@ -110,16 +114,16 @@ class AsteriskBackendResource extends Resource
             ->defaultSort('sort_order')
             ->reorderable('sort_order')
             ->actions([
-                \Filament\Actions\EditAction::make()
+                EditAction::make()
                     ->after(fn () => static::regenerate()),
-                \Filament\Actions\DeleteAction::make()
+                DeleteAction::make()
                     ->requiresConfirmation()
                     ->modalDescription('Removes this backend from the Kamailio dispatcher pool immediately. Existing in-flight calls on this node stay up; new calls route elsewhere.')
                     ->after(fn () => static::regenerate()),
             ])
             ->bulkActions([
-                \Filament\Actions\BulkActionGroup::make([
-                    \Filament\Actions\DeleteBulkAction::make()
+                BulkActionGroup::make([
+                    DeleteBulkAction::make()
                         ->after(fn () => static::regenerate()),
                 ]),
             ]);
@@ -143,6 +147,7 @@ class AsteriskBackendResource extends Resource
                 ->body('Kamailio is routing to the current backend list.')
                 ->success()
                 ->send();
+
             return;
         }
 

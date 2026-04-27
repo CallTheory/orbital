@@ -12,7 +12,6 @@ use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Spatie\Permission\PermissionRegistrar;
 
 /**
  * Manages the polymorphic members of an AgentGroup. Members can be
@@ -47,6 +46,7 @@ class MembersRelationManager extends RelationManager
                         if ($type === Extension::class) {
                             return self::platformExtensionOptions();
                         }
+
                         return [];
                     })
                     ->searchable()
@@ -85,9 +85,16 @@ class MembersRelationManager extends RelationManager
                     ->label('Member')
                     ->getStateUsing(function ($record): string {
                         $member = $record->member;
-                        if (! $member) return '(deleted)';
-                        if ($member instanceof User) return $member->name.' <'.$member->email.'>';
-                        if ($member instanceof Extension) return $member->number.' '.($member->label ? "({$member->label})" : '');
+                        if (! $member) {
+                            return '(deleted)';
+                        }
+                        if ($member instanceof User) {
+                            return $member->name.' <'.$member->email.'>';
+                        }
+                        if ($member instanceof Extension) {
+                            return $member->number.' '.($member->label ? "({$member->label})" : '');
+                        }
+
                         return (string) $member->id;
                     }),
                 Tables\Columns\TextColumn::make('priority')

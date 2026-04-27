@@ -28,13 +28,19 @@ class EmailRoutingRule extends Model
     use HasFactory;
 
     public const MATCH_FUNCTION = 'function';
+
     public const MATCH_FROM_PATTERN = 'from_pattern';
+
     public const MATCH_SUBJECT_PATTERN = 'subject_pattern';
+
     public const MATCH_DEFAULT = 'default';
 
     public const DESTINATION_QUEUE = 'queue';
+
     public const DESTINATION_OPERATOR = 'operator';
+
     public const DESTINATION_AGENT_PERSONA = 'agent_persona';
+
     public const DESTINATION_DISCARD = 'discard';
 
     protected $fillable = [

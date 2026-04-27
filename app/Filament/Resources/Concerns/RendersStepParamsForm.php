@@ -7,6 +7,9 @@ namespace App\Filament\Resources\Concerns;
 use App\Models\IntakeGoal;
 use App\Models\KnowledgeStore;
 use Filament\Forms;
+use Filament\Schemas\Components\Component;
+use Filament\Schemas\Components\Group;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
 
 /**
@@ -31,9 +34,9 @@ trait RendersStepParamsForm
      * on the current `intake_goal_id` selection. Call from any form
      * that places intake flow steps.
      */
-    public static function stepParamsGroup(): \Filament\Schemas\Components\Group
+    public static function stepParamsGroup(): Group
     {
-        return \Filament\Schemas\Components\Group::make()
+        return Group::make()
             ->columnSpanFull()
             ->schema(fn (Get $get): array => static::buildStepParamsSchema((int) $get('intake_goal_id')));
     }
@@ -43,7 +46,7 @@ trait RendersStepParamsForm
      * components matching it. `state_path` is auto-nested under
      * `step_params.<key>` so callers don't have to think about layout.
      *
-     * @return array<int, \Filament\Schemas\Components\Component>
+     * @return array<int, Component>
      */
     protected static function buildStepParamsSchema(?int $goalId): array
     {
@@ -74,7 +77,7 @@ trait RendersStepParamsForm
         }
 
         return [
-            \Filament\Schemas\Components\Section::make($goal->name.' parameters')
+            Section::make($goal->name.' parameters')
                 ->description($goal->description ?: 'Configuration for this step.')
                 ->schema($components)
                 ->columns(2)
@@ -86,7 +89,7 @@ trait RendersStepParamsForm
      * Map one data_fields descriptor entry to a Filament form component
      * under the step_params.<key> state path.
      */
-    protected static function componentForField(array $field): ?\Filament\Schemas\Components\Component
+    protected static function componentForField(array $field): ?Component
     {
         $key = $field['key'] ?? null;
         if (! is_string($key) || $key === '') {

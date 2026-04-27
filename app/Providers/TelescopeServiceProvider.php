@@ -64,6 +64,7 @@ class TelescopeServiceProvider extends TelescopeApplicationServiceProvider
             if ($user->isSuperAdmin()) {
                 return true;
             }
+
             return $user->hasPermissionTo('tooling.telescope');
         });
     }

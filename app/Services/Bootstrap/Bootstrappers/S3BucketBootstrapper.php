@@ -31,6 +31,7 @@ use Throwable;
 class S3BucketBootstrapper implements Bootstrapper
 {
     protected const ASSET_BUCKET = 'orbital';
+
     protected const RECORDING_BUCKET = 'orbital-recordings';
 
     public function key(): string
@@ -83,6 +84,7 @@ class S3BucketBootstrapper implements Bootstrapper
         if (! $asset && ! $recording) {
             return new BootstrapReport(BootstrapStatus::Missing, 'Neither bucket exists yet.', $steps);
         }
+
         return new BootstrapReport(BootstrapStatus::Partial, 'Some buckets are missing.', $steps);
     }
 
@@ -148,6 +150,7 @@ class S3BucketBootstrapper implements Bootstrapper
     protected function client(): S3Client
     {
         $config = config('filesystems.disks.s3');
+
         return new S3Client([
             'version' => 'latest',
             'region' => $config['region'] ?? 'us-east-1',
@@ -164,6 +167,7 @@ class S3BucketBootstrapper implements Bootstrapper
     {
         try {
             $client->headBucket(['Bucket' => $bucket]);
+
             return true;
         } catch (Throwable) {
             return false;

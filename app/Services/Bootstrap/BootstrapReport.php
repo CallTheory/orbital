@@ -18,8 +18,7 @@ final class BootstrapReport
         public readonly BootstrapStatus $status,
         public readonly string $message,
         public readonly array $steps = [],
-    ) {
-    }
+    ) {}
 
     public function toArray(): array
     {

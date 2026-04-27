@@ -55,6 +55,7 @@ class RegenerateTelephonyConfig implements ShouldBeUnique, ShouldQueue
             } else {
                 Log::warning('Dialplan reload failed — file written but not applied', ['team_id' => $this->teamId]);
             }
+
             return;
         }
 

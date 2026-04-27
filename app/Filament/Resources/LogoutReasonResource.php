@@ -7,6 +7,9 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\LogoutReasonResource\Pages;
 use App\Models\LogoutReason;
 use BackedEnum;
+use Filament\Actions\BulkActionGroup;
+use Filament\Actions\DeleteBulkAction;
+use Filament\Actions\EditAction;
 use Filament\Forms;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
@@ -94,11 +97,11 @@ class LogoutReasonResource extends Resource
             // it queries ordered by `sort_order` ASC.
             ->reorderable('sort_order')
             ->actions([
-                \Filament\Actions\EditAction::make(),
+                EditAction::make(),
             ])
             ->bulkActions([
-                \Filament\Actions\BulkActionGroup::make([
-                    \Filament\Actions\DeleteBulkAction::make(),
+                BulkActionGroup::make([
+                    DeleteBulkAction::make(),
                 ]),
             ]);
     }

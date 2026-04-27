@@ -8,22 +8,26 @@ use App\Models\AgentGroup;
 use App\Models\AgentGroupMember;
 use App\Models\AgentPersona;
 use App\Models\CallQueue;
+use App\Models\ClientDid;
+use App\Models\ClientSlot;
 use App\Models\EmailQueue;
 use App\Models\EmailRoutingRule;
 use App\Models\Extension;
 use App\Models\IntakeFlow;
 use App\Models\IntakeFlowStep;
+use App\Models\IntakeFlowTransition;
 use App\Models\IntakeGoal;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeStore;
+use App\Models\Orchestration;
 use App\Models\RoutingRule;
 use App\Models\SipTrunk;
 use App\Models\Team;
-use App\Models\ClientDid;
 use App\Models\User;
+use App\Services\Clients\ClientProvisioner;
+use App\Services\Flows\ChannelTriggerSeeder;
 use App\Services\Knowledge\OllamaEmbedder;
 use App\Services\Telephony\PlatformExtensionAllocator;
-use App\Services\Clients\ClientProvisioner;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Spatie\Permission\PermissionRegistrar;
@@ -350,13 +354,13 @@ class DemoClientSeeder extends Seeder
         // Variables (client_slots) — the typed catalog every flow
         // operates over. Declared once at the client level.
         // ────────────────────────────────────────────────────────────
-        \App\Models\ClientSlot::updateOrCreate(['team_id' => $team->id, 'name' => 'caller_name'],        ['type' => 'string', 'description' => "The caller's full name"]);
-        \App\Models\ClientSlot::updateOrCreate(['team_id' => $team->id, 'name' => 'callback_phone'],     ['type' => 'phone',  'description' => 'A number to reach them back on']);
-        \App\Models\ClientSlot::updateOrCreate(['team_id' => $team->id, 'name' => 'inquiry_type'],       ['type' => 'choice', 'choices' => ['maintenance', 'leasing', 'other'], 'description' => 'Why the caller reached out']);
-        \App\Models\ClientSlot::updateOrCreate(['team_id' => $team->id, 'name' => 'property_address'],   ['type' => 'string', 'description' => 'Maintenance property address']);
-        \App\Models\ClientSlot::updateOrCreate(['team_id' => $team->id, 'name' => 'issue_description'],  ['type' => 'string', 'description' => 'What needs fixing']);
-        \App\Models\ClientSlot::updateOrCreate(['team_id' => $team->id, 'name' => 'lease_interest'],     ['type' => 'string', 'description' => 'What kind of unit they\'re looking for']);
-        \App\Models\ClientSlot::updateOrCreate(['team_id' => $team->id, 'name' => 'reason'],             ['type' => 'string', 'description' => 'Generic reason for calling']);
+        ClientSlot::updateOrCreate(['team_id' => $team->id, 'name' => 'caller_name'], ['type' => 'string', 'description' => "The caller's full name"]);
+        ClientSlot::updateOrCreate(['team_id' => $team->id, 'name' => 'callback_phone'], ['type' => 'phone',  'description' => 'A number to reach them back on']);
+        ClientSlot::updateOrCreate(['team_id' => $team->id, 'name' => 'inquiry_type'], ['type' => 'choice', 'choices' => ['maintenance', 'leasing', 'other'], 'description' => 'Why the caller reached out']);
+        ClientSlot::updateOrCreate(['team_id' => $team->id, 'name' => 'property_address'], ['type' => 'string', 'description' => 'Maintenance property address']);
+        ClientSlot::updateOrCreate(['team_id' => $team->id, 'name' => 'issue_description'], ['type' => 'string', 'description' => 'What needs fixing']);
+        ClientSlot::updateOrCreate(['team_id' => $team->id, 'name' => 'lease_interest'], ['type' => 'string', 'description' => 'What kind of unit they\'re looking for']);
+        ClientSlot::updateOrCreate(['team_id' => $team->id, 'name' => 'reason'], ['type' => 'string', 'description' => 'Generic reason for calling']);
 
         // ────────────────────────────────────────────────────────────
         // Flow graph — the Inbound Phone channel trigger wires into
@@ -372,8 +376,13 @@ class DemoClientSeeder extends Seeder
         // positions for subflows are seeded so the demo opens laid
         // out sensibly.
         // ────────────────────────────────────────────────────────────
-        $defaultGraph = app(\App\Services\Flows\ChannelTriggerSeeder::class)->ensureTriggersFor($team);
-        $graphId = \App\Models\FlowGraph::where('team_id', $team->id)->where('name', 'Default')->value('id');
+        app(ChannelTriggerSeeder::class)->ensureTriggersFor($team);
+        $orchestrationId = Orchestration::where('team_id', $team->id)->where('name', 'Default')->value('id');
+
+        // Assign the Default orchestration to the demo's main call
+        // queue so inbound calls routed by call_queue_dids pick up
+        // the canvas's flow logic.
+        $queue->update(['orchestration_id' => $orchestrationId]);
 
         $byKey = IntakeGoal::whereIn('key', [
             'answer_question',
@@ -402,10 +411,10 @@ class DemoClientSeeder extends Seeder
 
         // Top-down layout: Greet & Route below the trigger row, then
         // three branches in a row beneath it.
-        $greet     = IntakeFlow::create(['team_id' => $team->id, 'flow_graph_id' => $graphId, 'name' => 'Greet & Route',       'description' => 'Identify the caller\'s reason and route to the matching branch.', 'is_active' => true, 'canvas_x' => 340, 'canvas_y' => 260]);
-        $maint     = IntakeFlow::create(['team_id' => $team->id, 'flow_graph_id' => $graphId, 'name' => 'Maintenance Message', 'description' => 'Collect property + issue details and save a maintenance message.', 'is_active' => true, 'canvas_x' => 20,  'canvas_y' => 620]);
-        $leasing   = IntakeFlow::create(['team_id' => $team->id, 'flow_graph_id' => $graphId, 'name' => 'Leasing Message',     'description' => 'Collect leasing interest details and save a leasing message.',    'is_active' => true, 'canvas_x' => 340, 'canvas_y' => 620]);
-        $general   = IntakeFlow::create(['team_id' => $team->id, 'flow_graph_id' => $graphId, 'name' => 'General Message',     'description' => 'Catch-all message flow for any other reason.',                    'is_active' => true, 'canvas_x' => 660, 'canvas_y' => 620]);
+        $greet = IntakeFlow::create(['team_id' => $team->id, 'orchestration_id' => $orchestrationId, 'name' => 'Greet & Route',       'description' => 'Identify the caller\'s reason and route to the matching branch.', 'is_active' => true, 'canvas_x' => 340, 'canvas_y' => 260]);
+        $maint = IntakeFlow::create(['team_id' => $team->id, 'orchestration_id' => $orchestrationId, 'name' => 'Maintenance Message', 'description' => 'Collect property + issue details and save a maintenance message.', 'is_active' => true, 'canvas_x' => 20,  'canvas_y' => 620]);
+        $leasing = IntakeFlow::create(['team_id' => $team->id, 'orchestration_id' => $orchestrationId, 'name' => 'Leasing Message',     'description' => 'Collect leasing interest details and save a leasing message.',    'is_active' => true, 'canvas_x' => 340, 'canvas_y' => 620]);
+        $general = IntakeFlow::create(['team_id' => $team->id, 'orchestration_id' => $orchestrationId, 'name' => 'General Message',     'description' => 'Catch-all message flow for any other reason.',                    'is_active' => true, 'canvas_x' => 660, 'canvas_y' => 620]);
 
         // Greet & Route steps
         IntakeFlowStep::create(['flow_id' => $greet->id, 'intake_goal_id' => $byKey['answer_question']->id, 'position' => 0, 'step_params' => ['knowledge_store_ids' => [$faqStore->id]]]);
@@ -431,22 +440,22 @@ class DemoClientSeeder extends Seeder
         IntakeFlowStep::create(['flow_id' => $general->id, 'intake_goal_id' => $byKey['save_message']->id,  'position' => 3, 'step_params' => ['include_slots' => ['caller_name', 'callback_phone', 'reason'], 'destination' => 'inbox']]);
 
         // Inbound Phone (trigger) -> Greet & Route
-        \App\Models\IntakeFlowTransition::create(['from_flow_id' => $inboundPhone->id, 'to_flow_id' => $greet->id, 'priority' => 10, 'description' => 'matched', 'condition' => null]);
+        IntakeFlowTransition::create(['from_flow_id' => $inboundPhone->id, 'to_flow_id' => $greet->id, 'priority' => 10, 'description' => 'matched', 'condition' => null]);
 
         // Transitions out of Greet & Route
-        \App\Models\IntakeFlowTransition::create(['from_flow_id' => $greet->id, 'to_flow_id' => $maint->id,   'priority' => 10,  'description' => 'maintenance',  'condition' => ['==' => [['var' => 'slots.inquiry_type'], 'maintenance']]]);
-        \App\Models\IntakeFlowTransition::create(['from_flow_id' => $greet->id, 'to_flow_id' => $leasing->id, 'priority' => 20,  'description' => 'leasing',      'condition' => ['==' => [['var' => 'slots.inquiry_type'], 'leasing']]]);
-        \App\Models\IntakeFlowTransition::create(['from_flow_id' => $greet->id, 'to_flow_id' => $general->id, 'priority' => 30,  'description' => 'other',        'condition' => ['==' => [['var' => 'slots.inquiry_type'], 'other']]]);
+        IntakeFlowTransition::create(['from_flow_id' => $greet->id, 'to_flow_id' => $maint->id,   'priority' => 10,  'description' => 'maintenance',  'condition' => ['==' => [['var' => 'slots.inquiry_type'], 'maintenance']]]);
+        IntakeFlowTransition::create(['from_flow_id' => $greet->id, 'to_flow_id' => $leasing->id, 'priority' => 20,  'description' => 'leasing',      'condition' => ['==' => [['var' => 'slots.inquiry_type'], 'leasing']]]);
+        IntakeFlowTransition::create(['from_flow_id' => $greet->id, 'to_flow_id' => $general->id, 'priority' => 30,  'description' => 'other',        'condition' => ['==' => [['var' => 'slots.inquiry_type'], 'other']]]);
 
         // Link the entry flow to Ava's persona
         $receptionist->update(['default_flow_id' => $greet->id]);
 
         // Route the demo's DIDs to the main call queue via the new
         // call_queue_dids pivot — replaces the old
-        // FlowGraphSynchronizer-driven synthetic routing_rules.
-        $demoCallQueue = \App\Models\CallQueue::where('team_id', $team->id)->first();
+        // synthetic routing_rules.
+        $demoCallQueue = CallQueue::where('team_id', $team->id)->first();
         if ($demoCallQueue) {
-            $didIds = \App\Models\ClientDid::where('team_id', $team->id)
+            $didIds = ClientDid::where('team_id', $team->id)
                 ->where('is_active', true)
                 ->pluck('id');
             $demoCallQueue->dids()->sync($didIds);

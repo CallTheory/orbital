@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace App\Filament\Pages\Concerns;
 
 use App\Services\Settings\PlatformSettingsRepository;
+use App\Services\Settings\ServiceRestartCatalog;
 use App\Services\Settings\SettingsRegistry;
 use Filament\Forms;
 use Filament\Schemas\Components\Section;
-use Illuminate\Support\Facades\Hash;
 
 /**
  * Shared render / persist logic for pages that expose a subset of
@@ -30,7 +30,7 @@ trait RendersRegistrySettings
      * Livewire state property before form->fill().
      *
      * @param  array<int, string>  $sectionKeys
-     * @return array<string, mixed>  field-name => value
+     * @return array<string, mixed> field-name => value
      */
     public function registrySectionState(array $sectionKeys): array
     {
@@ -216,7 +216,7 @@ trait RendersRegistrySettings
         // after save.
         $helper = $def['helper'] ?? null;
         if (! empty($def['restart_required'])) {
-            $labels = \App\Services\Settings\ServiceRestartCatalog::labelsFor($def['restart_required']);
+            $labels = ServiceRestartCatalog::labelsFor($def['restart_required']);
             if ($labels !== []) {
                 $badge = 'Requires restart: '.implode(', ', $labels).'.';
                 $helper = $helper ? $helper.' '.$badge : $badge;

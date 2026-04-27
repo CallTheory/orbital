@@ -82,6 +82,7 @@ class PgvectorBootstrapper implements Bootstrapper
     protected function extensionInstalled(): bool
     {
         $row = DB::selectOne("SELECT 1 AS found FROM pg_extension WHERE extname = 'vector'");
+
         return (bool) ($row->found ?? false);
     }
 }

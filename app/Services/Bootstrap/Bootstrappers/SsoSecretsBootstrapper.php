@@ -162,6 +162,7 @@ class SsoSecretsBootstrapper implements Bootstrapper
         if (! $anyOk) {
             return new BootstrapReport(BootstrapStatus::Missing, 'No SSO secrets have been generated yet.', $steps);
         }
+
         return new BootstrapReport(BootstrapStatus::Partial, 'Some SSO secrets are missing — re-run install.', $steps);
     }
 
@@ -264,6 +265,7 @@ class SsoSecretsBootstrapper implements Bootstrapper
         foreach (self::OPAQUE_KEYS as $k => $v) {
             $keys[] = is_string($k) ? $k : $v;
         }
+
         return $keys;
     }
 
@@ -277,8 +279,10 @@ class SsoSecretsBootstrapper implements Bootstrapper
     {
         if ($key === 'REDIS_COMMANDER_SSO_ISSUER') {
             $existing = env('REDIS_COMMANDER_SSO_ISSUER');
+
             return filled($existing) ? (string) $existing : 'orbital-admin';
         }
+
         return Str::random(48);
     }
 
@@ -294,6 +298,7 @@ class SsoSecretsBootstrapper implements Bootstrapper
     private function redirectFor(array $def): string
     {
         $appHost = parse_url((string) config('app.url'), PHP_URL_HOST) ?: 'localhost';
+
         return "http://{$appHost}:{$def['port']}{$def['redirectPath']}";
     }
 
@@ -311,6 +316,7 @@ class SsoSecretsBootstrapper implements Bootstrapper
                 $secret = $m[1];
             }
         }
+
         return ['id' => $id, 'secret' => $secret];
     }
 
@@ -348,7 +354,7 @@ class SsoSecretsBootstrapper implements Bootstrapper
             $newContents = rtrim($contents, "\n")."\n".$replacement."\n";
         }
 
-        if ($newContents === null || false === file_put_contents($path, $newContents)) {
+        if ($newContents === null || file_put_contents($path, $newContents) === false) {
             throw new \RuntimeException('Unable to write .env.');
         }
     }

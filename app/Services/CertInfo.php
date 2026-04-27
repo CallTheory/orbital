@@ -55,6 +55,7 @@ final readonly class CertInfo
         if ($this->daysRemaining <= 30) {
             return 'warning';
         }
+
         return 'success';
     }
 }

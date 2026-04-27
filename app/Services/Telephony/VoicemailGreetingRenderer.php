@@ -125,6 +125,7 @@ class VoicemailGreetingRenderer
         $apiKey = (string) config('services.openai.api_key', '');
         if ($apiKey === '') {
             Log::info('voicemail-greeting: OPENAI_API_KEY not set, skipping TTS');
+
             return null;
         }
 
@@ -143,6 +144,7 @@ class VoicemailGreetingRenderer
                     'status' => $response->status(),
                     'body' => mb_substr((string) $response->body(), 0, 500),
                 ]);
+
                 return null;
             }
 
@@ -151,6 +153,7 @@ class VoicemailGreetingRenderer
             Log::warning('voicemail-greeting: OpenAI request threw', [
                 'error' => $e->getMessage(),
             ]);
+
             return null;
         }
     }
@@ -160,6 +163,7 @@ class VoicemailGreetingRenderer
         $apiKey = (string) config('services.elevenlabs.api_key', '');
         if ($apiKey === '') {
             Log::info('voicemail-greeting: ELEVENLABS_API_KEY not set, skipping TTS');
+
             return null;
         }
 
@@ -179,6 +183,7 @@ class VoicemailGreetingRenderer
                     'status' => $response->status(),
                     'body' => mb_substr((string) $response->body(), 0, 500),
                 ]);
+
                 return null;
             }
 
@@ -189,6 +194,7 @@ class VoicemailGreetingRenderer
             Log::warning('voicemail-greeting: ElevenLabs request threw', [
                 'error' => $e->getMessage(),
             ]);
+
             return null;
         }
     }
@@ -214,6 +220,7 @@ class VoicemailGreetingRenderer
             .pack('v', 16)          // bits per sample
             .'data'
             .pack('V', $dataSize);
+
         return $header.$pcm;
     }
 }

@@ -11,6 +11,7 @@ use App\Http\Middleware\PanelRedirect;
 use App\Http\Middleware\SetPermissionsTeamContext;
 use App\Models\LogoutReason;
 use App\Models\UserLogoutEvent;
+use App\Support\Branding;
 use Filament\Actions\Action;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\Select;
@@ -23,6 +24,7 @@ use Filament\Navigation\MenuItem;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
+use Filament\Support\Enums\Width;
 use Filament\View\PanelsRenderHook;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -52,15 +54,15 @@ class OperatorPanelProvider extends PanelProvider
             ->id('operator')
             ->path('operator')
             ->spa()
-            ->maxContentWidth(\Filament\Support\Enums\Width::Full)
+            ->maxContentWidth(Width::Full)
             ->profile(page: EditProfile::class, isSimple: false)
             ->brandName(fn () => (string) config('orbital.platform_name', 'Orbital'))
-            ->brandLogo(fn () => \App\Support\Branding::platformLogoLightUrl())
-            ->darkModeBrandLogo(fn () => \App\Support\Branding::platformLogoDarkUrl())
+            ->brandLogo(fn () => Branding::platformLogoLightUrl())
+            ->darkModeBrandLogo(fn () => Branding::platformLogoDarkUrl())
             ->brandLogoHeight('2rem')
-            ->favicon(fn () => \App\Support\Branding::platformFaviconUrl())
+            ->favicon(fn () => Branding::platformFaviconUrl())
             ->colors([
-                'primary' => \App\Support\Branding::operatorPrimaryColor(),
+                'primary' => Branding::operatorPrimaryColor(),
                 'danger' => Color::Red,
                 'warning' => Color::Amber,
                 'success' => Color::Emerald,

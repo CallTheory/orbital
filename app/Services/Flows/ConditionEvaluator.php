@@ -62,22 +62,22 @@ class ConditionEvaluator
         $evaluated = array_map(fn ($a) => $this->run($a, $context), $args);
 
         return match ($op) {
-            '==', '==='    => ($evaluated[0] ?? null) === ($evaluated[1] ?? null),
-            '!=', '!=='    => ($evaluated[0] ?? null) !== ($evaluated[1] ?? null),
-            '<'            => ($evaluated[0] ?? null) <  ($evaluated[1] ?? null),
-            '<='           => ($evaluated[0] ?? null) <= ($evaluated[1] ?? null),
-            '>'            => ($evaluated[0] ?? null) >  ($evaluated[1] ?? null),
-            '>='           => ($evaluated[0] ?? null) >= ($evaluated[1] ?? null),
-            '!'            => ! ($evaluated[0] ?? null),
-            '!!'           => ! empty($evaluated[0]),
-            'and', 'AND'   => ! in_array(false, array_map(fn ($v) => (bool) $v, $evaluated), true),
-            'or',  'OR'    => in_array(true, array_map(fn ($v) => (bool) $v, $evaluated), true),
-            'in'           => $this->opIn($evaluated[0] ?? null, $evaluated[1] ?? null),
-            'startsWith'   => is_string($evaluated[0] ?? null)
+            '==', '===' => ($evaluated[0] ?? null) === ($evaluated[1] ?? null),
+            '!=', '!==' => ($evaluated[0] ?? null) !== ($evaluated[1] ?? null),
+            '<' => ($evaluated[0] ?? null) < ($evaluated[1] ?? null),
+            '<=' => ($evaluated[0] ?? null) <= ($evaluated[1] ?? null),
+            '>' => ($evaluated[0] ?? null) > ($evaluated[1] ?? null),
+            '>=' => ($evaluated[0] ?? null) >= ($evaluated[1] ?? null),
+            '!' => ! ($evaluated[0] ?? null),
+            '!!' => ! empty($evaluated[0]),
+            'and', 'AND' => ! in_array(false, array_map(fn ($v) => (bool) $v, $evaluated), true),
+            'or',  'OR' => in_array(true, array_map(fn ($v) => (bool) $v, $evaluated), true),
+            'in' => $this->opIn($evaluated[0] ?? null, $evaluated[1] ?? null),
+            'startsWith' => is_string($evaluated[0] ?? null)
                               && is_string($evaluated[1] ?? null)
                               && str_starts_with($evaluated[0], $evaluated[1]),
-            'var'          => $this->lookup((string) ($args[0] ?? ''), $context),
-            default        => null,
+            'var' => $this->lookup((string) ($args[0] ?? ''), $context),
+            default => null,
         };
     }
 
@@ -99,6 +99,7 @@ class ConditionEvaluator
             }
             $cursor = $cursor[$segment];
         }
+
         return $cursor;
     }
 
@@ -110,6 +111,7 @@ class ConditionEvaluator
         if (is_string($haystack) && is_string($needle)) {
             return $needle !== '' && str_contains($haystack, $needle);
         }
+
         return false;
     }
 }

@@ -43,8 +43,7 @@ class PruneExpiredCallRecordingsJob implements ShouldQueue
 
     public function __construct(
         public readonly ?int $teamIdFilter = null,
-    ) {
-    }
+    ) {}
 
     public function handle(CallRecordingService $recording): void
     {
@@ -66,6 +65,7 @@ class PruneExpiredCallRecordingsJob implements ShouldQueue
             $retentionByTeam[$teamId] = $team
                 ? $recording->resolveForTeam($team)->retentionDays
                 : $platformRetention;
+
             return $retentionByTeam[$teamId];
         };
 

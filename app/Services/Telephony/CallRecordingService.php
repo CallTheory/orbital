@@ -30,8 +30,7 @@ class CallRecordingService
 {
     public function __construct(
         protected readonly DisclosureRenderer $disclosureRenderer,
-    ) {
-    }
+    ) {}
 
     /**
      * Resolve the effective recording policy for a specific extension.
@@ -45,6 +44,7 @@ class CallRecordingService
 
         if ($mode === 'never') {
             $disclosure = $this->platformDisclosureMessage();
+
             return new CallRecordingPolicy(
                 enabled: false,
                 format: $this->platformFormat(),
@@ -120,12 +120,14 @@ class CallRecordingService
     {
         $month = date('Y/m');
         $safeId = preg_replace('/[^a-zA-Z0-9_\-]/', '_', $uniqueId);
+
         return "clients/{$teamId}/{$month}/{$safeId}.{$format}";
     }
 
     protected function platformPolicy(string $source): CallRecordingPolicy
     {
         $disclosure = $this->platformDisclosureMessage();
+
         return new CallRecordingPolicy(
             enabled: $this->platformEnabled(),
             format: $this->platformFormat(),

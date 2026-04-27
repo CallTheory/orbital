@@ -39,8 +39,7 @@ class UploadCallRecordingJob implements ShouldQueue
 
     public function __construct(
         public readonly int $callLogId,
-    ) {
-    }
+    ) {}
 
     public function handle(CallRecordingService $recording): void
     {
@@ -121,6 +120,7 @@ class UploadCallRecordingJob implements ShouldQueue
     {
         $when = $call->started_at ?? now();
         $ym = $when->format('Y/m');
+
         return "/var/spool/asterisk/monitor/clients/{$call->team_id}/{$ym}";
     }
 }

@@ -78,6 +78,7 @@ class VoicemailReceived extends Mailable
         }
         $m = intdiv($seconds, 60);
         $s = $seconds % 60;
+
         return sprintf('%d:%02d', $m, $s);
     }
 }

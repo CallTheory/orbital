@@ -76,6 +76,7 @@ class SystemSetup extends Page
         $b = $registry->get($key);
         if (! $b) {
             Notification::make()->title('Unknown bootstrapper')->body($key)->danger()->send();
+
             return;
         }
 

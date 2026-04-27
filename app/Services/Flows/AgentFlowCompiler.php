@@ -12,6 +12,7 @@ use App\Models\IntakeFlowRule;
 use App\Models\IntakeFlowTransition;
 use App\Models\IntakeGoal;
 use App\Models\KnowledgeStore;
+use App\Models\OrchestrationBinding;
 use App\Models\RoutingRule;
 use Illuminate\Support\Collection;
 
@@ -37,9 +38,28 @@ use Illuminate\Support\Collection;
  */
 class AgentFlowCompiler
 {
+    /**
+     * The team whose bindings we resolve picker fields against. Set
+     * inside `compile()` from `$persona->team_id` and read by every
+     * step-params resolution. Distinct from the orchestration's
+     * owning team (which is null for platform-shared orchestrations).
+     */
+    private ?int $runningTeamId = null;
+
+    /**
+     * Bindings keyed by `(orchestration_id => binding_key => row)`.
+     * Cached for one compile pass so each unique orchestration only
+     * hits the DB once even when an orchestration's flows fan out
+     * across many compileOneFlow calls.
+     *
+     * @var array<int, array<string, OrchestrationBinding>>
+     */
+    private array $bindingsByOrchestration = [];
+
     public function __construct(
         private readonly JsonLogicRenderer $conditionRenderer,
         private readonly TemplateEvaluator $templates = new TemplateEvaluator,
+        private readonly BindingResolver $bindings = new BindingResolver,
     ) {}
 
     /**
@@ -64,6 +84,9 @@ class AgentFlowCompiler
         ?RoutingRule $rule = null,
     ): CompiledFlow {
         $persona->loadMissing('template');
+
+        $this->runningTeamId = $persona->team_id;
+        $this->bindingsByOrchestration = [];
 
         [$entryFlow, $source] = $this->resolveEntryFlow($persona, $extension, $rule);
 
@@ -225,11 +248,22 @@ class AgentFlowCompiler
      */
     private function compileOneFlow(IntakeFlow $flow): array
     {
+        $bindingsByKey = $this->bindingsFor($flow);
+
         /** @var Collection<int, array<string, mixed>> $goals */
         $goals = $flow->steps
-            ->map(fn ($step) => $step->intakeGoal
-                ? $this->resolveGoal($step->intakeGoal, $step->step_params ?? [])
-                : null)
+            ->map(function ($step) use ($bindingsByKey) {
+                if (! $step->intakeGoal) {
+                    return null;
+                }
+                $resolved = $this->bindings->resolveStepParams(
+                    $step->intakeGoal,
+                    $step->step_params ?? [],
+                    $bindingsByKey,
+                );
+
+                return $this->resolveGoal($step->intakeGoal, $resolved);
+            })
             ->filter()
             ->values();
 
@@ -273,6 +307,38 @@ class AgentFlowCompiler
             'transitions' => $transitions,
             'rules' => $rules,
         ];
+    }
+
+    /**
+     * Bindings for a given flow's parent orchestration, keyed by
+     * binding_key. Pulled against the running team (the persona's
+     * owning client). For platform-shared orchestrations this lookup
+     * yields the running client's bindings; for per-client orchestrations
+     * the running team and the orchestration's owning team are the
+     * same row.
+     *
+     * @return array<string, OrchestrationBinding>
+     */
+    private function bindingsFor(IntakeFlow $flow): array
+    {
+        if ($this->runningTeamId === null) {
+            return [];
+        }
+        $orchId = $flow->orchestration_id;
+        if (! $orchId) {
+            return [];
+        }
+        if (! isset($this->bindingsByOrchestration[$orchId])) {
+            $this->bindingsByOrchestration[$orchId] = OrchestrationBinding::query()
+                ->withoutGlobalScope('team')
+                ->where('team_id', $this->runningTeamId)
+                ->where('orchestration_id', $orchId)
+                ->get()
+                ->keyBy('binding_key')
+                ->all();
+        }
+
+        return $this->bindingsByOrchestration[$orchId];
     }
 
     /**

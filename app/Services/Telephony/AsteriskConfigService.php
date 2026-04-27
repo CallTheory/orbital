@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace App\Services\Telephony;
 
+use App\Models\AsteriskBackend;
 use App\Models\CallQueue;
 use App\Models\Extension;
 use App\Models\RoutingRule;
 use App\Models\Team;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\View;
 
 /**
@@ -135,7 +137,7 @@ class AsteriskConfigService
             ->with('overflowAgent.extensions')
             ->get();
 
-        $rules = \App\Models\RoutingRule::withoutGlobalScopes()
+        $rules = RoutingRule::withoutGlobalScopes()
             ->where('is_active', true)
             ->with('team')
             ->orderBy('priority')
@@ -342,7 +344,7 @@ class AsteriskConfigService
     protected function commandOnAllBackends(string $command): bool
     {
         $ami = app(AsteriskAmiService::class);
-        $backends = \App\Models\AsteriskBackend::query()
+        $backends = AsteriskBackend::query()
             ->where('is_active', true)
             ->orderBy('sort_order')
             ->orderBy('hostname')
@@ -362,13 +364,14 @@ class AsteriskConfigService
         foreach ($backends as $backend) {
             $ok = $ami->commandOn($backend->amiHost(), $backend->ami_port, $command);
             if (! $ok) {
-                \Illuminate\Support\Facades\Log::warning('asterisk-config: reload failed on backend', [
+                Log::warning('asterisk-config: reload failed on backend', [
                     'backend' => $backend->hostname,
                     'command' => $command,
                 ]);
                 $allOk = false;
             }
         }
+
         return $allOk;
     }
 

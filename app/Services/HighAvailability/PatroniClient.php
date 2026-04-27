@@ -65,11 +65,12 @@ class PatroniClient
                 ]);
             }
         }
+
         return null;
     }
 
     /**
-     * @param array<mixed> $raw
+     * @param  array<mixed>  $raw
      * @return array{leader: ?string, members: list<array{name: string, host: string, role: string, state: string, lag: ?int, timeline: ?int}>}
      */
     protected function normalizeCluster(array $raw): array
@@ -89,6 +90,7 @@ class PatroniClient
                 'timeline' => isset($m['timeline']) ? (int) $m['timeline'] : null,
             ];
         }
+
         return ['leader' => $leader, 'members' => $members];
     }
 
@@ -116,9 +118,11 @@ class PatroniClient
                     'leader' => $leader,
                     'candidate' => $candidate,
                 ]);
+
             return [$resp->successful(), (string) $resp->body()];
         } catch (\Throwable $e) {
             Log::warning('patroni.switchover failed', ['error' => $e->getMessage()]);
+
             return [false, $e->getMessage()];
         }
     }
@@ -140,6 +144,7 @@ class PatroniClient
                     ->post("http://{$node}:{$this->port}/failover", [
                         'candidate' => $candidate,
                     ]);
+
                 return [$resp->successful(), (string) $resp->body()];
             } catch (\Throwable $e) {
                 Log::warning('patroni.failover: {node} unreachable', [
@@ -148,6 +153,7 @@ class PatroniClient
                 ]);
             }
         }
+
         return [false, 'no Patroni node reachable'];
     }
 }

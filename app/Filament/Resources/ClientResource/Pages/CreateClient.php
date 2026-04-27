@@ -7,6 +7,7 @@ namespace App\Filament\Resources\ClientResource\Pages;
 use App\Filament\Resources\ClientResource;
 use App\Jobs\RenderDisclosurePromptJob;
 use App\Models\Team;
+use App\Models\User;
 use App\Services\Clients\ClientProvisioner;
 use Filament\Resources\Pages\CreateRecord;
 
@@ -27,7 +28,7 @@ class CreateClient extends CreateRecord
             'recording_overrides' => $this->cleanRecordingOverrides($data['recording_overrides'] ?? null),
         ]);
 
-        $owner = \App\Models\User::find($data['user_id']);
+        $owner = User::find($data['user_id']);
         app(ClientProvisioner::class)->provision($team, $owner);
 
         // If the new client set a custom disclosure message, kick off

@@ -46,6 +46,7 @@ class EndpointSyncer
     {
         if (! $extension->is_active || $extension->type === 'virtual') {
             $this->delete($extension);
+
             return;
         }
 

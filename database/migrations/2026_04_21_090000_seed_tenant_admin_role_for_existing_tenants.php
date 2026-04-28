@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Models\Team;
+use App\Models\User;
 use App\Services\Clients\ClientProvisioner;
 use Illuminate\Database\Migrations\Migration;
 
@@ -29,11 +31,11 @@ return new class extends Migration
     {
         $provisioner = app(ClientProvisioner::class);
 
-        \App\Models\Team::query()
+        Team::query()
             ->where('personal_team', false)
             ->whereNotNull('user_id')
-            ->each(function (\App\Models\Team $team) use ($provisioner) {
-                $owner = \App\Models\User::find($team->user_id);
+            ->each(function (Team $team) use ($provisioner) {
+                $owner = User::find($team->user_id);
                 if (! $owner) {
                     return;
                 }
@@ -50,6 +52,6 @@ return new class extends Migration
         // Not reversible — deleting the client_admin role cluster-
         // wide would orphan every admin assignment. If you need to
         // drop the admin concept, revert at the application layer.
-        throw new \RuntimeException('seed_tenant_admin_role is not reversible.');
+        throw new RuntimeException('seed_tenant_admin_role is not reversible.');
     }
 };

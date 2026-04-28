@@ -24,6 +24,7 @@ use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\HtmlString;
 use UnitEnum;
 
 class ClientResource extends Resource
@@ -114,9 +115,29 @@ class ClientResource extends Resource
                                     ->searchable()
                                     ->placeholder('App default ('.config('app.timezone').')')
                                     ->helperText('Timezone used when displaying dates to operators handling this client\'s messages and calls.'),
-                                Forms\Components\DateTimePicker::make('suspended_at')
-                                    ->label('Suspended At')
-                                    ->helperText('If set, the client is suspended.'),
+                                // The DB column is `suspended_at`
+                                // (nullable timestamp): NULL = enabled,
+                                // any timestamp = suspended at that
+                                // moment. We surface it as a yes/no
+                                // Toggle so operators don't have to
+                                // think about timestamps — flipping
+                                // off stamps `now()`, flipping on
+                                // clears the column.
+                                Forms\Components\Toggle::make('suspended_at')
+                                    ->label('Enabled')
+                                    ->default(true)
+                                    ->afterStateHydrated(function (Forms\Components\Toggle $component, ?Team $record): void {
+                                        // Read the raw column off the record —
+                                        // the toggle's `$state` argument has
+                                        // already been cast to bool by the time
+                                        // afterStateHydrated runs, so it can't
+                                        // distinguish null from a timestamp.
+                                        // Null => enabled (on); any timestamp
+                                        // => suspended (off).
+                                        $component->state($record === null || $record->suspended_at === null);
+                                    })
+                                    ->dehydrateStateUsing(fn (bool $state) => $state ? null : now())
+                                    ->helperText('Suspended clients can\'t place or receive calls.'),
                                 Forms\Components\Hidden::make('personal_team')
                                     ->default(false),
                             ]),
@@ -352,6 +373,7 @@ class ClientResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            ->modifyQueryUsing(fn ($query) => $query->with('dids'))
             ->columns([
                 Tables\Columns\TextColumn::make('account_number')
                     ->label('Account #')
@@ -363,20 +385,18 @@ class ClientResource extends Resource
                     ->searchable()
                     ->sortable()
                     ->weight('medium'),
-                Tables\Columns\TextColumn::make('primary_did_number')
-                    ->label('Primary DID')
-                    ->state(fn (Team $record) => $record->primaryDid()?->number)
-                    ->placeholder('—')
+                Tables\Columns\TextColumn::make('numbers')
+                    ->label('Numbers')
+                    ->state(fn (Team $record): HtmlString => new HtmlString(
+                        view('filament.columns.client-numbers', ['record' => $record])->render()
+                    ))
                     ->searchable(query: function (Builder $query, string $search): Builder {
-                        return $query->whereHas('tenantDids', fn ($q) => $q->where('number', 'like', "%{$search}%"));
+                        return $query->whereHas('dids', fn ($q) => $q->where('number', 'like', "%{$search}%"));
                     }),
-                Tables\Columns\TextColumn::make('client_dids_count')
-                    ->counts('tenantDids')
-                    ->label('DIDs')
-                    ->alignCenter(),
                 Tables\Columns\IconColumn::make('active')
                     ->label('Active')
                     ->boolean()
+                    ->falseColor('gray')
                     ->getStateUsing(fn (Team $record) => $record->suspended_at === null),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
@@ -407,13 +427,11 @@ class ClientResource extends Resource
             Pages\EditClient::class,
             Pages\ManageClientDids::class,
             Pages\ManageClientExtensions::class,
-            Pages\ManageClientCallQueues::class,
-            // Routing rules + email rules are no longer user-edited;
-            // per-channel matching lives on the queue row (DIDs on
-            // CallQueue, matched_addresses on EmailQueue) and flow
-            // resolution walks Queue → Orchestration. Sub-pages were
-            // removed.
-            Pages\ManageClientEmailQueues::class,
+            // Channels hub replaces the four per-channel sidebar
+            // entries. Call/Email/Message/Chat queue pages remain
+            // route-reachable for deep links from elsewhere but
+            // are not surfaced here.
+            Pages\ManageClientChannels::class,
             Pages\ManageClientPersonas::class,
             Pages\ManageClientOrchestrations::class,
             Pages\ManageClientUsers::class,
@@ -430,10 +448,11 @@ class ClientResource extends Resource
             'edit' => Pages\EditClient::route('/{record}/edit'),
             'dids' => Pages\ManageClientDids::route('/{record}/dids'),
             'extensions' => Pages\ManageClientExtensions::route('/{record}/extensions'),
+            'channels' => Pages\ManageClientChannels::route('/{record}/channels'),
             'call-queues' => Pages\ManageClientCallQueues::route('/{record}/call-queues'),
-            // routing-rules + email-rules pages removed; these now
-            // derive from the flow editor canvas on save.
             'email-queues' => Pages\ManageClientEmailQueues::route('/{record}/email-queues'),
+            'message-queues' => Pages\ManageClientMessageQueues::route('/{record}/message-queues'),
+            'chat-queues' => Pages\ManageClientChatQueues::route('/{record}/chat-queues'),
             'personas' => Pages\ManageClientPersonas::route('/{record}/personas'),
             'orchestrations' => Pages\ManageClientOrchestrations::route('/{record}/orchestrations'),
             'users' => Pages\ManageClientUsers::route('/{record}/users'),

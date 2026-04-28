@@ -24,7 +24,7 @@ return new class extends Migration
             $table->id();
             $table->timestampTz('occurred_at')->useCurrent();
             $table->foreignId('actor_user_id')->nullable()
-                  ->constrained('users')->nullOnDelete();
+                ->constrained('users')->nullOnDelete();
             // Short slug for the tier: "postgres", "valkey",
             // "seaweedfs", "haproxy", "kamailio", "livekit", "edge".
             $table->string('tier', 32)->index();

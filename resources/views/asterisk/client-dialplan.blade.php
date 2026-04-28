@@ -48,7 +48,7 @@ exten => {{ $ext->number }},1,NoOp(Dialing {{ $ext->label ?? 'extension' }} {{ $
 @foreach($queues as $queue)
 exten => queue-{{ $queue->id }},1,NoOp(Queue: {{ $queue->name }} -> {{ $queue->asteriskName() }})
  same => n,Answer()
- same => n,Queue({{ $queue->asteriskName() }},tTkK,,,{{ $queue->timeout }})
+ same => n,Queue({{ $queue->asteriskName() }},tTkK,,,{{ $queue->agentGroup?->strategyTemplate?->timeout ?? 30 }})
 @if($queue->overflowAgent)
  same => n,NoOp(Overflow to AI agent: {{ $queue->overflowAgent->name }})
  same => n,Dial(PJSIP/{{ $queue->overflowAgent->extensions->first()?->number ?? '0' }}@livekit,120,tTkK)

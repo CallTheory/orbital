@@ -1,47 +1,41 @@
 @php
     /**
      * Channel-status indicator column. Renders one icon per channel an
-     * orchestration could route. Three states per channel:
+     * orchestration could route. The icon lights green when the
+     * orchestration's trigger flow for that channel has been touched —
+     * any of: at least one step inside it, at least one outbound
+     * transition wiring it to another flow, or the author has flipped
+     * `is_active = true` on the trigger. The Assignments section in
+     * the details modal handles "is it actually in use by a queue"
+     * separately.
      *
-     *   active      — at least one queue points at this orchestration
-     *                 on this channel (green).
-     *   inactive    — channel is wired up platform-wide but no queue
-     *                 currently uses this orchestration (gray).
-     *   placeholder — channel queue tables don't exist yet (faint, with
-     *                 a "coming soon" tooltip).
-     *
-     * SMS and MMS share infra (same DID, same Twilio/Bandwidth endpoint,
-     * same operator pool) so they collapse into one "Messaging" icon.
-     * RCS is intentionally separate — different protocol, uneven rollout
-     * across carriers, worth surfacing the distinction. WCTP is already
-     * a recognised trigger type for pager workflows.
+     * Two states per channel:
+     *   configured — author has wired the trigger flow (green).
+     *   inactive   — trigger flow exists but is empty / unwired (gray).
      */
+    $configuredTriggers = collect($record->flows ?? [])
+        ->filter(fn ($f) => $f->is_active
+            || ($f->steps_count ?? 0) > 0
+            || ($f->transitions_out_count ?? 0) > 0)
+        ->pluck('trigger_type')
+        ->all();
+
     $channels = [
-        ['label' => 'Phone', 'icon' => 'heroicon-o-phone',                  'queues' => $record->callQueues, 'placeholder' => false],
-        ['label' => 'Email', 'icon' => 'heroicon-o-envelope',               'queues' => $record->emailQueues, 'placeholder' => false],
-        ['label' => 'Messaging (SMS / MMS)', 'icon' => 'heroicon-o-chat-bubble-left-right',    'queues' => collect(), 'placeholder' => true],
-        ['label' => 'RCS',   'icon' => 'heroicon-o-chat-bubble-left-ellipsis', 'queues' => collect(), 'placeholder' => true],
-        ['label' => 'WCTP / pager', 'icon' => 'heroicon-o-bell-alert',     'queues' => collect(), 'placeholder' => true],
+        ['label' => 'Call',    'icon' => 'heroicon-o-phone',                          'trigger' => 'inbound_phone'],
+        ['label' => 'Email',   'icon' => 'heroicon-o-envelope',                       'trigger' => 'inbound_email'],
+        ['label' => 'Message', 'icon' => 'heroicon-o-chat-bubble-left-right',         'trigger' => 'inbound_message'],
+        ['label' => 'Chat',    'icon' => 'heroicon-o-chat-bubble-bottom-center-text', 'trigger' => 'inbound_chat'],
     ];
 @endphp
 
 <div style="display: inline-flex; align-items: center; gap: 0.5rem;">
     @foreach ($channels as $ch)
         @php
-            $active = $ch['queues']->isNotEmpty();
-            if ($ch['placeholder']) {
-                $title = $ch['label'];
-                $color = '#d1d5db';
-            } elseif ($active) {
-                $title = $ch['label'].': '.$ch['queues']->pluck('name')->join(', ');
-                $color = '#16a34a';
-            } else {
-                $title = $ch['label'];
-                $color = '#9ca3af';
-            }
+            $configured = in_array($ch['trigger'], $configuredTriggers, true);
+            $color = $configured ? '#16a34a' : '#9ca3af';
         @endphp
         <span
-            title="{{ $title }}"
+            title="{{ $ch['label'] }}"
             style="display: inline-flex; align-items: center; color: {{ $color }};"
         >
             @svg($ch['icon'], ['style' => 'width: 1.25rem; height: 1.25rem;'])

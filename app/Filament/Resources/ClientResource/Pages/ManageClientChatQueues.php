@@ -8,7 +8,7 @@ use App\Filament\Resources\ClientResource;
 use App\Filament\Support\OrchestrationBindingFormFactory;
 use App\Models\AgentGroup;
 use App\Models\AgentPersona;
-use App\Models\EmailQueue;
+use App\Models\ChatQueue;
 use App\Models\Orchestration;
 use App\Models\Team;
 use BackedEnum;
@@ -21,29 +21,28 @@ use Filament\Tables;
 use Filament\Tables\Table;
 
 /**
- * Admin-side page for managing a client's email queues.
- *
- * Mirrors `ManageClientCallQueues` but with email-shaped fields.
- * No ring timeouts, no wrapup, no music-on-hold — email queues
- * are inboxes, not ring groups. The strategy describes how
- * operators claim threads; overflow AI handles the thread
- * autonomously when no human is available.
+ * Admin-side page for managing a client's chat queues —
+ * interactive, session-shaped traffic from an embeddable
+ * web widget, Slack DM, or Microsoft Teams. Each queue
+ * binds to one `integration_type` and carries the auth/config
+ * its transport needs. Sessions and message persistence are
+ * deferred.
  */
-class ManageClientEmailQueues extends ManageRelatedRecords
+class ManageClientChatQueues extends ManageRelatedRecords
 {
     protected static string $resource = ClientResource::class;
 
-    protected static string $relationship = 'emailQueues';
+    protected static string $relationship = 'chatQueues';
 
-    protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-inbox-stack';
+    protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-chat-bubble-bottom-center-text';
 
-    protected static ?string $navigationLabel = 'Email Queues';
+    protected static ?string $navigationLabel = 'Chat Queues';
 
-    protected static ?string $title = 'Email Queues';
+    protected static ?string $title = 'Chat Queues';
 
     public static function getNavigationLabel(): string
     {
-        return 'Email Queues';
+        return 'Chat Queues';
     }
 
     public function form(Schema $schema): Schema
@@ -80,24 +79,40 @@ class ManageClientEmailQueues extends ManageRelatedRecords
             Forms\Components\TextInput::make('name')
                 ->required()
                 ->maxLength(255)
-                ->placeholder('Support, Alarms, Billing, …'),
+                ->placeholder('Website Chat, Internal Slack, …'),
 
             Forms\Components\Textarea::make('description')
                 ->rows(2)
                 ->maxLength(1000)
-                ->placeholder('Optional note for operators about what kind of threads this queue holds.'),
+                ->placeholder('Optional note for operators about what kind of sessions this queue holds.'),
 
             Forms\Components\Select::make('strategy')
                 ->label('Claim strategy')
                 ->options([
-                    EmailQueue::STRATEGY_MANUAL => 'Manual — operators pull threads freely',
-                    EmailQueue::STRATEGY_ROUND_ROBIN => 'Round robin — next thread → next operator in order',
-                    EmailQueue::STRATEGY_LONGEST_IDLE => 'Longest idle — next thread → operator who hasn\'t worked recently',
-                    EmailQueue::STRATEGY_AI_FIRST => 'AI first — overflow persona takes everything unless escalated',
+                    ChatQueue::STRATEGY_MANUAL => 'Manual — operators pull sessions freely',
+                    ChatQueue::STRATEGY_ROUND_ROBIN => 'Round robin — next session → next operator in order',
+                    ChatQueue::STRATEGY_LONGEST_IDLE => 'Longest idle — next session → operator who hasn\'t worked recently',
+                    ChatQueue::STRATEGY_AI_FIRST => 'AI first — overflow persona takes everything unless escalated',
                 ])
-                ->default(EmailQueue::STRATEGY_MANUAL)
+                ->default(ChatQueue::STRATEGY_MANUAL)
+                ->required(),
+
+            Forms\Components\Select::make('integration_type')
+                ->label('Integration')
+                ->options([
+                    ChatQueue::INTEGRATION_WEB_WIDGET => 'Embeddable web widget',
+                    ChatQueue::INTEGRATION_SLACK => 'Slack',
+                    ChatQueue::INTEGRATION_TEAMS => 'Microsoft Teams',
+                ])
                 ->required()
-                ->helperText('Phase 3 ships with "manual" wired up; auto-assignment strategies land in a polish pass.'),
+                ->default(ChatQueue::INTEGRATION_WEB_WIDGET)
+                ->helperText('How this queue receives chat sessions.'),
+
+            Forms\Components\KeyValue::make('integration_config')
+                ->label('Integration config')
+                ->keyLabel('Setting')
+                ->valueLabel('Value')
+                ->helperText('Per-integration credentials and options. Web widget: site_key. Slack: app_token, signing_secret. Teams: tenant_id, client_id.'),
 
             Forms\Components\Select::make('agent_group_id')
                 ->label('Operator group')
@@ -107,7 +122,7 @@ class ManageClientEmailQueues extends ManageRelatedRecords
                     ->pluck('name', 'id'))
                 ->searchable()
                 ->placeholder('Open — all operators')
-                ->helperText('Only operators in this group will see threads in this queue. Leave empty for all operators.'),
+                ->helperText('Only operators in this group will see sessions in this queue. Leave empty for all operators.'),
 
             Forms\Components\Select::make('overflow_agent_persona_id')
                 ->label('Overflow AI persona')
@@ -116,8 +131,8 @@ class ManageClientEmailQueues extends ManageRelatedRecords
                     ->orderBy('name')
                     ->pluck('name', 'id'))
                 ->searchable()
-                ->placeholder('None — threads wait for a human')
-                ->helperText('Optional. When nobody picks up, or when strategy=ai_first, the thread hands off to this persona via ProcessEmailWithAgentJob.'),
+                ->placeholder('None — sessions wait for a human')
+                ->helperText('Optional. When nobody picks up, or when strategy=ai_first, the session hands off to this persona.'),
 
             Forms\Components\Toggle::make('is_active')->default(true),
 
@@ -134,19 +149,8 @@ class ManageClientEmailQueues extends ManageRelatedRecords
                     ->mapWithKeys(fn (Orchestration $o) => [
                         $o->id => $o->name.($o->isShared() ? ' — Platform' : ''),
                     ]))
-                ->placeholder('None — queue holds threads but runs no AI flow')
-                ->helperText('The orchestration this queue runs when an inbound email matches one of its addresses. Platform-shared orchestrations are tagged "Platform" — assign one, then click "Bindings" on the row to map its handles to your resources.'),
-
-            Forms\Components\TagsInput::make('matched_addresses')
-                ->label('Matched addresses / local-part patterns')
-                ->placeholder('e.g. support, billing, alarms')
-                ->helperText('Inbound emails with these local-parts (or full addresses) route to this queue. Patterns are matched against the envelope / To header. Leave empty to make this queue invisible to inbound mail.'),
-
-            Forms\Components\TextInput::make('matched_domain')
-                ->label('Matched domain (optional)')
-                ->maxLength(255)
-                ->placeholder('e.g. acme.orbital.example')
-                ->helperText('Scope matches to this domain only. Leave empty to match any tenant domain this client owns.'),
+                ->placeholder('None — queue holds sessions but runs no AI flow')
+                ->helperText('The orchestration this queue runs when a chat session starts. Platform-shared orchestrations are tagged "Platform" — assign one, then click "Bindings" on the row to map its handles to your resources.'),
         ];
     }
 
@@ -169,6 +173,9 @@ class ManageClientEmailQueues extends ManageRelatedRecords
                 ->limit(50)
                 ->placeholder('—')
                 ->toggleable(),
+            Tables\Columns\TextColumn::make('integration_type')
+                ->label('Integration')
+                ->badge(),
             Tables\Columns\TextColumn::make('strategy')
                 ->badge(),
             Tables\Columns\TextColumn::make('orchestration.name')
@@ -180,12 +187,6 @@ class ManageClientEmailQueues extends ManageRelatedRecords
             Tables\Columns\TextColumn::make('overflowAgent.name')
                 ->label('Overflow AI')
                 ->placeholder('None'),
-            Tables\Columns\TextColumn::make('threads_count')
-                ->label('Open threads')
-                ->counts([
-                    'threads' => fn ($q) => $q->whereNotIn('status', ['closed']),
-                ])
-                ->alignCenter(),
             Tables\Columns\IconColumn::make('is_active')
                 ->boolean(),
         ];
@@ -194,22 +195,22 @@ class ManageClientEmailQueues extends ManageRelatedRecords
     public static function editAction(Team $owner): Actions\Action
     {
         return Actions\Action::make('edit')
-            ->modalHeading(fn (EmailQueue $record) => $record->name)
-            ->fillForm(fn (EmailQueue $record): array => $record->only([
+            ->modalHeading(fn (ChatQueue $record) => $record->name)
+            ->fillForm(fn (ChatQueue $record): array => $record->only([
                 'name', 'description', 'strategy', 'agent_group_id',
                 'overflow_agent_persona_id', 'is_active', 'orchestration_id',
-                'matched_addresses', 'matched_domain',
+                'integration_type', 'integration_config',
             ]))
             ->schema(self::formSchemaFor($owner))
             ->modalSubmitActionLabel('Save')
-            ->action(function (EmailQueue $record, array $data) {
+            ->action(function (ChatQueue $record, array $data) {
                 $record->update($data);
                 Notification::make()->title('Saved')->success()->send();
             })
             ->extraModalFooterActions([
                 self::bindingsAction($owner),
                 Actions\DeleteAction::make()
-                    ->modalDescription('Delete this queue? Threads pointing at it will lose their queue assignment.'),
+                    ->modalDescription('Delete this queue? Sessions pointing at it will lose their queue assignment.'),
             ]);
     }
 
@@ -219,14 +220,14 @@ class ManageClientEmailQueues extends ManageRelatedRecords
             ->label('Bindings')
             ->icon('heroicon-o-link')
             ->color('info')
-            ->modalHeading(fn (EmailQueue $record) => "Bindings — {$record->name}")
+            ->modalHeading(fn (ChatQueue $record) => "Bindings — {$record->name}")
             ->modalDescription('This queue uses a platform-shared orchestration. Map each binding handle to one of this client\'s resources so the orchestration runs against your data.')
-            ->visible(fn (EmailQueue $record) => $record->orchestration?->isShared() ?? false)
-            ->fillForm(fn (EmailQueue $record) => app(OrchestrationBindingFormFactory::class)
+            ->visible(fn (ChatQueue $record) => $record->orchestration?->isShared() ?? false)
+            ->fillForm(fn (ChatQueue $record) => app(OrchestrationBindingFormFactory::class)
                 ->loadValues($record->orchestration, $owner))
-            ->schema(fn (EmailQueue $record): array => app(OrchestrationBindingFormFactory::class)
+            ->schema(fn (ChatQueue $record): array => app(OrchestrationBindingFormFactory::class)
                 ->fields($record->orchestration, $owner))
-            ->action(function (EmailQueue $record, array $data) use ($owner) {
+            ->action(function (ChatQueue $record, array $data) use ($owner) {
                 app(OrchestrationBindingFormFactory::class)
                     ->save($record->orchestration, $owner, $data);
                 Notification::make()

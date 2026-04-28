@@ -7,6 +7,7 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\AgentGroupResource\Pages;
 use App\Filament\Resources\AgentGroupResource\RelationManagers\MembersRelationManager;
 use App\Models\AgentGroup;
+use App\Models\QueueStrategyTemplate;
 use BackedEnum;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
@@ -79,6 +80,14 @@ class AgentGroupResource extends Resource
                 Forms\Components\Textarea::make('description')
                     ->rows(2)
                     ->columnSpanFull(),
+                Forms\Components\Select::make('strategy_template_id')
+                    ->label('Ring strategy')
+                    ->options(fn () => QueueStrategyTemplate::orderByDesc('is_default')
+                        ->orderBy('name')
+                        ->pluck('name', 'id'))
+                    ->default(fn () => QueueStrategyTemplate::where('is_default', true)->value('id'))
+                    ->required()
+                    ->helperText('Asterisk strategy + timeouts for any queue that points at this group. Manage templates in Platform → Queue Strategies.'),
                 Forms\Components\Toggle::make('is_active')
                     ->default(true),
             ]);
@@ -96,6 +105,10 @@ class AgentGroupResource extends Resource
                     ->label('Slug')
                     ->fontFamily('mono')
                     ->searchable(),
+                Tables\Columns\TextColumn::make('strategyTemplate.name')
+                    ->label('Strategy')
+                    ->badge()
+                    ->placeholder('— none —'),
                 Tables\Columns\TextColumn::make('members_count')
                     ->counts('members')
                     ->label('Members')

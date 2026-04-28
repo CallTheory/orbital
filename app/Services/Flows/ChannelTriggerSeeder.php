@@ -18,9 +18,9 @@ use Illuminate\Support\Facades\DB;
  *      one Orchestration ("Default"). Returns it.
  *   2. `ensureTriggersFor(Team)` — run the bootstrap, then plant
  *      the five channel-trigger flows in the Default orchestration
- *      (inbound phone, email, sms, wctp, outbound phone), laid out
- *      across the top row. Triggers start inactive so they don't
- *      fire anything until the author wires an outbound edge.
+ *      (inbound phone, email, message, chat, outbound phone), laid
+ *      out across the top row. Triggers start inactive so they
+ *      don't fire anything until the author wires an outbound edge.
  *
  * Idempotent. Safe to call from the controller (lazy backfill on
  * editor open) and from seeders.
@@ -30,8 +30,8 @@ class ChannelTriggerSeeder
     private const CHANNELS = [
         IntakeFlow::TRIGGER_INBOUND_PHONE => ['Inbound Phone', 40, 40],
         IntakeFlow::TRIGGER_INBOUND_EMAIL => ['Inbound Email', 340, 40],
-        IntakeFlow::TRIGGER_INBOUND_SMS => ['Inbound SMS', 640, 40],
-        IntakeFlow::TRIGGER_INBOUND_WCTP => ['Inbound WCTP', 940, 40],
+        IntakeFlow::TRIGGER_INBOUND_MESSAGE => ['Inbound Message', 640, 40],
+        IntakeFlow::TRIGGER_INBOUND_CHAT => ['Inbound Chat', 940, 40],
         IntakeFlow::TRIGGER_OUTBOUND_PHONE => ['Outbound Phone', 1240, 40],
     ];
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -49,7 +50,7 @@ return new class extends Migration
         });
 
         // Exactly one parent must be set.
-        \Illuminate\Support\Facades\DB::statement(<<<'SQL'
+        DB::statement(<<<'SQL'
             ALTER TABLE directory_entries ADD CONSTRAINT directory_entries_parent_exactly_one
             CHECK (
                 (team_id IS NOT NULL AND shared_directory_id IS NULL)

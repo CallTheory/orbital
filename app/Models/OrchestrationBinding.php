@@ -33,6 +33,10 @@ class OrchestrationBinding extends Model
 
     public const TYPE_EMAIL_QUEUE = 'email_queue';
 
+    public const TYPE_MESSAGE_QUEUE = 'message_queue';
+
+    public const TYPE_CHAT_QUEUE = 'chat_queue';
+
     public const TYPE_EXTENSION = 'extension';
 
     public const TYPE_DID_SET = 'did_set';
@@ -43,6 +47,8 @@ class OrchestrationBinding extends Model
         self::TYPE_AGENT_PERSONA,
         self::TYPE_CALL_QUEUE,
         self::TYPE_EMAIL_QUEUE,
+        self::TYPE_MESSAGE_QUEUE,
+        self::TYPE_CHAT_QUEUE,
         self::TYPE_EXTENSION,
         self::TYPE_DID_SET,
         self::TYPE_KNOWLEDGE_STORE,

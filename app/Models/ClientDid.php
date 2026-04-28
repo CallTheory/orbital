@@ -9,11 +9,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
- * A DID (phone number) provisioned through one of the platform's SIP trunks
- * and assigned to a client.
- *
- * Clients typically have multiple DIDs across different carriers/trunks for
- * failover. The `priority` column orders them — lower number wins.
+ * A DID (phone number) provisioned through one of the platform's SIP
+ * trunks and assigned to a client. A client can carry multiple DIDs
+ * across different carriers / trunks. Listings sort by `number`.
  *
  * These are platform-owned numbers, NOT customer-brought-along ones.
  */
@@ -26,7 +24,6 @@ class ClientDid extends Model
         'sip_trunk_id',
         'number',
         'label',
-        'priority',
         'is_active',
         'notes',
     ];
@@ -34,7 +31,6 @@ class ClientDid extends Model
     protected function casts(): array
     {
         return [
-            'priority' => 'integer',
             'is_active' => 'boolean',
         ];
     }

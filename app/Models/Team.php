@@ -123,6 +123,16 @@ class Team extends JetstreamTeam
         return $this->hasMany(EmailQueue::class);
     }
 
+    public function messageQueues(): HasMany
+    {
+        return $this->hasMany(MessageQueue::class);
+    }
+
+    public function chatQueues(): HasMany
+    {
+        return $this->hasMany(ChatQueue::class);
+    }
+
     public function emailThreads(): HasMany
     {
         return $this->hasMany(EmailThread::class);
@@ -143,19 +153,21 @@ class Team extends JetstreamTeam
         return $this->hasMany(OperatingHour::class);
     }
 
-    public function tenantDids(): HasMany
+    public function dids(): HasMany
     {
-        return $this->hasMany(ClientDid::class)->orderBy('priority');
+        return $this->hasMany(ClientDid::class)->orderBy('number');
     }
 
     /**
-     * The active DID with the highest priority (lowest priority number).
+     * One representative active DID for column displays. With per-DID
+     * failover priority gone, this is just "first active DID by
+     * number" — fine for the common case where a client only has one
+     * or two DIDs and we just want a number to show in a list cell.
      */
     public function primaryDid(): ?ClientDid
     {
-        return $this->tenantDids()
+        return $this->dids()
             ->where('is_active', true)
-            ->orderBy('priority')
             ->first();
     }
 

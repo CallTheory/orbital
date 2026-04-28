@@ -4,14 +4,17 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
-use App\Models\CallQueue;
+use App\Models\AgentGroup;
 use App\Models\QueueStrategyTemplate;
 use Illuminate\Database\Seeder;
 
 /**
- * Sensible defaults every platform ships with. Operators can add
- * more via the Filament admin; these cover 80% of use cases and
- * give the migration backfill something to match against.
+ * Sensible defaults every platform ships with. Operators can add more
+ * via the Filament admin; these cover 80% of use cases.
+ *
+ * Strategy now lives on `agent_groups`, not on individual call queues
+ * — the seeder backfills any group missing a template with the
+ * platform default after creating the templates.
  */
 class QueueStrategyTemplateSeeder extends Seeder
 {
@@ -24,7 +27,6 @@ class QueueStrategyTemplateSeeder extends Seeder
                 'strategy' => QueueStrategyTemplate::STRATEGY_RINGALL,
                 'timeout' => 30,
                 'retry' => 5,
-                'wrapup_time' => 0,
                 'is_default' => true,
             ],
             [
@@ -33,7 +35,6 @@ class QueueStrategyTemplateSeeder extends Seeder
                 'strategy' => QueueStrategyTemplate::STRATEGY_LEASTRECENT,
                 'timeout' => 45,
                 'retry' => 5,
-                'wrapup_time' => 5,
                 'is_default' => false,
             ],
             [
@@ -42,7 +43,6 @@ class QueueStrategyTemplateSeeder extends Seeder
                 'strategy' => QueueStrategyTemplate::STRATEGY_ROUNDROBIN,
                 'timeout' => 20,
                 'retry' => 3,
-                'wrapup_time' => 0,
                 'is_default' => false,
             ],
             [
@@ -51,7 +51,6 @@ class QueueStrategyTemplateSeeder extends Seeder
                 'strategy' => QueueStrategyTemplate::STRATEGY_RINGALL,
                 'timeout' => 15,
                 'retry' => 2,
-                'wrapup_time' => 0,
                 'is_default' => false,
             ],
         ];
@@ -63,22 +62,15 @@ class QueueStrategyTemplateSeeder extends Seeder
             );
         }
 
-        // Backfill existing call queues. Match by (strategy, timeout,
-        // retry, wrapup_time); fall back to the default template if
-        // no exact match. Harmless to re-run — rows already pointing
-        // at a template are left alone.
-        $all = QueueStrategyTemplate::all();
-        $default = $all->firstWhere('is_default', true) ?? $all->first();
-
-        CallQueue::withoutGlobalScope('team')
-            ->whereNull('strategy_template_id')
-            ->get()
-            ->each(function (CallQueue $q) use ($all, $default) {
-                $match = $all->first(fn ($t) => $t->strategy === $q->strategy
-                    && $t->timeout === (int) $q->timeout
-                    && $t->retry === (int) $q->retry
-                    && $t->wrapup_time === (int) $q->wrapup_time);
-                $q->forceFill(['strategy_template_id' => ($match ?? $default)->id])->save();
-            });
+        // Catch-up backfill for groups created before templates existed
+        // (the schema migration runs before this seeder on a fresh
+        // install, so its initial backfill finds an empty templates
+        // table and leaves agent_groups.strategy_template_id null).
+        $defaultId = QueueStrategyTemplate::where('is_default', true)->value('id');
+        if ($defaultId !== null) {
+            AgentGroup::query()
+                ->whereNull('strategy_template_id')
+                ->update(['strategy_template_id' => $defaultId]);
+        }
     }
 }

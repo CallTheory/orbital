@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Schema;
  *
  * `trigger_type` stays as a varchar; we just widen the set of
  * accepted values in application code. The new acceptable values
- * are: inbound_phone, inbound_email, inbound_sms, inbound_wctp,
+ * are: inbound_phone, inbound_email, inbound_message, inbound_chat,
  * outbound_phone, subflow, manual.
  */
 return new class extends Migration
@@ -40,9 +40,9 @@ return new class extends Migration
         // accepted. Laravel's original `enum(...)` emitted a Postgres
         // CHECK constraint that rejects anything outside the original
         // four values.
-        if (\DB::getDriverName() === 'pgsql') {
-            \DB::statement('ALTER TABLE intake_flows DROP CONSTRAINT IF EXISTS intake_flows_trigger_type_check');
-            \DB::statement('ALTER TABLE intake_flows ALTER COLUMN trigger_type TYPE varchar(32)');
+        if (DB::getDriverName() === 'pgsql') {
+            DB::statement('ALTER TABLE intake_flows DROP CONSTRAINT IF EXISTS intake_flows_trigger_type_check');
+            DB::statement('ALTER TABLE intake_flows ALTER COLUMN trigger_type TYPE varchar(32)');
         }
     }
 

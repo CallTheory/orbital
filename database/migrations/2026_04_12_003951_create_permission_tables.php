@@ -75,7 +75,7 @@ return new class extends Migration
         });
 
         if ($teams) {
-            \DB::statement('CREATE UNIQUE INDEX model_has_permissions_unique ON '.$tableNames['model_has_permissions'].' (COALESCE('.$columnNames['team_foreign_key'].', 0), '.$pivotPermission.', '.$columnNames['model_morph_key'].', model_type)');
+            DB::statement('CREATE UNIQUE INDEX model_has_permissions_unique ON '.$tableNames['model_has_permissions'].' (COALESCE('.$columnNames['team_foreign_key'].', 0), '.$pivotPermission.', '.$columnNames['model_morph_key'].', model_type)');
         }
 
         Schema::create($tableNames['model_has_roles'], static function (Blueprint $table) use ($tableNames, $columnNames, $pivotRole, $teams) {
@@ -101,7 +101,7 @@ return new class extends Migration
         });
 
         if ($teams) {
-            \DB::statement('CREATE UNIQUE INDEX model_has_roles_unique ON '.$tableNames['model_has_roles'].' (COALESCE('.$columnNames['team_foreign_key'].', 0), '.$pivotRole.', '.$columnNames['model_morph_key'].', model_type)');
+            DB::statement('CREATE UNIQUE INDEX model_has_roles_unique ON '.$tableNames['model_has_roles'].' (COALESCE('.$columnNames['team_foreign_key'].', 0), '.$pivotRole.', '.$columnNames['model_morph_key'].', model_type)');
         }
 
         Schema::create($tableNames['role_has_permissions'], static function (Blueprint $table) use ($tableNames, $pivotRole, $pivotPermission) {

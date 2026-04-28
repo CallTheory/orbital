@@ -79,14 +79,21 @@ class OrchestrationResource extends Resource
             // Platform-only — per-client orchestrations live under
             // Client → Orchestrations and never appear here.
             ->whereNull('team_id')
-            // Eager-load the queues + their owning client so the
-            // channel-status icons + the modal's Assignments list
-            // don't N+1 across (potentially many) clients.
+            // Eager-load the channel-trigger flows (for the icon row)
+            // and the queues + owning client (for the Assignments
+            // table) so neither path N+1s across many clients.
             ->with([
+                'flows' => fn ($q) => $q
+                    ->select('id', 'orchestration_id', 'trigger_type', 'is_active')
+                    ->withCount(['steps', 'transitionsOut']),
                 'callQueues:id,orchestration_id,team_id,name',
                 'callQueues.team:id,name',
                 'emailQueues:id,orchestration_id,team_id,name',
                 'emailQueues.team:id,name',
+                'messageQueues:id,orchestration_id,team_id,name',
+                'messageQueues.team:id,name',
+                'chatQueues:id,orchestration_id,team_id,name',
+                'chatQueues.team:id,name',
             ]);
     }
 

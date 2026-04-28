@@ -18,7 +18,11 @@ class ManageClientDids extends ManageRelatedRecords
 {
     protected static string $resource = ClientResource::class;
 
-    protected static string $relationship = 'tenantDids';
+    protected static string $relationship = 'dids';
+
+    protected static ?string $modelLabel = 'DID';
+
+    protected static ?string $pluralModelLabel = 'DIDs';
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-hashtag';
 
@@ -50,10 +54,6 @@ class ManageClientDids extends ManageRelatedRecords
                     ->options(fn () => SipTrunk::withoutGlobalScope('team')->pluck('name', 'id'))
                     ->searchable()
                     ->helperText('Which carrier trunk delivers calls to this DID.'),
-                Forms\Components\TextInput::make('priority')
-                    ->numeric()
-                    ->default(0)
-                    ->helperText('Lower number = higher preference for failover.'),
                 Forms\Components\Toggle::make('is_active')
                     ->default(true),
                 Forms\Components\Textarea::make('notes')
@@ -64,20 +64,22 @@ class ManageClientDids extends ManageRelatedRecords
 
     public function table(Table $table): Table
     {
+        // Click the number cell to open the standard edit modal —
+        // no inline action buttons cluttering each row. Bulk select
+        // handles delete.
+        $editAction = Actions\EditAction::make();
+
         return $table
             ->recordTitleAttribute('number')
             ->columns([
-                Tables\Columns\TextColumn::make('priority')
-                    ->label('Pri')
-                    ->sortable()
-                    ->alignCenter(),
                 Tables\Columns\TextColumn::make('number')
                     ->label('Number')
                     ->searchable()
-                    ->copyable()
-                    ->weight('medium'),
+                    ->weight('medium')
+                    ->action($editAction),
                 Tables\Columns\TextColumn::make('label')
-                    ->placeholder('—'),
+                    ->placeholder('—')
+                    ->action($editAction),
                 Tables\Columns\TextColumn::make('sipTrunk.name')
                     ->label('Trunk')
                     ->placeholder('Any')
@@ -86,14 +88,11 @@ class ManageClientDids extends ManageRelatedRecords
                     ->label('Active')
                     ->boolean(),
             ])
-            ->defaultSort('priority')
+            ->defaultSort('number')
             ->headerActions([
                 Actions\CreateAction::make(),
             ])
-            ->actions([
-                Actions\EditAction::make(),
-                Actions\DeleteAction::make(),
-            ])
+            ->actions([])
             ->bulkActions([
                 Actions\BulkActionGroup::make([
                     Actions\DeleteBulkAction::make(),

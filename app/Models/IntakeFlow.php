@@ -39,9 +39,9 @@ class IntakeFlow extends Model
 
     public const TRIGGER_INBOUND_EMAIL = 'inbound_email';
 
-    public const TRIGGER_INBOUND_SMS = 'inbound_sms';
+    public const TRIGGER_INBOUND_MESSAGE = 'inbound_message';
 
-    public const TRIGGER_INBOUND_WCTP = 'inbound_wctp';
+    public const TRIGGER_INBOUND_CHAT = 'inbound_chat';
 
     public const TRIGGER_OUTBOUND_PHONE = 'outbound_phone';
 
@@ -52,8 +52,8 @@ class IntakeFlow extends Model
     public const CHANNEL_TRIGGERS = [
         self::TRIGGER_INBOUND_PHONE,
         self::TRIGGER_INBOUND_EMAIL,
-        self::TRIGGER_INBOUND_SMS,
-        self::TRIGGER_INBOUND_WCTP,
+        self::TRIGGER_INBOUND_MESSAGE,
+        self::TRIGGER_INBOUND_CHAT,
         self::TRIGGER_OUTBOUND_PHONE,
     ];
 

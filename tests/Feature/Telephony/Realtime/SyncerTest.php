@@ -216,17 +216,23 @@ class SyncerTest extends TestCase
     public function test_queue_syncer_writes_queues_row_with_prefixed_name(): void
     {
         $team = $this->makeTeam();
-        $queue = CallQueue::create([
-            'team_id' => $team->id,
-            'name' => 'Support',
+        $template = \App\Models\QueueStrategyTemplate::create([
+            'name' => 'Test Strategy',
             'strategy' => 'rrmemory',
             'timeout' => 25,
             'retry' => 5,
             'wrapup_time' => 10,
-            'max_callers' => 50,
+        ]);
+        $group = \App\Models\AgentGroup::create([
+            'name' => 'test_group',
+            'label' => 'Test Group',
+            'strategy_template_id' => $template->id,
+        ]);
+        $queue = CallQueue::create([
+            'team_id' => $team->id,
+            'name' => 'Support',
             'music_on_hold' => 'default',
-            'join_empty' => false,
-            'leave_when_empty' => true,
+            'agent_group_id' => $group->id,
         ]);
 
         $this->assertDatabaseHas('queues', [
@@ -242,8 +248,6 @@ class SyncerTest extends TestCase
         $queue = CallQueue::create([
             'team_id' => $team->id,
             'name' => 'Support',
-            'strategy' => 'ringall',
-            'timeout' => 30,
         ]);
 
         // Hand-insert a stale member row to confirm the syncer wipes it.
@@ -269,8 +273,6 @@ class SyncerTest extends TestCase
         $queue = CallQueue::create([
             'team_id' => $team->id,
             'name' => 'Delete Me',
-            'strategy' => 'ringall',
-            'timeout' => 30,
         ]);
         $name = $queue->asteriskName();
 

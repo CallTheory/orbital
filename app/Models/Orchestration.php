@@ -26,9 +26,9 @@ use Illuminate\Support\Facades\DB;
  *
  * Lifecycle is intentionally simple: no manual draft/active column.
  * An orchestration is "active" in the UI when at least one queue
- * (`call_queues.orchestration_id` or `email_queues.orchestration_id`)
- * points at it. Authors don't toggle status by hand; assigning to a
- * queue IS the promotion gesture.
+ * (any of `call_queues`, `email_queues`, `message_queues`,
+ * `chat_queues`'s `orchestration_id`) points at it. Authors don't
+ * toggle status by hand; assigning to a queue IS the promotion gesture.
  *
  * Deletes are hard. Cascades wipe the whole subtree (flows, steps,
  * transitions, rules, bindings). Any queue that referenced the
@@ -65,6 +65,16 @@ class Orchestration extends Model
         return $this->hasMany(EmailQueue::class, 'orchestration_id');
     }
 
+    public function messageQueues(): HasMany
+    {
+        return $this->hasMany(MessageQueue::class, 'orchestration_id');
+    }
+
+    public function chatQueues(): HasMany
+    {
+        return $this->hasMany(ChatQueue::class, 'orchestration_id');
+    }
+
     public function bindings(): HasMany
     {
         return $this->hasMany(OrchestrationBinding::class);
@@ -75,7 +85,10 @@ class Orchestration extends Model
      */
     public function isActive(): bool
     {
-        return $this->callQueues()->exists() || $this->emailQueues()->exists();
+        return $this->callQueues()->exists()
+            || $this->emailQueues()->exists()
+            || $this->messageQueues()->exists()
+            || $this->chatQueues()->exists();
     }
 
     /**

@@ -50,7 +50,7 @@ return new class extends Migration
             $libraryId = $library[$libraryKey] ?? null;
 
             if ($libraryId === null) {
-                throw new \RuntimeException(
+                throw new RuntimeException(
                     "No library goal found for team-scoped goal id={$goal->id} (key={$goal->key}). "
                     ."Add an alias to the migration's \$keyAliases map before re-running."
                 );

@@ -16,35 +16,12 @@ class CallQueue extends Model
     use BelongsToTeam;
     use SoftDeletes;
 
-    protected static function booted(): void
-    {
-        // Any queue saved without a template FK picks up the platform
-        // default automatically. Covers Filament forms, seeders, and
-        // any future API callers without forcing each to know about
-        // the template system.
-        static::saving(function (self $queue): void {
-            if ($queue->strategy_template_id === null) {
-                $defaultId = QueueStrategyTemplate::where('is_default', true)->value('id');
-                if ($defaultId !== null) {
-                    $queue->strategy_template_id = $defaultId;
-                }
-            }
-        });
-    }
-
     protected $fillable = [
-        'strategy_template_id',
         'orchestration_id',
         'team_id',
         'name',
-        'strategy',
-        'timeout',
-        'retry',
-        'wrapup_time',
-        'max_callers',
         'music_on_hold',
-        'join_empty',
-        'leave_when_empty',
+        'wrapup_time',
         'overflow_agent_persona_id',
         'agent_group_id',
     ];
@@ -52,12 +29,7 @@ class CallQueue extends Model
     protected function casts(): array
     {
         return [
-            'timeout' => 'integer',
-            'retry' => 'integer',
             'wrapup_time' => 'integer',
-            'max_callers' => 'integer',
-            'join_empty' => 'boolean',
-            'leave_when_empty' => 'boolean',
         ];
     }
 
@@ -94,19 +66,6 @@ class CallQueue extends Model
             'call_queue_id',
             'client_did_id',
         )->withTimestamps();
-    }
-
-    /**
-     * Platform-level strategy template this queue picks. The
-     * template carries `strategy` / `timeout` / `retry` /
-     * `wrapup_time` so clients don't hand-tune them. Legacy queues
-     * (pre-migration) may have a null template FK; QueueSyncer
-     * reads `$this->strategyTemplate` if present, else falls back
-     * to the legacy columns on the row.
-     */
-    public function strategyTemplate(): BelongsTo
-    {
-        return $this->belongsTo(QueueStrategyTemplate::class, 'strategy_template_id');
     }
 
     /**

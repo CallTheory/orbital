@@ -27,6 +27,8 @@ return new class extends Migration
         'extension_picker' => 'extension',
         'call_queue_picker' => 'call_queue',
         'email_queue_picker' => 'email_queue',
+        'message_queue_picker' => 'message_queue',
+        'chat_queue_picker' => 'chat_queue',
         'agent_persona_picker' => 'agent_persona',
         'knowledge_store_list' => 'knowledge_store',
     ];

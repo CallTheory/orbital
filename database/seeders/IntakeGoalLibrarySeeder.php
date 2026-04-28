@@ -83,8 +83,8 @@ class IntakeGoalLibrarySeeder extends Seeder
             // Channel triggers: matched routing rule vs unmatched fallback.
             'trigger_inbound_phone' => ['matched', 'fallback'],
             'trigger_inbound_email' => ['matched', 'fallback'],
-            'trigger_inbound_sms' => ['matched', 'fallback'],
-            'trigger_inbound_wctp' => ['matched', 'fallback'],
+            'trigger_inbound_message' => ['matched', 'fallback'],
+            'trigger_inbound_chat' => ['matched', 'fallback'],
             'trigger_outbound_phone' => ['matched', 'fallback'],
             // Matches without a fixed outcome set stay unbounded —
             // each DID / local-part rule is its own transition.
@@ -1264,11 +1264,11 @@ class IntakeGoalLibrarySeeder extends Seeder
             ],
 
             [
-                'key' => 'trigger_inbound_sms',
-                'name' => 'Inbound SMS',
+                'key' => 'trigger_inbound_message',
+                'name' => 'Inbound Message',
                 'category' => 'trigger',
                 'icon' => 'heroicon-o-chat-bubble-left-right',
-                'description' => 'Entry point for inbound SMS messages. Matching is configured on the SMS queue (when available).',
+                'description' => 'Entry point for inbound text-shaped messages — SMS, MMS, RCS, SMPP, WCTP, paging. Matching (addresses + protocols) is configured on the Message Queue.',
                 'talking_points' => [],
                 'data_fields' => [
                     ['key' => 'notes', 'label' => 'Notes', 'type' => 'template', 'required' => false],
@@ -1277,11 +1277,11 @@ class IntakeGoalLibrarySeeder extends Seeder
             ],
 
             [
-                'key' => 'trigger_inbound_wctp',
-                'name' => 'Inbound WCTP',
+                'key' => 'trigger_inbound_chat',
+                'name' => 'Inbound Chat',
                 'category' => 'trigger',
-                'icon' => 'heroicon-o-signal',
-                'description' => 'Entry point for inbound WCTP pager submissions. Matching is configured on the WCTP queue (when available).',
+                'icon' => 'heroicon-o-chat-bubble-bottom-center-text',
+                'description' => 'Entry point for interactive chat sessions — embeddable web widget, Slack, Microsoft Teams. Integration config is held on the Chat Queue.',
                 'talking_points' => [],
                 'data_fields' => [
                     ['key' => 'notes', 'label' => 'Notes', 'type' => 'template', 'required' => false],

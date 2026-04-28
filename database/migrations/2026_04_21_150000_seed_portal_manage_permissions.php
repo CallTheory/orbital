@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Models\Team;
+use App\Models\User;
 use App\Services\Clients\ClientProvisioner;
 use Database\Seeders\PermissionCatalogSeeder;
 use Illuminate\Database\Migrations\Migration;
@@ -27,11 +29,11 @@ return new class extends Migration
 
         $provisioner = app(ClientProvisioner::class);
 
-        \App\Models\Team::query()
+        Team::query()
             ->where('personal_team', false)
             ->whereNotNull('user_id')
-            ->each(function (\App\Models\Team $team) use ($provisioner) {
-                $owner = \App\Models\User::find($team->user_id);
+            ->each(function (Team $team) use ($provisioner) {
+                $owner = User::find($team->user_id);
                 if (! $owner) {
                     return;
                 }
@@ -41,6 +43,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        throw new \RuntimeException('seed_portal_manage_permissions is not reversible.');
+        throw new RuntimeException('seed_portal_manage_permissions is not reversible.');
     }
 };

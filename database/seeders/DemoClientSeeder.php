@@ -153,7 +153,6 @@ class DemoClientSeeder extends Seeder
             'sip_trunk_id' => $sharedTrunk?->id,
             'number' => '+15551234567',
             'label' => 'Primary',
-            'priority' => 0,
             'is_active' => true,
         ]);
         ClientDid::create([
@@ -161,7 +160,6 @@ class DemoClientSeeder extends Seeder
             'sip_trunk_id' => $sharedTrunk?->id,
             'number' => '+15559876543',
             'label' => 'Backup',
-            'priority' => 10,
             'is_active' => true,
         ]);
 
@@ -245,14 +243,7 @@ class DemoClientSeeder extends Seeder
         $queue = CallQueue::create([
             'team_id' => $team->id,
             'name' => 'demo-customer-main',
-            'strategy' => 'ringall',
-            'timeout' => 30,
-            'retry' => 5,
-            'wrapup_time' => 0,
-            'max_callers' => 0,
             'music_on_hold' => 'default',
-            'join_empty' => false,
-            'leave_when_empty' => true,
             'overflow_agent_persona_id' => $receptionist->id,
             'agent_group_id' => $allOperators->id,
         ]);

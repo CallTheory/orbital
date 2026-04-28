@@ -41,7 +41,6 @@ class QueueStrategyTemplate extends Model
         'strategy',
         'timeout',
         'retry',
-        'wrapup_time',
         'is_default',
     ];
 
@@ -50,13 +49,16 @@ class QueueStrategyTemplate extends Model
         return [
             'timeout' => 'integer',
             'retry' => 'integer',
-            'wrapup_time' => 'integer',
             'is_default' => 'boolean',
         ];
     }
 
-    public function callQueues(): HasMany
+    /**
+     * Strategy lives on the agent group, not the queue — the template's
+     * "what's using me" relation lifts up accordingly.
+     */
+    public function agentGroups(): HasMany
     {
-        return $this->hasMany(CallQueue::class, 'strategy_template_id');
+        return $this->hasMany(AgentGroup::class, 'strategy_template_id');
     }
 }

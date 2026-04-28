@@ -27,21 +27,23 @@ class QueueSyncer
 {
     public function sync(CallQueue $queue): void
     {
-        // Phase 3: prefer the platform-curated strategy template when
-        // the queue has one attached. Falls back to the legacy
-        // per-queue columns for rows that haven't been migrated yet.
-        $template = $queue->strategyTemplate;
+        // Strategy + ring timings come from the agent group's
+        // platform-curated template (one strategy per agent pool).
+        // Wrapup is a per-queue tuning knob — sales calls and FAQ
+        // calls might share the same agents but need different post-
+        // call recovery, so it lives directly on the queue row.
+        $template = $queue->agentGroup?->strategyTemplate;
 
         $row = [
             'name' => $queue->asteriskName(),
-            'strategy' => $template?->strategy ?: ($queue->strategy ?: 'ringall'),
-            'timeout' => (int) ($template?->timeout ?? $queue->timeout ?? 30),
-            'retry' => (int) ($template?->retry ?? $queue->retry ?? 5),
-            'wrapuptime' => (int) ($template?->wrapup_time ?? $queue->wrapup_time ?? 10),
-            'maxlen' => (int) ($queue->max_callers ?: 0),
+            'strategy' => $template?->strategy ?: 'ringall',
+            'timeout' => (int) ($template?->timeout ?? 30),
+            'retry' => (int) ($template?->retry ?? 5),
+            'wrapuptime' => (int) ($queue->wrapup_time ?? 0),
+            'maxlen' => 0,
             'musiconhold' => $queue->music_on_hold ?: 'default',
-            'joinempty' => $queue->join_empty ? 1 : 0,
-            'leavewhenempty' => $queue->leave_when_empty ? 1 : 0,
+            'joinempty' => 1,
+            'leavewhenempty' => 1,
             'monitor_type' => 'MixMonitor',
         ];
 

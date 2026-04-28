@@ -55,11 +55,11 @@
     let { data, selected }: NodeProps<FlowNodeData> = $props();
 
     const CHANNEL_INFO: Record<string, { label: string; icon: string }> = {
-        inbound_phone:  { label: 'Phone in',  icon: '\u260E' },
-        inbound_email:  { label: 'Email in',  icon: '\u2709' },
-        inbound_sms:    { label: 'SMS in',    icon: '\u{1F4AC}' },
-        inbound_wctp:   { label: 'WCTP in',   icon: '\u{1F4F6}' },
-        outbound_phone: { label: 'Phone out', icon: '\u260F' },
+        inbound_phone:   { label: 'Phone in',   icon: '\u260E' },
+        inbound_email:   { label: 'Email in',   icon: '\u2709' },
+        inbound_message: { label: 'Message in', icon: '\u{1F4AC}' },
+        inbound_chat:    { label: 'Chat in',    icon: '\u{1F4AD}' },
+        outbound_phone:  { label: 'Phone out',  icon: '\u260F' },
     };
 
     const channelInfo = $derived(

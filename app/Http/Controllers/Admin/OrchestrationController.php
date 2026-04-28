@@ -73,8 +73,13 @@ class OrchestrationController extends Controller
             ->where(function ($q) use ($client) {
                 $q->where('team_id', $client->id)->orWhereNull('team_id');
             })
-            ->withCount(['flows', 'callQueues', 'emailQueues'])
-            ->with(['callQueues:id,orchestration_id,name', 'emailQueues:id,orchestration_id,name'])
+            ->withCount(['flows', 'callQueues', 'emailQueues', 'messageQueues', 'chatQueues'])
+            ->with([
+                'callQueues:id,orchestration_id,name',
+                'emailQueues:id,orchestration_id,name',
+                'messageQueues:id,orchestration_id,name',
+                'chatQueues:id,orchestration_id,name',
+            ])
             ->orderBy('name')
             ->get();
 
@@ -86,10 +91,12 @@ class OrchestrationController extends Controller
                 'description' => $o->description,
                 'is_shared' => $o->isShared(),
                 'flow_count' => $o->flows_count,
-                'is_active' => ($o->call_queues_count + $o->email_queues_count) > 0,
+                'is_active' => ($o->call_queues_count + $o->email_queues_count + $o->message_queues_count + $o->chat_queues_count) > 0,
                 'assigned_to' => [
                     'call_queues' => $o->callQueues->map(fn ($q) => ['id' => $q->id, 'name' => $q->name])->values(),
                     'email_queues' => $o->emailQueues->map(fn ($q) => ['id' => $q->id, 'name' => $q->name])->values(),
+                    'message_queues' => $o->messageQueues->map(fn ($q) => ['id' => $q->id, 'name' => $q->name])->values(),
+                    'chat_queues' => $o->chatQueues->map(fn ($q) => ['id' => $q->id, 'name' => $q->name])->values(),
                 ],
                 'created_at' => $o->created_at?->toIso8601String(),
                 'updated_at' => $o->updated_at?->toIso8601String(),
@@ -262,7 +269,6 @@ class OrchestrationController extends Controller
                     ->map(fn (CallQueue $q) => [
                         'id' => $q->id,
                         'name' => $q->name,
-                        'strategy' => $q->strategy,
                     ]),
             'email_queues' => $isShared
                 ? []
@@ -293,7 +299,6 @@ class OrchestrationController extends Controller
                 : ClientDid::query()
                     ->where('team_id', $client->id)
                     ->where('is_active', true)
-                    ->orderBy('priority')
                     ->orderBy('number')
                     ->get()
                     ->map(fn (ClientDid $d) => [
@@ -376,10 +381,10 @@ class OrchestrationController extends Controller
             ->all();
 
         $layout = [
-            IntakeFlow::TRIGGER_INBOUND_PHONE => ['Inbound Phone',  40,   40],
-            IntakeFlow::TRIGGER_INBOUND_EMAIL => ['Inbound Email',  340,  40],
-            IntakeFlow::TRIGGER_INBOUND_SMS => ['Inbound SMS',    640,  40],
-            IntakeFlow::TRIGGER_INBOUND_WCTP => ['Inbound WCTP',   940,  40],
+            IntakeFlow::TRIGGER_INBOUND_PHONE => ['Inbound Phone',   40,   40],
+            IntakeFlow::TRIGGER_INBOUND_EMAIL => ['Inbound Email',   340,  40],
+            IntakeFlow::TRIGGER_INBOUND_MESSAGE => ['Inbound Message', 640,  40],
+            IntakeFlow::TRIGGER_INBOUND_CHAT => ['Inbound Chat',    940,  40],
             IntakeFlow::TRIGGER_OUTBOUND_PHONE => ['Outbound Phone', 1240, 40],
         ];
         $order = 0;

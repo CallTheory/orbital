@@ -44,6 +44,8 @@ class BindingResolver
         'extension_picker' => OrchestrationBinding::TYPE_EXTENSION,
         'call_queue_picker' => OrchestrationBinding::TYPE_CALL_QUEUE,
         'email_queue_picker' => OrchestrationBinding::TYPE_EMAIL_QUEUE,
+        'message_queue_picker' => OrchestrationBinding::TYPE_MESSAGE_QUEUE,
+        'chat_queue_picker' => OrchestrationBinding::TYPE_CHAT_QUEUE,
         'agent_persona_picker' => OrchestrationBinding::TYPE_AGENT_PERSONA,
         'knowledge_store_list' => OrchestrationBinding::TYPE_KNOWLEDGE_STORE,
     ];

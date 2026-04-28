@@ -120,6 +120,9 @@ class ManageClientOrchestrations extends ManageRelatedRecords
         return $table
             ->recordTitleAttribute('name')
             ->modifyQueryUsing(fn ($query) => $query->with([
+                'flows' => fn ($q) => $q
+                    ->select('id', 'orchestration_id', 'trigger_type', 'is_active')
+                    ->withCount(['steps', 'transitionsOut']),
                 'callQueues:id,orchestration_id,name',
                 'emailQueues:id,orchestration_id,name',
             ]))

@@ -100,13 +100,13 @@
     // flow's channel membership is derived by BFS from each channel-
     // trigger flow along outbound transitions. Flows with no channel
     // owner (subflows / action groups / orphans) are always visible.
-    const CHANNELS = ['inbound_phone', 'inbound_email', 'inbound_sms', 'inbound_wctp', 'outbound_phone'] as const;
+    const CHANNELS = ['inbound_phone', 'inbound_email', 'inbound_message', 'inbound_chat', 'outbound_phone'] as const;
     type Channel = (typeof CHANNELS)[number];
     const CHANNEL_LABEL: Record<Channel, string> = {
         inbound_phone: 'Phone',
         inbound_email: 'Email',
-        inbound_sms: 'SMS',
-        inbound_wctp: 'WCTP',
+        inbound_message: 'Message',
+        inbound_chat: 'Chat',
         outbound_phone: 'Out',
     };
 

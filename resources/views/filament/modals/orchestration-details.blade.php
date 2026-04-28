@@ -11,67 +11,111 @@
      * tooltip already covers it.
      */
     $isShared = $record->isShared();
-    $assignments = collect();
-    if ($isShared) {
-        $assignments = collect()
-            ->merge($record->callQueues->map(fn ($q) => [
-                'channel' => 'Phone',
-                'queue' => $q,
-                'team' => $q->team,
-            ]))
-            ->merge($record->emailQueues->map(fn ($q) => [
-                'channel' => 'Email',
-                'queue' => $q,
-                'team' => $q->team,
-            ]))
-            ->groupBy(fn ($a) => $a['team']?->name ?? '(unknown client)')
-            ->sortKeys();
-    }
+
+    // Both per-client and shared orchestrations get the Assignments
+    // section so authors can see "is this in use, and where" without
+    // leaving the modal. For per-client, the client column is dropped
+    // (it's always the owning client and obvious from context).
+    $hubUrl = fn ($team) => $team
+        ? \App\Filament\Resources\ClientResource::getUrl('channels', ['record' => $team])
+        : null;
+
+    $assignments = collect()
+        ->merge($record->callQueues->map(fn ($q) => [
+            'channel' => 'Call',
+            'queue' => $q,
+            'team' => $q->team,
+            'queue_url' => $hubUrl($q->team),
+        ]))
+        ->merge($record->emailQueues->map(fn ($q) => [
+            'channel' => 'Email',
+            'queue' => $q,
+            'team' => $q->team,
+            'queue_url' => $hubUrl($q->team),
+        ]))
+        ->merge($record->messageQueues->map(fn ($q) => [
+            'channel' => 'Message',
+            'queue' => $q,
+            'team' => $q->team,
+            'queue_url' => $hubUrl($q->team),
+        ]))
+        ->merge($record->chatQueues->map(fn ($q) => [
+            'channel' => 'Chat',
+            'queue' => $q,
+            'team' => $q->team,
+            'queue_url' => $hubUrl($q->team),
+        ]))
+        ->sortBy([
+            ['team.name', 'asc'],
+            ['channel', 'asc'],
+            ['queue.name', 'asc'],
+        ])
+        ->values();
 @endphp
 
-<div @class([
-    'fi-grid grid gap-4',
-    'grid-cols-1 md:grid-cols-2' => $isShared,
-])>
-    <x-filament::section
-        heading="Channels"
-        compact
-    >
+<div style="display: flex; flex-direction: column; gap: 1rem;">
+    <x-filament::section heading="Channels" compact>
         @include('filament.columns.orchestration-channels', ['record' => $record])
     </x-filament::section>
 
-    @if ($isShared)
-        <x-filament::section
-            heading="Assignments ({{ $assignments->flatten(1)->count() }})"
-            collapsible
-            collapsed
-            compact
-        >
-            @if ($assignments->isEmpty())
-                <p class="fi-fo-section-content text-sm italic text-gray-500 dark:text-gray-400">
-                    Not assigned to any client yet.
-                </p>
-            @else
-                <ul class="divide-y divide-gray-200 dark:divide-white/10 max-h-72 overflow-y-auto">
-                    @foreach ($assignments as $clientName => $rows)
-                        <li class="py-2 first:pt-0 last:pb-0">
-                            <div class="text-sm font-semibold text-gray-950 dark:text-white">
-                                {{ $clientName }}
-                            </div>
-                            <ul class="mt-1 flex flex-col gap-1">
-                                @foreach ($rows as $row)
-                                    <li class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-                                        <x-filament::badge size="xs" color="gray">
-                                            {{ $row['channel'] }}
-                                        </x-filament::badge>
-                                        <span>{{ $row['queue']->name }}</span>
-                                    </li>
-                                @endforeach
-                            </ul>
-                        </li>
-                    @endforeach
-                </ul>
-            @endif
-        </x-filament::section>
-    @endif
+    <x-filament::section
+        heading="Assignments ({{ $assignments->count() }})"
+        collapsible
+        collapsed
+        compact
+    >
+        @if ($assignments->isEmpty())
+            <p style="margin: 0; font-style: italic;">
+                {{ $isShared ? 'Not assigned to any client yet.' : 'Not assigned to any queue yet.' }}
+            </p>
+        @else
+            <div style="max-height: 18rem; overflow-y: auto;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.875rem;">
+                    <thead>
+                        <tr style="text-align: left;">
+                            @if ($isShared)
+                                <th style="padding: 0.375rem 0.75rem 0.375rem 0; font-weight: 600;">Client</th>
+                            @endif
+                            <th style="padding: 0.375rem 0.75rem; font-weight: 600;">Channel</th>
+                            <th style="padding: 0.375rem 0; font-weight: 600;">Queue</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($assignments as $row)
+                            <tr style="border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);">
+                                @if ($isShared)
+                                    <td style="padding: 0.5rem 0.75rem 0.5rem 0;">
+                                        @if ($row['queue_url'])
+                                            <x-filament::link
+                                                :href="$row['queue_url']"
+                                                :tooltip="'Open channels for ' . ($row['team']?->name ?? '')"
+                                            >
+                                                {{ $row['team']?->name ?? '(unknown client)' }}
+                                            </x-filament::link>
+                                        @else
+                                            {{ $row['team']?->name ?? '(unknown client)' }}
+                                        @endif
+                                    </td>
+                                @endif
+                                <td style="padding: 0.5rem 0.75rem;">
+                                    <x-filament::badge size="xs" color="gray">
+                                        {{ $row['channel'] }}
+                                    </x-filament::badge>
+                                </td>
+                                <td style="padding: 0.5rem 0;">
+                                    @if (! $isShared && $row['queue_url'])
+                                        <x-filament::link :href="$row['queue_url']">
+                                            {{ $row['queue']->name }}
+                                        </x-filament::link>
+                                    @else
+                                        {{ $row['queue']->name }}
+                                    @endif
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+    </x-filament::section>
 </div>

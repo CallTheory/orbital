@@ -8,7 +8,7 @@ use App\Filament\Resources\ClientResource;
 use App\Filament\Support\OrchestrationBindingFormFactory;
 use App\Models\AgentGroup;
 use App\Models\AgentPersona;
-use App\Models\EmailQueue;
+use App\Models\MessageQueue;
 use App\Models\Orchestration;
 use App\Models\Team;
 use BackedEnum;
@@ -21,29 +21,26 @@ use Filament\Tables;
 use Filament\Tables\Table;
 
 /**
- * Admin-side page for managing a client's email queues.
- *
- * Mirrors `ManageClientCallQueues` but with email-shaped fields.
- * No ring timeouts, no wrapup, no music-on-hold — email queues
- * are inboxes, not ring groups. The strategy describes how
- * operators claim threads; overflow AI handles the thread
- * autonomously when no human is available.
+ * Admin-side page for managing a client's message queues —
+ * SMS, MMS, RCS, SMPP, WCTP, and paging traffic. One queue
+ * can accept multiple protocols so a "Support" queue covers
+ * every text inbound regardless of underlying transport.
  */
-class ManageClientEmailQueues extends ManageRelatedRecords
+class ManageClientMessageQueues extends ManageRelatedRecords
 {
     protected static string $resource = ClientResource::class;
 
-    protected static string $relationship = 'emailQueues';
+    protected static string $relationship = 'messageQueues';
 
-    protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-inbox-stack';
+    protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-chat-bubble-left-right';
 
-    protected static ?string $navigationLabel = 'Email Queues';
+    protected static ?string $navigationLabel = 'Message Queues';
 
-    protected static ?string $title = 'Email Queues';
+    protected static ?string $title = 'Message Queues';
 
     public static function getNavigationLabel(): string
     {
-        return 'Email Queues';
+        return 'Message Queues';
     }
 
     public function form(Schema $schema): Schema
@@ -80,24 +77,23 @@ class ManageClientEmailQueues extends ManageRelatedRecords
             Forms\Components\TextInput::make('name')
                 ->required()
                 ->maxLength(255)
-                ->placeholder('Support, Alarms, Billing, …'),
+                ->placeholder('Support, Alarms, Pager Relay, …'),
 
             Forms\Components\Textarea::make('description')
                 ->rows(2)
                 ->maxLength(1000)
-                ->placeholder('Optional note for operators about what kind of threads this queue holds.'),
+                ->placeholder('Optional note for operators about what kind of messages this queue holds.'),
 
             Forms\Components\Select::make('strategy')
                 ->label('Claim strategy')
                 ->options([
-                    EmailQueue::STRATEGY_MANUAL => 'Manual — operators pull threads freely',
-                    EmailQueue::STRATEGY_ROUND_ROBIN => 'Round robin — next thread → next operator in order',
-                    EmailQueue::STRATEGY_LONGEST_IDLE => 'Longest idle — next thread → operator who hasn\'t worked recently',
-                    EmailQueue::STRATEGY_AI_FIRST => 'AI first — overflow persona takes everything unless escalated',
+                    MessageQueue::STRATEGY_MANUAL => 'Manual — operators pull threads freely',
+                    MessageQueue::STRATEGY_ROUND_ROBIN => 'Round robin — next thread → next operator in order',
+                    MessageQueue::STRATEGY_LONGEST_IDLE => 'Longest idle — next thread → operator who hasn\'t worked recently',
+                    MessageQueue::STRATEGY_AI_FIRST => 'AI first — overflow persona takes everything unless escalated',
                 ])
-                ->default(EmailQueue::STRATEGY_MANUAL)
-                ->required()
-                ->helperText('Phase 3 ships with "manual" wired up; auto-assignment strategies land in a polish pass.'),
+                ->default(MessageQueue::STRATEGY_MANUAL)
+                ->required(),
 
             Forms\Components\Select::make('agent_group_id')
                 ->label('Operator group')
@@ -117,7 +113,7 @@ class ManageClientEmailQueues extends ManageRelatedRecords
                     ->pluck('name', 'id'))
                 ->searchable()
                 ->placeholder('None — threads wait for a human')
-                ->helperText('Optional. When nobody picks up, or when strategy=ai_first, the thread hands off to this persona via ProcessEmailWithAgentJob.'),
+                ->helperText('Optional. When nobody picks up, or when strategy=ai_first, the message hands off to this persona.'),
 
             Forms\Components\Toggle::make('is_active')->default(true),
 
@@ -135,18 +131,26 @@ class ManageClientEmailQueues extends ManageRelatedRecords
                         $o->id => $o->name.($o->isShared() ? ' — Platform' : ''),
                     ]))
                 ->placeholder('None — queue holds threads but runs no AI flow')
-                ->helperText('The orchestration this queue runs when an inbound email matches one of its addresses. Platform-shared orchestrations are tagged "Platform" — assign one, then click "Bindings" on the row to map its handles to your resources.'),
+                ->helperText('The orchestration this queue runs when an inbound message matches. Platform-shared orchestrations are tagged "Platform" — assign one, then click "Bindings" on the row to map its handles to your resources.'),
 
             Forms\Components\TagsInput::make('matched_addresses')
-                ->label('Matched addresses / local-part patterns')
-                ->placeholder('e.g. support, billing, alarms')
-                ->helperText('Inbound emails with these local-parts (or full addresses) route to this queue. Patterns are matched against the envelope / To header. Leave empty to make this queue invisible to inbound mail.'),
+                ->label('Matched addresses')
+                ->placeholder('e.g. +18005551212, 81234, support-pager')
+                ->helperText('Phone numbers (E.164), shortcodes, or pager IDs that route to this queue. Matched against the inbound\'s "to" field.'),
 
-            Forms\Components\TextInput::make('matched_domain')
-                ->label('Matched domain (optional)')
-                ->maxLength(255)
-                ->placeholder('e.g. acme.orbital.example')
-                ->helperText('Scope matches to this domain only. Leave empty to match any tenant domain this client owns.'),
+            Forms\Components\Select::make('matched_protocols')
+                ->label('Matched protocols')
+                ->multiple()
+                ->options([
+                    MessageQueue::PROTOCOL_SMS => 'SMS',
+                    MessageQueue::PROTOCOL_MMS => 'MMS',
+                    MessageQueue::PROTOCOL_RCS => 'RCS',
+                    MessageQueue::PROTOCOL_SMPP => 'SMPP',
+                    MessageQueue::PROTOCOL_WCTP => 'WCTP',
+                    MessageQueue::PROTOCOL_PAGING => 'Paging',
+                ])
+                ->placeholder('All protocols')
+                ->helperText('Whitelist which transports route to this queue. Leave empty to accept any.'),
         ];
     }
 
@@ -180,12 +184,6 @@ class ManageClientEmailQueues extends ManageRelatedRecords
             Tables\Columns\TextColumn::make('overflowAgent.name')
                 ->label('Overflow AI')
                 ->placeholder('None'),
-            Tables\Columns\TextColumn::make('threads_count')
-                ->label('Open threads')
-                ->counts([
-                    'threads' => fn ($q) => $q->whereNotIn('status', ['closed']),
-                ])
-                ->alignCenter(),
             Tables\Columns\IconColumn::make('is_active')
                 ->boolean(),
         ];
@@ -194,15 +192,15 @@ class ManageClientEmailQueues extends ManageRelatedRecords
     public static function editAction(Team $owner): Actions\Action
     {
         return Actions\Action::make('edit')
-            ->modalHeading(fn (EmailQueue $record) => $record->name)
-            ->fillForm(fn (EmailQueue $record): array => $record->only([
+            ->modalHeading(fn (MessageQueue $record) => $record->name)
+            ->fillForm(fn (MessageQueue $record): array => $record->only([
                 'name', 'description', 'strategy', 'agent_group_id',
                 'overflow_agent_persona_id', 'is_active', 'orchestration_id',
-                'matched_addresses', 'matched_domain',
+                'matched_addresses', 'matched_protocols',
             ]))
             ->schema(self::formSchemaFor($owner))
             ->modalSubmitActionLabel('Save')
-            ->action(function (EmailQueue $record, array $data) {
+            ->action(function (MessageQueue $record, array $data) {
                 $record->update($data);
                 Notification::make()->title('Saved')->success()->send();
             })
@@ -219,14 +217,14 @@ class ManageClientEmailQueues extends ManageRelatedRecords
             ->label('Bindings')
             ->icon('heroicon-o-link')
             ->color('info')
-            ->modalHeading(fn (EmailQueue $record) => "Bindings — {$record->name}")
+            ->modalHeading(fn (MessageQueue $record) => "Bindings — {$record->name}")
             ->modalDescription('This queue uses a platform-shared orchestration. Map each binding handle to one of this client\'s resources so the orchestration runs against your data.')
-            ->visible(fn (EmailQueue $record) => $record->orchestration?->isShared() ?? false)
-            ->fillForm(fn (EmailQueue $record) => app(OrchestrationBindingFormFactory::class)
+            ->visible(fn (MessageQueue $record) => $record->orchestration?->isShared() ?? false)
+            ->fillForm(fn (MessageQueue $record) => app(OrchestrationBindingFormFactory::class)
                 ->loadValues($record->orchestration, $owner))
-            ->schema(fn (EmailQueue $record): array => app(OrchestrationBindingFormFactory::class)
+            ->schema(fn (MessageQueue $record): array => app(OrchestrationBindingFormFactory::class)
                 ->fields($record->orchestration, $owner))
-            ->action(function (EmailQueue $record, array $data) use ($owner) {
+            ->action(function (MessageQueue $record, array $data) use ($owner) {
                 app(OrchestrationBindingFormFactory::class)
                     ->save($record->orchestration, $owner, $data);
                 Notification::make()

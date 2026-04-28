@@ -432,8 +432,8 @@ class ClientResource extends Resource
             // route-reachable for deep links from elsewhere but
             // are not surfaced here.
             Pages\ManageClientChannels::class,
-            Pages\ManageClientPersonas::class,
             Pages\ManageClientOrchestrations::class,
+            Pages\ManageClientPersonas::class,
             Pages\ManageClientUsers::class,
             Pages\ManageClientDirectory::class,
             Pages\ManageClientDirectoryFields::class,
@@ -458,6 +458,7 @@ class ClientResource extends Resource
             'users' => Pages\ManageClientUsers::route('/{record}/users'),
             'directory' => Pages\ManageClientDirectory::route('/{record}/directory'),
             'directory-fields' => Pages\ManageClientDirectoryFields::route('/{record}/directory-fields'),
+            'smart-ingest' => Pages\SmartIngestClientDirectory::route('/{record}/smart-ingest'),
         ];
     }
 

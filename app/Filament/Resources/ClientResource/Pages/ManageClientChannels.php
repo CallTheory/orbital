@@ -142,8 +142,8 @@ class ManageClientChannels extends Page implements HasTable
         return [
             ['key' => 'call', 'label' => 'Call', 'icon' => 'heroicon-o-phone'],
             ['key' => 'email', 'label' => 'Email', 'icon' => 'heroicon-o-envelope'],
-            ['key' => 'message', 'label' => 'Message', 'icon' => 'heroicon-o-chat-bubble-left-right'],
-            ['key' => 'chat', 'label' => 'Chat', 'icon' => 'heroicon-o-chat-bubble-bottom-center-text'],
+            ['key' => 'message', 'label' => 'Message', 'icon' => 'heroicon-o-chat-bubble-bottom-center-text'],
+            ['key' => 'chat', 'label' => 'Chat', 'icon' => 'heroicon-o-chat-bubble-left-right'],
         ];
     }
 }

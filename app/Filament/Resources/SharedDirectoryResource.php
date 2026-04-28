@@ -87,6 +87,11 @@ class SharedDirectoryResource extends Resource
             ])
             ->defaultSort('name')
             ->actions([
+                Action::make('smart_ingest')
+                    ->label('Smart ingest')
+                    ->icon('heroicon-o-sparkles')
+                    ->color('primary')
+                    ->url(fn (SharedDirectory $record) => static::getUrl('smart-ingest', ['record' => $record])),
                 Action::make('attach')
                     ->label('Attach clients')
                     ->icon('heroicon-m-link')
@@ -143,6 +148,7 @@ class SharedDirectoryResource extends Resource
             'index' => Pages\ListSharedDirectories::route('/'),
             'create' => Pages\CreateSharedDirectory::route('/create'),
             'edit' => Pages\EditSharedDirectory::route('/{record}/edit'),
+            'smart-ingest' => Pages\SmartIngestSharedDirectory::route('/{record}/smart-ingest'),
         ];
     }
 }

@@ -1267,7 +1267,7 @@ class IntakeGoalLibrarySeeder extends Seeder
                 'key' => 'trigger_inbound_message',
                 'name' => 'Inbound Message',
                 'category' => 'trigger',
-                'icon' => 'heroicon-o-chat-bubble-left-right',
+                'icon' => 'heroicon-o-chat-bubble-bottom-center-text',
                 'description' => 'Entry point for inbound text-shaped messages — SMS, MMS, RCS, SMPP, WCTP, paging. Matching (addresses + protocols) is configured on the Message Queue.',
                 'talking_points' => [],
                 'data_fields' => [
@@ -1280,7 +1280,7 @@ class IntakeGoalLibrarySeeder extends Seeder
                 'key' => 'trigger_inbound_chat',
                 'name' => 'Inbound Chat',
                 'category' => 'trigger',
-                'icon' => 'heroicon-o-chat-bubble-bottom-center-text',
+                'icon' => 'heroicon-o-chat-bubble-left-right',
                 'description' => 'Entry point for interactive chat sessions — embeddable web widget, Slack, Microsoft Teams. Integration config is held on the Chat Queue.',
                 'talking_points' => [],
                 'data_fields' => [

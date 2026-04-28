@@ -23,8 +23,8 @@
     $channels = [
         ['label' => 'Call',    'icon' => 'heroicon-o-phone',                          'trigger' => 'inbound_phone'],
         ['label' => 'Email',   'icon' => 'heroicon-o-envelope',                       'trigger' => 'inbound_email'],
-        ['label' => 'Message', 'icon' => 'heroicon-o-chat-bubble-left-right',         'trigger' => 'inbound_message'],
-        ['label' => 'Chat',    'icon' => 'heroicon-o-chat-bubble-bottom-center-text', 'trigger' => 'inbound_chat'],
+        ['label' => 'Message', 'icon' => 'heroicon-o-chat-bubble-bottom-center-text', 'trigger' => 'inbound_message'],
+        ['label' => 'Chat',    'icon' => 'heroicon-o-chat-bubble-left-right',         'trigger' => 'inbound_chat'],
     ];
 @endphp
 

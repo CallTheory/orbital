@@ -34,7 +34,7 @@ class ManageClientChatQueues extends ManageRelatedRecords
 
     protected static string $relationship = 'chatQueues';
 
-    protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-chat-bubble-bottom-center-text';
+    protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-chat-bubble-left-right';
 
     protected static ?string $navigationLabel = 'Chat Queues';
 

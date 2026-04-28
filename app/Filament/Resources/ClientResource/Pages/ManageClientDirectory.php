@@ -255,7 +255,6 @@ class ManageClientDirectory extends ManageRelatedRecords
             ->color('primary')
             ->url(fn (): string => ClientResource::getUrl('smart-ingest', [
                 'record' => $this->getOwnerRecord()->id,
-                'kind' => 'directory',
             ]));
     }
 

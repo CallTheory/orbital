@@ -162,12 +162,15 @@ class AppServiceProvider extends ServiceProvider
      */
     protected function assertNoPlatformPermissionsInTenantGrants(): void
     {
-        // Skip during migrations when the tables may not exist yet.
-        if (! Schema::hasTable('client_permission_grants') || ! Schema::hasTable('permissions')) {
-            return;
-        }
-
+        // The check is purely defensive logging. Wrap the whole body
+        // so any boot-time DB unavailability (CI image build with no
+        // DB, fresh install before migrations, transient connection
+        // loss) is a silent no-op rather than crashing app boot.
         try {
+            if (! Schema::hasTable('client_permission_grants') || ! Schema::hasTable('permissions')) {
+                return;
+            }
+
             $count = DB::table('client_permission_grants as g')
                 ->join('permissions as p', 'p.id', '=', 'g.permission_id')
                 ->whereIn('p.name', ClientPermissionGatekeeper::PLATFORM_ONLY)
@@ -179,7 +182,7 @@ class AppServiceProvider extends ServiceProvider
                 ]);
             }
         } catch (\Throwable $e) {
-            // Tables not ready / connection issue — don't crash boot.
+            // Boot-time DB unavailable — skip the check.
         }
     }
 }

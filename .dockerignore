@@ -40,6 +40,10 @@ storage/framework/views/*
 storage/pail
 storage/*.key
 
+# Local-dev SQLite database — must never bake into a prod image.
+database/database.sqlite
+database/*.sqlite
+
 # Tests + docs
 tests
 phpunit.xml

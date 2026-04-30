@@ -65,11 +65,27 @@ jobs:
               --app-version ${{ steps.version.outputs.version }} \
               --destination /tmp/charts
 
+      - name: Diagnose Harbor secrets (lengths only)
+        env:
+          REG: ${{ secrets.HARBOR_REGISTRY }}
+          USER: ${{ secrets.HARBOR_USERNAME }}
+          PASS: ${{ secrets.HARBOR_PASSWORD }}
+        run: |
+          echo "HARBOR_REGISTRY length: ${#REG}"
+          echo "HARBOR_USERNAME length: ${#USER}"
+          echo "HARBOR_PASSWORD length: ${#PASS}"
+          # First and last chars of registry (masked individually if
+          # they happen to match a secret) — helps spot scheme prefixes
+          # or trailing slashes without exposing the full value.
+          echo "HARBOR_REGISTRY starts with 'http': $(case "$REG" in http*) echo yes ;; *) echo no ;; esac)"
+          echo "HARBOR_REGISTRY ends with '/': $(case "$REG" in */) echo yes ;; *) echo no ;; esac)"
+          helm version
+
       - name: Log in to Harbor (Helm OCI)
         run: |
           # printf %s, NOT echo — echo appends \n which helm registry
           # login treats as part of the password and rejects.
-          printf '%s' "${{ secrets.HARBOR_PASSWORD }}" | helm registry login "${{ secrets.HARBOR_REGISTRY }}" \
+          printf '%s' "${{ secrets.HARBOR_PASSWORD }}" | helm registry login --debug "${{ secrets.HARBOR_REGISTRY }}" \
               --username "${{ secrets.HARBOR_USERNAME }}" \
               --password-stdin
 

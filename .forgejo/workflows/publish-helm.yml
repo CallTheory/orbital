@@ -67,41 +67,41 @@ jobs:
               --app-version ${{ steps.version.outputs.version }} \
               --destination /tmp/charts
 
-      - name: Diagnose Harbor secrets (lengths only)
-        env:
-          REG: ${{ secrets.HARBOR_REGISTRY }}
-          USER: ${{ secrets.HARBOR_USERNAME }}
-          PASS: ${{ secrets.HARBOR_PASSWORD }}
-        run: |
-          echo "HARBOR_REGISTRY length: ${#REG}"
-          echo "HARBOR_USERNAME length: ${#USER}"
-          echo "HARBOR_PASSWORD length: ${#PASS}"
-          # First and last chars of registry (masked individually if
-          # they happen to match a secret) — helps spot scheme prefixes
-          # or trailing slashes without exposing the full value.
-          echo "HARBOR_REGISTRY starts with 'http': $(case "$REG" in http*) echo yes ;; *) echo no ;; esac)"
-          echo "HARBOR_REGISTRY ends with '/': $(case "$REG" in */) echo yes ;; *) echo no ;; esac)"
-          helm version
-
       - name: Log in to Harbor (Helm OCI)
+        # Pass Harbor secrets through `env:` rather than splicing them
+        # into the shell line directly. Project-scoped Harbor robots
+        # have usernames like `robot$orbital+pusher`; if you do
+        # `--username "${{ secrets.HARBOR_USERNAME }}"`, Forgejo
+        # substitutes the literal string into the script and bash then
+        # expands `$orbital` as a variable (= empty), corrupting the
+        # username. `env:` puts the value in a real env var, and
+        # `"$VAR"` expands once with no further re-parsing.
+        env:
+          HARBOR_REGISTRY: ${{ secrets.HARBOR_REGISTRY }}
+          HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
+          HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
         run: |
           # printf %s, NOT echo — echo appends \n which helm registry
           # login treats as part of the password and rejects.
-          printf '%s' "${{ secrets.HARBOR_PASSWORD }}" | helm registry login --debug "${{ secrets.HARBOR_REGISTRY }}" \
-              --username "${{ secrets.HARBOR_USERNAME }}" \
+          printf '%s' "$HARBOR_PASSWORD" | helm registry login "$HARBOR_REGISTRY" \
+              --username "$HARBOR_USERNAME" \
               --password-stdin
 
       - name: Push chart
+        env:
+          HARBOR_REGISTRY: ${{ secrets.HARBOR_REGISTRY }}
         run: |
-          helm push /tmp/charts/orbital-${{ steps.version.outputs.version }}.tgz \
-              "oci://${{ secrets.HARBOR_REGISTRY }}/orbital/charts"
+          helm push "/tmp/charts/orbital-${{ steps.version.outputs.version }}.tgz" \
+              "oci://${HARBOR_REGISTRY}/orbital/charts"
 
       - name: Report
+        env:
+          HARBOR_REGISTRY: ${{ secrets.HARBOR_REGISTRY }}
         run: |
-          echo "Chart pushed to oci://${{ secrets.HARBOR_REGISTRY }}/orbital/charts/orbital:${{ steps.version.outputs.version }}"
+          echo "Chart pushed to oci://${HARBOR_REGISTRY}/orbital/charts/orbital:${{ steps.version.outputs.version }}"
           echo
           echo "Customers install via:"
-          echo "  helm install orbital oci://${{ secrets.HARBOR_REGISTRY }}/orbital/charts/orbital \\"
+          echo "  helm install orbital oci://${HARBOR_REGISTRY}/orbital/charts/orbital \\"
           echo "      --version ${{ steps.version.outputs.version }} \\"
           echo "      -n orbital --create-namespace \\"
           echo "      -f values-vultr-k3s.yaml   # or whichever provider"

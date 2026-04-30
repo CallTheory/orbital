@@ -240,6 +240,63 @@
                 </p>
             </div>
         </x-filament::section>
+
+        {{-- =========================================================
+             rtpengine media-relay tier
+             ========================================================= --}}
+        <x-filament::section icon="heroicon-o-signal">
+            <x-slot name="heading">rtpengine — edge media relay</x-slot>
+            <x-slot name="description">
+                @php
+                    $rtpActive = collect($rtpengineNodes)->filter(fn ($n) => $n['is_active']);
+                    $rtpUp = $rtpActive->filter(fn ($n) => $n['ng_responding']);
+                @endphp
+                @if (count($rtpengineNodes) === 0)
+                    No rtpengine nodes registered. Add some in the rtpengine Nodes resource.
+                @else
+                    {{ $rtpUp->count() }} / {{ $rtpActive->count() }} active node(s) responding · {{ count($rtpengineNodes) }} registered total
+                @endif
+            </x-slot>
+
+            @if (count($rtpengineNodes))
+                <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                    @foreach ($rtpengineNodes as $node)
+                        @php
+                            if (! $node['is_active']) {
+                                $stateColor = 'gray';
+                                $stateLabel = 'Inactive';
+                            } elseif ($node['ng_responding']) {
+                                $stateColor = 'success';
+                                $stateLabel = 'Up';
+                            } else {
+                                $stateColor = 'danger';
+                                $stateLabel = 'Down';
+                            }
+                        @endphp
+                        <div style="border: 1px solid var(--gray-200); border-radius: 0.5rem; padding: 0.75rem 1rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;">
+                            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                <x-filament::badge :color="$stateColor">{{ $stateLabel }}</x-filament::badge>
+                                <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.875rem; font-weight: 600;">
+                                    {{ $node['label'] }}
+                                </span>
+                                @if ($node['ng_responding'])
+                                    <span style="font-size: 0.75rem; color: var(--gray-500);">
+                                        sessions: {{ $node['active_sessions'] }}
+                                    </span>
+                                @endif
+                            </div>
+                            <div style="display: flex; gap: 0.5rem;">
+                                @if ($node['is_active'])
+                                    {{ ($this->drainRtpengineAction)(['id' => $node['id'], 'hostname' => $node['hostname']]) }}
+                                @else
+                                    {{ ($this->activateRtpengineAction)(['id' => $node['id'], 'hostname' => $node['hostname']]) }}
+                                @endif
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+        </x-filament::section>
     </div>
 
 </x-filament-panels::page>

@@ -1,0 +1,59 @@
+# k3d cluster config for local Helm chart iteration.
+#
+# Used by `k3d-up.sh`. Single-server + two agents → matches the
+# topology the on-prem K3s install produces, so chart bugs that
+# only show up under multi-node scheduling get caught locally.
+
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: orbital-dev
+
+servers: 1
+agents: 2
+
+image: rancher/k3s:v1.31.2-k3s1
+
+ports:
+  # Map the K3s-internal Traefik LoadBalancer to host ports so
+  # `https://localhost:8443/` reaches the Filament admin without
+  # extra port-forwards.
+  - port: 8080:80
+    nodeFilters: [loadbalancer]
+  - port: 8443:443
+    nodeFilters: [loadbalancer]
+  # SIP edge ports — for testing the rtpengine + Kamailio path
+  # locally if you want to mount the dev edge containers
+  # alongside the cluster. Map only when needed; comment out
+  # otherwise.
+  # - port: 5060:5060/udp
+  #   nodeFilters: [server:0]
+  # - port: 7443:7443
+  #   nodeFilters: [server:0]
+
+# Ship a local container registry the chart can pull from. Built
+# images push to `orbital-registry:5001` (which resolves inside
+# the cluster) and the chart references that via
+# `--set global.image.registry=orbital-registry:5001`.
+registries:
+  create:
+    name: orbital-registry
+    host: "0.0.0.0"
+    hostPort: "5001"
+
+options:
+  k3d:
+    wait: true
+    timeout: 120s
+    disableLoadbalancer: false
+  k3s:
+    extraArgs:
+      # Disable Traefik so we can install our own and validate the
+      # ingressClassName=traefik values file path. K3s ships its own
+      # Traefik 2.x by default; uncomment the next line if you want
+      # to use it instead and skip the manual install.
+      # (commented = keep K3s Traefik default)
+      []
+  kubeconfig:
+    updateDefaultKubeconfig: true
+    switchCurrentContext: true

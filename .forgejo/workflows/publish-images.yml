@@ -1,0 +1,86 @@
+name: Publish images to Harbor
+
+# Delegates the actual build/push/sign work to the org-level reusable
+# workflow at calltheory/.forgejo-workflows. That workflow handles:
+#   - docker buildx build + push to ${HARBOR_REGISTRY}/orbital/<image>
+#   - tag set: git-SHA + latest + any extra-tags supplied
+#   - Cosign signing by digest
+#
+# Triggers:
+# - Tag push (`v1.2.3`) — production releases. extra-tag = `1.2.3`.
+# - workflow_dispatch — manual run with operator-supplied tag.
+# - Branch push to `main` — pre-release builds; only the SHA + `latest`
+#   tags get pushed (no extra-tags).
+#
+# Pin: @main during iteration; switch to @v1 once their workflow cuts a
+# release tag.
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Extra image tag to publish (e.g. 1.2.3-hotfix). Optional.'
+        required: false
+        default: ''
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    outputs:
+      extra: ${{ steps.compute.outputs.extra }}
+    steps:
+      - id: compute
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.tag }}" ]; then
+            echo "extra=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            # Strip leading `v` so v1.2.3 → 1.2.3 (matches Helm chart appVersion)
+            echo "extra=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "extra=" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: tag
+    strategy:
+      fail-fast: false
+      # One reusable-workflow call per image — they run in parallel.
+      matrix:
+        include:
+          - name: laravel
+            dockerfile: Dockerfile
+            context: .
+          - name: asterisk
+            dockerfile: Dockerfile
+            context: docker/asterisk
+          - name: agent-worker
+            dockerfile: Dockerfile
+            context: agent-worker
+    uses: calltheory/.forgejo-workflows/.forgejo/workflows/orbital-cosign.yml@main
+    with:
+      image-name: ${{ matrix.name }}
+      context: ${{ matrix.context }}
+      dockerfile: ${{ matrix.dockerfile }}
+      extra-tags: ${{ needs.tag.outputs.extra }}
+    secrets: inherit
+
+  summary:
+    runs-on: ubuntu-latest
+    needs: build
+    if: ${{ always() }}
+    steps:
+      - name: Report
+        run: |
+          echo "Published images to <HARBOR_REGISTRY>/orbital/{laravel,asterisk,agent-worker}"
+          echo "Each image is Cosign-signed by digest."
+          echo
+          echo "Pull with:"
+          echo "  docker pull <HARBOR_REGISTRY>/orbital/laravel:<tag>"
+          echo "Deploy with:"
+          echo "  helm upgrade --install orbital deploy/helm/orbital \\"
+          echo "      --set global.image.tag=<tag>"

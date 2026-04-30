@@ -1,0 +1,11 @@
+---
+- name: restart kamailio
+  ansible.builtin.systemd:
+    name: kamailio
+    state: restarted
+
+- name: reload kamailio dispatcher
+  # In-memory dispatcher.reload via the kamcmd CLI — preserves
+  # active dialogs while picking up the new dispatcher.list.
+  ansible.builtin.command: kamcmd dispatcher.reload
+  changed_when: true

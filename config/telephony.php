@@ -22,7 +22,12 @@ return [
         ],
 
         'sip_domain' => env('ASTERISK_SIP_DOMAIN', '127.0.0.1'),
-        'wss_url' => env('ASTERISK_WSS_URL', 'wss://127.0.0.1:8089/ws'),
+        // Phase 1b: operator softphones now register through Kamailio's
+        // WSS listener (7443), not Asterisk's. The legacy
+        // ASTERISK_WSS_URL key is kept as a fallback for environments
+        // that haven't migrated yet; SIP_EDGE_WSS_URL is the canonical
+        // setting going forward.
+        'wss_url' => env('SIP_EDGE_WSS_URL', env('ASTERISK_WSS_URL', 'wss://127.0.0.1:7443/')),
 
         // Path where generated configs are written (mounted into Asterisk container).
         // Resolved via base_path() so it works inside sail (/var/www/html/...)

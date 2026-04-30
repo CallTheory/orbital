@@ -1,0 +1,76 @@
+{{/*
+Shared application env vars — mounted into Laravel + Horizon + Reverb
++ Asterisk + agent-worker. Renders connection details for stateful
+deps (Postgres / Valkey / S3) based on whether the customer is using
+the in-cluster default or an external service.
+
+Secrets (passwords, API keys) live in `secrets-app-secrets` — the
+customer creates that via `kubectl create secret` per
+secrets.example.yaml. This configmap is the public, non-secret half.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "orbital.componentName" (list . "app-env") }}
+  labels:
+    {{- include "orbital.componentLabels" (list . "app-env") | nindent 4 }}
+data:
+  APP_ENV: production
+  APP_URL: "https://{{ .Values.global.domain }}"
+  LOG_CHANNEL: stack
+  LOG_LEVEL: info
+
+  # Database
+  DB_CONNECTION: pgsql
+  {{- if .Values.postgres.external.enabled }}
+  DB_HOST: {{ .Values.postgres.external.host | quote }}
+  DB_PORT: {{ .Values.postgres.external.port | quote }}
+  DB_DATABASE: {{ .Values.postgres.external.database | quote }}
+  DB_USERNAME: {{ .Values.postgres.external.username | quote }}
+  DB_SSLMODE: {{ .Values.postgres.external.sslMode | quote }}
+  {{- else }}
+  DB_HOST: {{ include "orbital.componentName" (list . "postgres") }}
+  DB_PORT: "5432"
+  DB_DATABASE: orbital
+  DB_USERNAME: orbital
+  {{- end }}
+
+  # Cache / queue / broadcast
+  REDIS_CLIENT: phpredis
+  {{- if .Values.valkey.external.enabled }}
+  REDIS_HOST: {{ .Values.valkey.external.host | quote }}
+  REDIS_PORT: {{ .Values.valkey.external.port | quote }}
+  {{- else }}
+  REDIS_HOST: {{ include "orbital.componentName" (list . "valkey") }}
+  REDIS_PORT: "6379"
+  {{- end }}
+  CACHE_STORE: redis
+  QUEUE_CONNECTION: redis
+  BROADCAST_CONNECTION: reverb
+  SESSION_DRIVER: redis
+
+  # Reverb
+  REVERB_APP_ID: orbital
+  REVERB_HOST: {{ include "orbital.componentName" (list . "reverb") }}
+  REVERB_PORT: {{ .Values.reverb.service.port | quote }}
+  REVERB_SCHEME: http     # ingress terminates TLS; intra-cluster is plain
+
+  # Storage (recordings, voicemail, prompts)
+  FILESYSTEM_DISK: s3
+  {{- if .Values.objectStorage.external.enabled }}
+  AWS_ENDPOINT: {{ .Values.objectStorage.external.s3Endpoint | quote }}
+  AWS_DEFAULT_REGION: {{ .Values.objectStorage.external.region | quote }}
+  AWS_BUCKET: {{ .Values.objectStorage.external.bucket | quote }}
+  {{- else }}
+  AWS_ENDPOINT: "http://{{ include "orbital.componentName" (list . "seaweedfs-filer") }}:8333"
+  AWS_DEFAULT_REGION: us-east-1
+  AWS_BUCKET: orbital-recordings
+  {{- end }}
+  AWS_USE_PATH_STYLE_ENDPOINT: "true"
+
+  # Telephony — internal hostnames the Filament admin reaches
+  ASTERISK_AMI_HOST: {{ include "orbital.componentName" (list . "asterisk-headless") }}
+  ASTERISK_AMI_PORT: "5038"
+  LIVEKIT_URL: "ws://{{ include "orbital.componentName" (list . "livekit") }}:{{ .Values.livekit.service.port }}"
+  LIVEKIT_SIP_HOST: {{ include "orbital.componentName" (list . "livekit-sip") }}
+  LIVEKIT_SIP_PORT: {{ .Values.livekitSip.service.sipPort | quote }}

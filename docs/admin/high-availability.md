@@ -4,6 +4,9 @@ This is the administrative guide for running Orbital's HA stack: what each
 tier does, how it self-heals, how to run planned maintenance without a
 customer-visible outage, and what to do when something breaks.
 
+> **Looking to install Orbital on real infrastructure?** See [`deploy/README.md`](../../deploy/README.md) — the OpenTofu + Helm + Ansible deployment workflow that produces the topology described here. This doc is the operator handbook for what already exists.
+
+
 Orbital's HA is **single-site active/active**: every customer-facing service
 has at least two instances. Losing any single node keeps the service up.
 Mid-call portability is out of scope — an in-progress call pinned to the

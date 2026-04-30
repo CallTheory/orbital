@@ -1,0 +1,62 @@
+# VCS
+.git
+.github
+.forgejo
+.gitignore
+.gitattributes
+
+# IDE / editor
+.idea
+.vscode
+.zed
+.fleet
+.nova
+.claude
+.phpactor.json
+.phpunit.cache
+.phpunit.result.cache
+
+# Local env — never bake into an image
+.env
+.env.*
+auth.json
+
+# Built / installed locally — rebuilt inside the image
+node_modules
+vendor
+public/build
+public/hot
+public/storage
+
+# Storage runtime state — must not bake in
+storage/logs/*
+!storage/logs/.gitkeep
+storage/framework/cache/data/*
+!storage/framework/cache/data/.gitkeep
+storage/framework/sessions/*
+!storage/framework/sessions/.gitkeep
+storage/framework/views/*
+!storage/framework/views/.gitkeep
+storage/pail
+storage/*.key
+
+# Tests + docs
+tests
+phpunit.xml
+docs
+*.md
+!README.md
+
+# Other-image source / infra not needed at Laravel runtime
+agent-worker
+deploy
+
+# The Dockerfile + .dockerignore themselves
+Dockerfile
+.dockerignore
+
+# Misc
+.DS_Store
+Thumbs.db
+Homestead.json
+Homestead.yaml

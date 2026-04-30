@@ -154,7 +154,69 @@ async def entrypoint(ctx: JobContext) -> None:
     import asyncio
     await asyncio.sleep(0.8)
 
+    # Kick off per-participant TrackEgress for the recording surface 2
+    # path. We fire-and-forget — the LiveKit server emits an
+    # `egress_ended` webhook to the Laravel app when each track file
+    # finalizes, and `IngestLivekitEgressJob` writes the CallRecording
+    # row from that. We don't await Egress completion (it runs for
+    # the lifetime of the call), and we tolerate failure cleanly: if
+    # Egress is misconfigured, the rtpengine SIP-side recording is
+    # the still-OK fallback.
+    try:
+        await _start_track_egress(ctx, room_name)
+    except Exception as e:
+        logger.warning(f"egress start failed for {room_name}: {e}")
+
     await session.say(greeting)
+
+
+async def _start_track_egress(ctx: JobContext, room_name: str) -> None:
+    """Start a TrackEgress per audio track in the room.
+
+    LiveKit's `egress` API accepts the room name + per-participant
+    track ID and writes one file per call to the configured S3
+    output. The orbital.test webhook receives `egress_ended` when
+    each file finalizes; from there `IngestLivekitEgressJob` creates
+    the CallRecording row.
+
+    Output target = SeaweedFS S3-compatible bucket. Bucket name +
+    creds come from env (LIVEKIT_EGRESS_S3_*), set by docker-compose.
+    """
+    from livekit import api
+
+    bucket = os.environ.get("LIVEKIT_EGRESS_S3_BUCKET", "orbital-recordings")
+    endpoint = os.environ.get("LIVEKIT_EGRESS_S3_ENDPOINT", "")
+    access_key = os.environ.get("LIVEKIT_EGRESS_S3_ACCESS_KEY", "")
+    secret = os.environ.get("LIVEKIT_EGRESS_S3_SECRET", "")
+    if not endpoint or not access_key:
+        # Egress optional in dev; skip silently when storage isn't
+        # configured. The rtpengine surface still records SIP calls.
+        return
+
+    lk = api.LiveKitAPI()
+    try:
+        # Filename pattern carries the room name (= sip_call_id) so
+        # IngestLivekitEgressJob can correlate back to a CallLog row
+        # without a side channel.
+        request = api.RoomCompositeEgressRequest(
+            room_name=room_name,
+            file_outputs=[
+                api.EncodedFileOutput(
+                    file_type=api.EncodedFileType.OGG,
+                    filepath=f"livekit/{room_name}/{{room_name}}-{{time}}.ogg",
+                    s3=api.S3Upload(
+                        bucket=bucket,
+                        endpoint=endpoint,
+                        access_key=access_key,
+                        secret=secret,
+                    ),
+                ),
+            ],
+        )
+        await lk.egress.start_room_composite_egress(request)
+        logger.info(f"egress started for room {room_name}")
+    finally:
+        await lk.aclose()
 
 
 def _create_llm(provider: str, model: str):

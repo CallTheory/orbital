@@ -1,0 +1,96 @@
+---
+# rtpengine — installs the daemon + recording-daemon companion,
+# renders /etc/rtpengine/rtpengine.conf from the dev `docker/rtpengine/`
+# config we already validated, and opens UFW for the public RTP range.
+#
+# Sipwise's Debian/Ubuntu repo ships rtpengine 11.x with the kernel
+# module + recording-daemon — we use that instead of building from
+# source so customers can `apt upgrade` without a custom build pipeline.
+
+- name: Install Sipwise repo signing key
+  ansible.builtin.get_url:
+    url: https://www.sipwise.com/sipwise.gpg
+    dest: /etc/apt/trusted.gpg.d/sipwise.gpg
+    mode: "0644"
+  when: ansible_os_family == 'Debian'
+
+- name: Add Sipwise rtpengine repo
+  ansible.builtin.apt_repository:
+    repo: "deb https://deb.sipwise.com/spce/{{ ansible_distribution_release }} {{ ansible_distribution_release }} main"
+    state: present
+    filename: sipwise-rtpengine
+    update_cache: true
+  when: ansible_os_family == 'Debian'
+
+- name: Install rtpengine + recording-daemon packages
+  ansible.builtin.apt:
+    name:
+      - ngcp-rtpengine-daemon
+      - ngcp-rtpengine-recording-daemon
+      - ngcp-rtpengine-kernel-dkms
+    state: present
+  when: ansible_os_family == 'Debian'
+
+- name: Ensure recording spool dir exists
+  ansible.builtin.file:
+    path: "{{ rtpengine_recording_dir }}"
+    state: directory
+    owner: "{{ rtpengine_user }}"
+    group: "{{ rtpengine_group }}"
+    mode: "0750"
+
+# --- Render configs from dev templates ---------------------------
+# `templates/rtpengine.conf.j2` mirrors `docker/rtpengine/rtpengine.conf`
+# from the repo, parameterized for per-VM NIC + Phase-3 Valkey state.
+- name: Render /etc/rtpengine/rtpengine.conf
+  ansible.builtin.template:
+    src: rtpengine.conf.j2
+    dest: /etc/rtpengine/rtpengine.conf
+    owner: root
+    group: "{{ rtpengine_group }}"
+    mode: "0640"
+  notify: restart rtpengine
+
+- name: Render /etc/rtpengine/rtpengine-recording.conf
+  ansible.builtin.template:
+    src: rtpengine-recording.conf.j2
+    dest: /etc/rtpengine/rtpengine-recording.conf
+    owner: root
+    group: "{{ rtpengine_group }}"
+    mode: "0640"
+  notify: restart rtpengine-recording
+
+# --- UFW: open RTP range + NG control --------------------------
+# NG control is loopback / cluster-egress only; RTP range is public.
+
+- name: Allow public RTP range through UFW
+  community.general.ufw:
+    rule: allow
+    port: "{{ rtpengine_port_min }}:{{ rtpengine_port_max }}"
+    proto: udp
+    comment: "rtpengine public RTP relay"
+  when: common_ufw_enabled | default(true)
+
+- name: Allow NG control inbound (will be tightened to cluster CIDR in prod)
+  community.general.ufw:
+    rule: allow
+    port: 22222
+    proto: udp
+    comment: "rtpengine NG control"
+  when: common_ufw_enabled | default(true)
+
+# --- Enable + start ----------------------------------------------
+
+- name: Enable + start rtpengine
+  ansible.builtin.systemd:
+    name: ngcp-rtpengine-daemon
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Enable + start rtpengine-recording-daemon
+  ansible.builtin.systemd:
+    name: ngcp-rtpengine-recording-daemon
+    enabled: true
+    state: started
+    daemon_reload: true

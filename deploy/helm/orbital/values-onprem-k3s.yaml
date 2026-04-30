@@ -1,0 +1,41 @@
+# On-prem K3s overrides.
+#
+# Apply with:
+#   helm install orbital ./deploy/helm/orbital \
+#     -f ./deploy/helm/orbital/values-onprem-k3s.yaml \
+#     --set global.domain=orbital.your-company.com
+#
+# Assumes:
+# - K3s installed via the standard `curl | sh` install script (Traefik
+#   ingress + ServiceLB + local-path storage all default-on).
+# - At least one ReadWriteMany-capable storage class for the
+#   asterisk-shared PVCs. local-path is RWO-only — fine for a
+#   single-node K3s; multi-node needs longhorn / NFS / etc.
+# - `kubectl create secret docker-registry orbital-registry-creds`
+#   created beforehand with the customer's Harbor robot creds.
+
+global:
+  storageClass: "local-path"
+
+ingress:
+  className: "traefik"
+  annotations:
+    # K3s ships Traefik as default; the cert-manager annotation is
+    # optional and only kicks in if cert-manager is installed.
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    traefik.ingress.kubernetes.io/router.entrypoints: "websecure"
+    traefik.ingress.kubernetes.io/router.tls: "true"
+
+# Single-node K3s caveat: ReadWriteMany doesn't work with local-path.
+# The Asterisk shared-config PVC (which both Laravel and Asterisk
+# mount) needs RWX. Workarounds:
+# 1. Single-node K3s: set asterisk.replicas=1 — the StatefulSet's own
+#    PVC works; the cross-pod RWX requirement isn't relevant when
+#    only one Laravel + one Asterisk pod ever exist.
+# 2. Multi-node K3s: install longhorn or rancher's local-path-rwx
+#    provisioner, then override `global.storageClass: longhorn`.
+asterisk:
+  replicas: 1   # safe default for single-node onprem K3s
+
+# K3s default Traefik LoadBalancer is klipper-lb (host-port mapping).
+# That's fine — the public IP of the K3s node is the LB IP.

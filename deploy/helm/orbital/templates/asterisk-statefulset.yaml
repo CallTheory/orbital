@@ -1,0 +1,109 @@
+{{- if .Values.asterisk.enabled -}}
+{{/*
+Asterisk — the SIP PBX. StatefulSet because:
+1. Kamailio's dispatcher.list keys off stable hostnames
+   (`asterisk-0` / `asterisk-1`); a Deployment would give you
+   random pod names that change on every restart.
+2. Each pod has its own per-node spool / monitor / sounds dir
+   on a PVC — survives pod replacement.
+
+Headless Service (asterisk-headless) gives each pod a stable
+`<ordinal>.asterisk-headless.<ns>.svc.cluster.local` DNS name,
+which is what the Kamailio dispatcher.list points at.
+
+Asterisk reads its dialplan from a shared PVC that Laravel writes
+to (mount path /etc/asterisk/orbital), and Kamailio's edge VMs
+relay RTP — so this StatefulSet doesn't bind any wide UDP ports
+(no 10000-10099 range here, that's gone in Phase 2).
+*/}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "orbital.componentName" (list . "asterisk") }}
+  labels:
+    {{- include "orbital.componentLabels" (list . "asterisk") | nindent 4 }}
+spec:
+  replicas: {{ .Values.asterisk.replicas }}
+  serviceName: {{ include "orbital.componentName" (list . "asterisk-headless") }}
+  podManagementPolicy: Parallel    # bring up all replicas at once; no inter-pod startup ordering
+  selector:
+    matchLabels:
+      {{- include "orbital.selectorLabels" (list . "asterisk") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "orbital.componentLabels" (list . "asterisk") | nindent 8 }}
+    spec:
+      {{- include "orbital.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: asterisk
+          image: {{ include "orbital.image" (dict "ctx" . "name" .Values.asterisk.image.name "tag" .Values.asterisk.image.tag) }}
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          ports:
+            - name: ami
+              containerPort: 5038
+              protocol: TCP
+            - name: sip-udp
+              containerPort: 5060
+              protocol: UDP
+            - name: sip-tcp
+              containerPort: 5060
+              protocol: TCP
+            # WSS (8089) is gone — operators connect through
+            # Kamailio's WSS listener now (Phase 1b).
+          envFrom:
+            - configMapRef:
+                name: {{ include "orbital.componentName" (list . "app-env") }}
+            - secretRef:
+                name: {{ include "orbital.componentName" (list . "app-secrets") }}
+          env:
+            - name: ASTERISK_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name   # asterisk-0 / asterisk-1 / ...
+          resources:
+            {{- toYaml .Values.asterisk.resources | nindent 12 }}
+          volumeMounts:
+            - name: orbital-config
+              mountPath: /etc/asterisk/orbital
+            - name: prompts
+              mountPath: /var/spool/asterisk/prompts
+            - name: spool
+              mountPath: /var/spool/asterisk/monitor
+          # AMI is the readiness signal — chan_pjsip is alive when
+          # Asterisk's manager port answers. Avoids false positives
+          # from "the process started but config failed."
+          readinessProbe:
+            tcpSocket:
+              port: ami
+            initialDelaySeconds: 15
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: ami
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+      volumes:
+        - name: orbital-config
+          persistentVolumeClaim:
+            claimName: {{ include "orbital.componentName" (list . "asterisk-config") }}
+        - name: prompts
+          persistentVolumeClaim:
+            claimName: {{ include "orbital.componentName" (list . "asterisk-prompts") }}
+  {{- if .Values.asterisk.persistence.enabled }}
+  volumeClaimTemplates:
+    # Per-pod spool — voicemail recordings, journaling. Each
+    # asterisk-N pod owns its own PVC so a node restart doesn't
+    # lose in-flight voicemails.
+    - metadata:
+        name: spool
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- include "orbital.storageClass" . | nindent 8 }}
+        resources:
+          requests:
+            storage: {{ .Values.asterisk.persistence.size }}
+  {{- end }}
+{{- end }}

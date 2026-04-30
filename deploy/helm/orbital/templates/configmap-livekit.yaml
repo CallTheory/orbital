@@ -1,0 +1,53 @@
+{{/*
+LiveKit server config (rendered into /etc/livekit/livekit.yaml inside
+the livekit pod). Uses Valkey as the cluster state backend so multiple
+LiveKit pods can coordinate, plus the webhook URL pointing at the
+Laravel app for Egress event ingestion.
+*/}}
+{{- if .Values.livekit.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "orbital.componentName" (list . "livekit-config") }}
+  labels:
+    {{- include "orbital.componentLabels" (list . "livekit") | nindent 4 }}
+data:
+  livekit.yaml: |
+    port: 7880
+    rtc:
+      port_range_start: 50000
+      port_range_end: 50100   # narrow — no big UDP range needed in-cluster
+      tcp_port: 7881
+      use_ice_lite: true
+    redis:
+      address: {{ if .Values.valkey.external.enabled }}{{ .Values.valkey.external.host }}:{{ .Values.valkey.external.port }}{{ else }}{{ include "orbital.componentName" (list . "valkey") }}:6379{{ end }}
+    logging:
+      level: info
+    room:
+      max_participants: 50
+      empty_timeout: 300
+      departure_timeout: 20
+    # Webhook target = the Laravel app's LivekitWebhookController.
+    # Catches `egress_ended` events and creates CallRecording rows.
+    webhook:
+      api_key: ${LIVEKIT_API_KEY}
+      urls:
+        - http://{{ include "orbital.componentName" (list . "laravel") }}:{{ .Values.laravel.service.port }}/api/livekit/webhook
+{{- end }}
+{{- if .Values.livekitSip.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "orbital.componentName" (list . "livekit-sip-config") }}
+  labels:
+    {{- include "orbital.componentLabels" (list . "livekit-sip") | nindent 4 }}
+data:
+  sip-config.yaml: |
+    api_key: ${LIVEKIT_API_KEY}
+    api_secret: ${LIVEKIT_API_SECRET}
+    ws_url: ws://{{ include "orbital.componentName" (list . "livekit") }}:{{ .Values.livekit.service.port }}
+    redis:
+      address: {{ if .Values.valkey.external.enabled }}{{ .Values.valkey.external.host }}:{{ .Values.valkey.external.port }}{{ else }}{{ include "orbital.componentName" (list . "valkey") }}:6379{{ end }}
+    sip_port: {{ .Values.livekitSip.service.sipPort }}
+{{- end }}

@@ -1,0 +1,59 @@
+#cloud-config
+# Orbital K3s server / agent cloud-init — bootstrap stub.
+#
+# Same shape as edge.tmpl.yaml: pulls the repo, runs the
+# k3s-bootstrap playbook against itself. The first server gets
+# `is_first_server: true` in group_vars so the role calls
+# `--cluster-init`; subsequent servers + all agents join.
+#
+# Tofu vars expected:
+#   ansible_repo_url, ansible_branch
+#   admin_authorized_keys
+#   k3s_role            "server" | "agent"
+#   k3s_first_server    "true" | "false"
+#   k3s_token           openssl-rand-hex-32 from tofu output
+#   k3s_server_url      https://<first-server-ip>:6443
+
+package_update: true
+package_upgrade: false
+
+packages:
+  - python3
+  - python3-pip
+  - python3-venv
+  - git
+  - ansible
+  - curl
+  - ca-certificates
+
+write_files:
+  - path: /etc/orbital-deploy/group_vars/k3s.yml
+    permissions: '0600'
+    content: |
+      ---
+      common_admin_authorized_keys:
+        ${admin_authorized_keys}
+      k3s_role: ${k3s_role}
+      k3s_first_server: ${k3s_first_server}
+      k3s_token: "${k3s_token}"
+      k3s_server_url: "${k3s_server_url}"
+
+runcmd:
+  - |
+    cd /tmp && git clone --depth 1 --branch ${ansible_branch} ${ansible_repo_url} orbital-repo
+    cd /tmp/orbital-repo/deploy/ansible
+    mkdir -p inventory/group_vars
+    # Pick the matching group_vars file for this node's role.
+    if [ "${k3s_role}" = "server" ]; then
+      cp /etc/orbital-deploy/group_vars/k3s.yml inventory/group_vars/k3s_servers.yml
+    else
+      cp /etc/orbital-deploy/group_vars/k3s.yml inventory/group_vars/k3s_agents.yml
+    fi
+    ansible-playbook \
+      -i 'localhost,' \
+      -c local \
+      -e "ansible_host=$$(hostname -I | awk '{print $$1}')" \
+      playbooks/k3s-bootstrap.yml \
+      2>&1 | tee /var/log/orbital-bootstrap.log
+
+final_message: "Orbital K3s ${k3s_role} bootstrap complete in $${UPTIME} seconds."

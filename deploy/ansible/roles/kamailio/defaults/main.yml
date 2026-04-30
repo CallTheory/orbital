@@ -1,0 +1,46 @@
+---
+# kamailio role — defaults
+#
+# Mirrors the dev `docker/kamailio/kamailio.cfg` we built and
+# debugged through Phase 1a/1b/3 — same module set (rtpengine.so,
+# dmq.so, tls.so, websocket.so), same listener ports, same drain
+# semantics. Per-VM specifics (peer hostname for DMQ, dispatcher
+# pool members) come from group_vars.
+
+# Listeners
+kamailio_sip_udp_port: 5060
+kamailio_sip_tcp_port: 5060
+kamailio_sip_tls_port: 5061
+kamailio_wss_port: 7443       # operator softphones land here (Phase 1b)
+kamailio_jsonrpc_port: 8090   # JSON-RPC management (drain/activate)
+kamailio_dmq_port: 5090       # DMQ peer-to-peer state sync (Phase 3)
+
+# Local rtpengine NG socket. Each edge VM runs its own rtpengine
+# colocated; Kamailio reaches it via loopback by default.
+kamailio_rtpengine_sockets:
+  - "udp:127.0.0.1:22222"
+
+# DMQ peer set — every edge VM in the pair lists every other edge VM
+# (including itself) as a notification target. group_vars/edge_vms.yml
+# typically populates this from `groups['edge_vms']`.
+kamailio_dmq_peers: []
+
+# TLS — shared cert chain on the box. The certs-acme role provisions
+# /etc/orbital-tls/{fullchain,privkey}.pem.
+kamailio_tls_cert: /etc/orbital-tls/fullchain.pem
+kamailio_tls_key: /etc/orbital-tls/privkey.pem
+
+# Dispatcher pool — Asterisk backends Kamailio routes calls to.
+# In K8s deployments these are the Service ClusterIP / per-pod DNS
+# names; on docker-compose dev they're container hostnames.
+# Format: list of `{ host: <hostname>, port: 5060 }` entries.
+kamailio_dispatcher_set_id: 1
+kamailio_dispatcher_targets: []
+
+kamailio_log_level: 2
+kamailio_workers: 4
+
+# Bind-mounted config paths — kept as defaults so on-prem operators
+# can override (e.g. /opt/orbital/kamailio for non-distro-managed
+# installs).
+kamailio_config_dir: /etc/kamailio

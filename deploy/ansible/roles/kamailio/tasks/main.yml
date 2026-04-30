@@ -1,0 +1,115 @@
+---
+# kamailio — installs the package, renders kamailio.cfg + tls.cfg
+# + dispatcher.list from Jinja templates that mirror what we
+# debugged in dev (`docker/kamailio/`).
+#
+# Distro packaging (Debian/Ubuntu's `kamailio` + module subpackages)
+# ships everything we need: rtpengine, dmq, dmq_usrloc, tls,
+# websocket, jsonrpcs. No source build required.
+
+- name: Install kamailio + every module Orbital needs
+  ansible.builtin.apt:
+    name:
+      - kamailio
+      - kamailio-extra-modules     # rtpengine, dmq, dmq_usrloc
+      - kamailio-tls-modules
+      - kamailio-websocket-modules
+      - kamailio-json-modules
+      - kamailio-postgres-modules  # for future DB-backed dispatcher
+    state: present
+    update_cache: true
+  when: ansible_os_family == 'Debian'
+
+- name: Ensure kamailio config dir exists
+  ansible.builtin.file:
+    path: "{{ kamailio_config_dir }}"
+    state: directory
+    owner: root
+    group: kamailio
+    mode: "0750"
+
+- name: Render kamailio.cfg
+  ansible.builtin.template:
+    src: kamailio.cfg.j2
+    dest: "{{ kamailio_config_dir }}/kamailio.cfg"
+    owner: root
+    group: kamailio
+    mode: "0640"
+  notify: restart kamailio
+
+- name: Render tls.cfg
+  ansible.builtin.template:
+    src: tls.cfg.j2
+    dest: "{{ kamailio_config_dir }}/tls.cfg"
+    owner: root
+    group: kamailio
+    mode: "0640"
+  notify: restart kamailio
+
+- name: Render dispatcher.list
+  ansible.builtin.template:
+    src: dispatcher.list.j2
+    dest: "{{ kamailio_config_dir }}/dispatcher.list"
+    owner: root
+    group: kamailio
+    mode: "0640"
+  notify: reload kamailio dispatcher
+
+# --- UFW: SIP signaling + WSS + DMQ peer ----------------------
+
+- name: Allow SIP UDP/TCP through UFW
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: "{{ proto }}"
+    comment: "kamailio SIP"
+  loop:
+    - "{{ kamailio_sip_udp_port }}"
+    - "{{ kamailio_sip_tcp_port }}"
+  loop_control:
+    loop_var: port
+  vars:
+    proto: udp
+  when: common_ufw_enabled | default(true)
+
+- name: Allow SIP TLS / WSS / JSON-RPC through UFW
+  community.general.ufw:
+    rule: allow
+    port: "{{ item.port }}"
+    proto: tcp
+    comment: "kamailio {{ item.label }}"
+  loop:
+    - { port: "{{ kamailio_sip_tcp_port }}", label: "SIP TCP" }
+    - { port: "{{ kamailio_sip_tls_port }}", label: "SIP TLS" }
+    - { port: "{{ kamailio_wss_port }}", label: "operator WSS" }
+  when: common_ufw_enabled | default(true)
+
+- name: Allow DMQ peer port (only between edge VMs in production)
+  community.general.ufw:
+    rule: allow
+    port: "{{ kamailio_dmq_port }}"
+    proto: udp
+    from_ip: "{{ item }}"
+    comment: "kamailio DMQ peer"
+  loop: "{{ kamailio_dmq_peers | map('extract', hostvars, 'ansible_host') | list }}"
+  when:
+    - common_ufw_enabled | default(true)
+    - kamailio_dmq_peers | length > 0
+
+- name: Allow JSON-RPC management port (loopback + cluster-egress only)
+  community.general.ufw:
+    rule: allow
+    port: "{{ kamailio_jsonrpc_port }}"
+    proto: tcp
+    from_ip: 127.0.0.1
+    comment: "kamailio JSON-RPC (loopback only)"
+  when: common_ufw_enabled | default(true)
+
+# --- Enable + start ---------------------------------------------
+
+- name: Enable + start kamailio
+  ansible.builtin.systemd:
+    name: kamailio
+    enabled: true
+    state: started
+    daemon_reload: true

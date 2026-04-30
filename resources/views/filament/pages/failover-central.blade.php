@@ -44,8 +44,16 @@
     <div wire:poll.5s="refreshState" class="orbital-failover-grid">
 
         {{-- =========================================================
-             Postgres (Patroni)
+             Postgres (Patroni) — only when this install is running
+             the in-cluster Patroni topology. Managed Postgres
+             (RDS / Vultr Managed / Azure DB) replaces the cluster
+             state probe with a generic connectivity check on the
+             Dashboard health card; FailoverCentral hides the tier
+             entirely because there's nothing for an operator to do
+             from here when the managed service handles its own
+             failover.
              ========================================================= --}}
+        @if ($this->isClusterMode('postgres'))
         <div style="border: 1px solid var(--gray-200); border-radius: 0.75rem; {{ $healthBorder($this->patroniHealth()) }}">
         <x-filament::section
             icon="heroicon-o-circle-stack"
@@ -100,7 +108,15 @@
             @endif
         </x-filament::section>
         </div>
+        @endif {{-- isClusterMode('postgres') --}}
 
+        {{-- =========================================================
+             Valkey (Sentinel) — gated on cluster-mode for the same
+             reason as Patroni. Managed Valkey / ElastiCache replaces
+             the cluster-state UI with a generic connectivity probe.
+             ========================================================= --}}
+        @if ($this->isClusterMode('valkey'))
+        {{-- (legacy comment stays below for git-blame continuity) --}}
         {{-- =========================================================
              Valkey (Sentinel)
              ========================================================= --}}
@@ -176,10 +192,13 @@
             @endif
         </x-filament::section>
         </div>
+        @endif {{-- isClusterMode('valkey') --}}
 
         {{-- =========================================================
-             SeaweedFS
+             SeaweedFS — gated; managed S3 / Vultr Object Storage hides
+             the master-cluster UI here.
              ========================================================= --}}
+        @if ($this->isClusterMode('object_storage'))
         <div style="border: 1px solid var(--gray-200); border-radius: 0.75rem; {{ $healthBorder($this->seaweedHealth()) }}">
         <x-filament::section
             icon="heroicon-o-archive-box"
@@ -290,6 +309,7 @@
             @endif
         </x-filament::section>
         </div>
+        @endif {{-- isClusterMode('object_storage') --}}
 
         {{-- =========================================================
              HAProxy backends — one bordered section per backend so
@@ -373,6 +393,80 @@
                 </x-filament::section>
             </div>
         @endif
+
+        {{-- =========================================================
+             rtpengine — media-relay tier
+             ========================================================= --}}
+        <div style="border: 1px solid var(--gray-200); border-radius: 0.75rem; {{ $healthBorder($this->rtpengineHealth()) }}">
+        <x-filament::section
+            icon="heroicon-o-signal"
+            :icon-color="$this->rtpengineHealth() === 'ok' ? 'success' : ($this->rtpengineHealth() === 'down' ? 'danger' : 'warning')"
+        >
+            <x-slot name="heading">rtpengine — edge media relay</x-slot>
+            <x-slot name="description">
+                @php
+                    $rtpActive = collect($rtpengineNodes)->filter(fn ($n) => $n['is_active']);
+                    $rtpUp = $rtpActive->filter(fn ($n) => $n['ng_responding']);
+                @endphp
+                @if (count($rtpengineNodes) === 0)
+                    <span style="color: var(--warning-600);">no rtpengine nodes registered — add some via the rtpengine Nodes resource.</span>
+                @else
+                    {{ $rtpUp->count() }} / {{ $rtpActive->count() }} active node(s) responding · {{ count($rtpengineNodes) }} registered total
+                @endif
+            </x-slot>
+            <x-slot name="headerEnd">
+                @php $rh = $this->rtpengineHealth(); @endphp
+                <x-filament::badge :color="$rh === 'ok' ? 'success' : ($rh === 'down' ? 'danger' : 'warning')">
+                    {{ $rh === 'ok' ? 'Healthy' : ($rh === 'down' ? 'Down' : 'Degraded') }}
+                </x-filament::badge>
+            </x-slot>
+
+            @if (count($rtpengineNodes))
+                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                    @foreach ($rtpengineNodes as $node)
+                        @php
+                            $sessionCount = (int) ($node['statistics']['statistics']['currentstatistics']['sessionsown'] ?? 0);
+                            if ($sessionCount === 0) {
+                                $sessionCount = (int) ($node['statistics']['currentstatistics']['sessionsown'] ?? 0);
+                            }
+                            if (! $node['is_active']) {
+                                $stateColor = 'gray';
+                                $stateLabel = 'INACTIVE';
+                            } elseif ($node['ng_responding']) {
+                                $stateColor = 'success';
+                                $stateLabel = 'UP';
+                            } else {
+                                $stateColor = 'danger';
+                                $stateLabel = 'DOWN';
+                            }
+                        @endphp
+                        <x-filament::section compact>
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+                                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                    <x-filament::badge :color="$stateColor">{{ $stateLabel }}</x-filament::badge>
+                                    <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.875rem; font-weight: 600;">
+                                        {{ $node['label'] }}
+                                    </span>
+                                    @if ($node['ng_responding'])
+                                        <span style="font-size: 0.75rem; color: var(--gray-500);">
+                                            sessions: {{ $sessionCount }}
+                                        </span>
+                                    @endif
+                                </div>
+                                <div style="display: flex; gap: 0.5rem;">
+                                    @if ($node['is_active'])
+                                        {{ ($this->rtpengineDrainAction)(['id' => $node['id'], 'hostname' => $node['hostname']]) }}
+                                    @else
+                                        {{ ($this->rtpengineActivateAction)(['id' => $node['id'], 'hostname' => $node['hostname']]) }}
+                                    @endif
+                                </div>
+                            </div>
+                        </x-filament::section>
+                    @endforeach
+                </div>
+            @endif
+        </x-filament::section>
+        </div>
 
     </div>
 </x-filament-panels::page>

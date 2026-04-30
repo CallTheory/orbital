@@ -1,0 +1,16 @@
+# Kamailio TLS profile — same shape as the dev `docker/kamailio/tls.cfg`,
+# parameterized for the cert-acme-managed paths on this VM.
+#
+# {{ ansible_managed }}
+
+[server:default]
+method = TLSv1.2+
+verify_certificate = no
+require_certificate = no
+private_key = {{ kamailio_tls_key }}
+certificate = {{ kamailio_tls_cert }}
+
+[client:default]
+method = TLSv1.2+
+verify_certificate = no
+require_certificate = no

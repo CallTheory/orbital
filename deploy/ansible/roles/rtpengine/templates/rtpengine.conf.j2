@@ -1,0 +1,45 @@
+; rtpengine — Orbital edge media relay
+;
+; This config mirrors `docker/rtpengine/rtpengine.conf` from the
+; repo, parameterized via Ansible defaults for the VM's public NIC
+; + the Phase-3 active/active Valkey state-sharing.
+;
+; {{ ansible_managed }}
+
+[rtpengine]
+; Public NIC for SIP/RTP signaling. Set to the VM's outbound interface;
+; cloud-init populates this via `ansible_default_ipv4.interface` so
+; AWS/Azure/Vultr/on-prem all work without overrides.
+interface = {{ rtpengine_interface }}
+foreground = true
+log-stderr = true
+
+; NG control protocol — bencode-over-UDP. Kamailio's `rtpengine.so`
+; module talks to this socket per-call.
+listen-ng = {{ rtpengine_ng_listen }}
+
+; Public RTP relay range. Customer's carrier RTP enters here.
+port-min = {{ rtpengine_port_min }}
+port-max = {{ rtpengine_port_max }}
+
+; Recording-daemon hand-off. recording-method = pcap means rtpengine
+; writes raw .pcap captures to the spool; the companion
+; `ngcp-rtpengine-recording-daemon` watches the spool and converts
+; pcap → WAV pairs (caller_in / caller_out). Laravel's
+; `orbital:upload-recordings` watcher then ingests those WAVs.
+recording-dir = {{ rtpengine_recording_dir }}
+recording-method = {{ rtpengine_recording_method }}
+recording-format = eth
+
+log-level = {{ rtpengine_log_level }}
+delete-delay = 0
+
+{% if rtpengine_redis_address %}
+; --- Phase 3: shared Valkey state for active/active edge ---
+; Both edge VMs hit the cluster's Valkey HAProxy frontend (which
+; tracks the Sentinel master); rtpengine sessions are visible to
+; both nodes. An in-flight call survives one edge VM going away.
+redis = {{ rtpengine_redis_address }}
+redis-num-threads = {{ rtpengine_redis_num_threads }}
+no-redis-required = true
+{% endif %}

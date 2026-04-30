@@ -1,0 +1,211 @@
+#!KAMAILIO
+#
+# Orbital — Kamailio SIP proxy (production rendering).
+#
+# {{ ansible_managed }}
+#
+# This config mirrors `docker/kamailio/kamailio.cfg` from the repo
+# — same module set + same drain semantics — parameterized via the
+# Ansible role for production:
+#
+#  - rtpengine NG socket on local loopback
+#  - DMQ peering across the edge VM pair (Phase 3 active/active)
+#  - TLS + WSS on cluster-managed certs (acme.sh)
+#  - dispatcher.list pointing at the K8s Asterisk Service
+#
+# What does NOT go through Kamailio:
+#  - Outbound trunk registrations (Asterisk → carrier directly via
+#    `outbound_proxy=sip:kamailio:5060;lr` on the trunk endpoints
+#    — invariant detector lives in OutboundTrunkAuditor)
+
+####### Global Parameters #######
+
+debug={{ kamailio_log_level }}
+log_stderror=yes
+log_facility=LOG_LOCAL0
+
+fork=yes
+children={{ kamailio_workers }}
+
+# Required to bind any `listen=tls:` line below.
+enable_tls=yes
+
+listen=udp:0.0.0.0:{{ kamailio_sip_udp_port }}
+listen=tcp:0.0.0.0:{{ kamailio_sip_tcp_port }}
+listen=udp:0.0.0.0:{{ kamailio_dmq_port }}
+listen=tls:0.0.0.0:{{ kamailio_sip_tls_port }}
+listen=tls:0.0.0.0:{{ kamailio_wss_port }}
+listen=tcp:0.0.0.0:{{ kamailio_jsonrpc_port }} advertise 0.0.0.0:{{ kamailio_jsonrpc_port }}
+
+auto_aliases=no
+dns=no
+rev_dns=no
+tcp_accept_no_cl=yes
+
+####### Module Loading #######
+
+loadmodule "sl.so"
+loadmodule "tm.so"
+loadmodule "rr.so"
+loadmodule "maxfwd.so"
+loadmodule "textops.so"
+loadmodule "siputils.so"
+loadmodule "dispatcher.so"
+loadmodule "dialog.so"
+loadmodule "xhttp.so"
+loadmodule "jsonrpcs.so"
+loadmodule "pv.so"
+loadmodule "kex.so"
+loadmodule "xlog.so"
+loadmodule "rtpengine.so"
+loadmodule "dmq.so"
+loadmodule "dmq_usrloc.so"
+loadmodule "tls.so"
+loadmodule "websocket.so"
+
+####### Module Parameters #######
+
+modparam("tm", "fr_timer", 5000)
+modparam("tm", "fr_inv_timer", 30000)
+
+modparam("rr", "enable_full_lr", 1)
+modparam("rr", "append_fromtag", 1)
+
+modparam("dispatcher", "list_file", "{{ kamailio_config_dir }}/dispatcher.list")
+modparam("dispatcher", "ds_ping_interval", 30)
+modparam("dispatcher", "ds_probing_mode", 1)
+modparam("dispatcher", "ds_ping_reply_codes", "class=2;code=401;code=403;code=404;code=405")
+modparam("dispatcher", "flags", 2)
+
+modparam("dialog", "dlg_flag", 4)
+modparam("dialog", "track_cseq_updates", 1)
+
+modparam("jsonrpcs", "transport", 1)
+
+# rtpengine — every SIP dialog force-relays through rtpengine on
+# the same VM (loopback NG socket). Phase 3's active/active path
+# adds shared Valkey state on the rtpengine side, so a peer VM
+# picks up state if this one goes away.
+modparam("rtpengine", "rtpengine_sock", "{{ kamailio_rtpengine_sockets | join(' ') }}")
+modparam("rtpengine", "extra_id_pv", "$avp(rtpengine_extra)")
+
+# DMQ — Phase 3 active/active state sync between edge VMs.
+modparam("dmq", "server_address", "sip:0.0.0.0:{{ kamailio_dmq_port }}")
+{% if kamailio_dmq_peers | length > 0 %}
+modparam("dmq", "notification_address", "{{ kamailio_dmq_peers | map('regex_replace', '^(.*)$', 'sip:\\1:' ~ kamailio_dmq_port) | join(',') }}")
+{% else %}
+modparam("dmq", "notification_address", "sip:127.0.0.1:{{ kamailio_dmq_port }}")
+{% endif %}
+modparam("dmq", "multi_notify", 1)
+modparam("dmq", "num_workers", 2)
+
+# TLS + WebSocket
+modparam("tls", "config", "{{ kamailio_config_dir }}/tls.cfg")
+modparam("websocket", "keepalive_mechanism", 1)
+modparam("websocket", "keepalive_timeout", 30)
+
+####### Routing #######
+
+request_route {
+    if (!mf_process_maxfwd_header("10")) {
+        sl_send_reply("483", "Too Many Hops");
+        exit;
+    }
+
+    if (is_method("INVITE|SUBSCRIBE")) {
+        record_route();
+    }
+
+    # In-dialog requests follow the route header.
+    if (has_totag()) {
+        if (loose_route()) {
+            if (is_method("BYE")) {
+                rtpengine_delete();
+            }
+            t_relay();
+            exit;
+        }
+        sl_send_reply("404", "Not Here");
+        exit;
+    }
+
+    # CANCEL relays statelessly.
+    if (is_method("CANCEL")) {
+        if (t_check_trans()) {
+            t_relay();
+        }
+        exit;
+    }
+
+    # Initial INVITE.
+    if (is_method("INVITE")) {
+        setflag(4);
+
+        # Outbound from internal Asterisk → carrier. INVITE arrived
+        # via outbound_proxy=sip:kamailio:5060;lr; R-URI already
+        # holds the carrier address, so we just relay there with
+        # rtpengine in the path.
+        if (ds_is_from_list("{{ kamailio_dispatcher_set_id }}")) {
+            rtpengine_manage("force trust-address replace-origin replace-session-connection ICE=remove");
+            t_on_reply("RTPENGINE_REPLY");
+            t_relay();
+            exit;
+        }
+
+        # Inbound from carrier → Asterisk via dispatcher.
+        rtpengine_manage("force trust-address replace-origin replace-session-connection ICE=remove");
+        t_on_reply("RTPENGINE_REPLY");
+
+        if (!ds_select_dst("{{ kamailio_dispatcher_set_id }}", "0")) {
+            sl_send_reply("503", "Service Unavailable");
+            exit;
+        }
+
+        t_on_failure("DISPATCH_FAIL");
+        t_relay();
+        exit;
+    }
+
+    # REGISTER → forward to a dispatcher-selected Asterisk for
+    # contact binding. Asterisk handles the digest auth.
+    if (is_method("REGISTER")) {
+        if (!ds_select_dst("{{ kamailio_dispatcher_set_id }}", "0")) {
+            sl_send_reply("503", "Service Unavailable");
+            exit;
+        }
+        t_relay();
+        exit;
+    }
+
+    # Everything else (OPTIONS, INFO, NOTIFY, etc.) — dispatch.
+    if (!ds_select_dst("{{ kamailio_dispatcher_set_id }}", "0")) {
+        sl_send_reply("503", "Service Unavailable");
+        exit;
+    }
+    t_relay();
+    exit;
+}
+
+failure_route[DISPATCH_FAIL] {
+    if (t_is_canceled()) {
+        exit;
+    }
+    rtpengine_delete();
+    xlog("L_WARN", "DISPATCH_FAIL: backend unreachable for $ru\n");
+    t_reply("503", "Service Unavailable");
+}
+
+onreply_route[RTPENGINE_REPLY] {
+    if (status =~ "(183)|(2[0-9][0-9])") {
+        rtpengine_manage();
+    }
+}
+
+event_route[xhttp:request] {
+    if ($hu =~ "^/jsonrpc") {
+        jsonrpc_dispatch();
+        exit;
+    }
+    xhttp_reply("404", "Not Found", "text/plain", "Only /jsonrpc is served here.\n");
+    exit;
+}

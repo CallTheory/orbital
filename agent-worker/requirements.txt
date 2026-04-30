@@ -1,0 +1,9 @@
+# LiveKit Agents SDK
+livekit-agents[codecs]>=1.0
+livekit-plugins-anthropic>=1.0
+livekit-plugins-openai>=1.0
+livekit-plugins-elevenlabs>=1.0
+livekit-plugins-silero>=1.0
+
+# HTTP client for Orbital API
+requests>=2.31

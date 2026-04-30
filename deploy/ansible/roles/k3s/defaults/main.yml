@@ -1,0 +1,41 @@
+---
+# k3s role — defaults
+#
+# K3s is the OSS / lightweight K8s distribution we install on
+# self-hosted-K3s installs. Cloud paths using managed K8s
+# (VKE / EKS / AKS) skip this role entirely; only the
+# `terraform/onprem/k3s/` and `terraform/vultr/self-hosted-k3s/`
+# entrypoints reference it.
+
+# server | agent — drives whether this node runs the K3s control
+# plane (server) or only joins as a worker (agent). The first
+# server in the inventory bootstraps; additional servers join
+# the same etcd via `K3S_URL` + `K3S_TOKEN`.
+k3s_role: server
+
+# Pinned K3s version. Bump when intentionally upgrading; pin
+# avoids surprise control-plane churn between deploys.
+k3s_version: v1.31.2+k3s1
+
+# Cluster join URL — the first server's `https://<ip>:6443`.
+# Required for additional servers + every agent.
+k3s_server_url: ""
+
+# Shared cluster token — set on the first server, supplied by
+# all subsequent servers + agents. Generate once, store in
+# Ansible Vault, surface here via group_vars.
+k3s_token: ""
+
+# Disabled K3s components. We bring our own ingress (chart-installed
+# via the user's preferred class) and our own Traefik / nginx /
+# whatever — disable the stock K3s Traefik so it doesn't fight.
+# Likewise servicelb gets replaced by the Vultr cloud controller
+# (or metallb on bare metal).
+k3s_disable:
+  - traefik
+
+# Extra args passed to the K3s install script. Most defaults stay;
+# common overrides:
+#   --node-label=role=edge
+#   --tls-san=<load-balancer-hostname>
+k3s_extra_args: []

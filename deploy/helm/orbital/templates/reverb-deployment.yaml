@@ -1,0 +1,61 @@
+{{- if .Values.reverb.enabled -}}
+{{/*
+Reverb — Laravel's first-party WebSocket broadcast server. The
+Filament admin panel uses it for real-time UI updates (status bar,
+nav badges, the toast pipeline). Cross-tab and cross-operator
+notifications all ride this channel.
+
+Single replica by default — Reverb shares state via Valkey, but
+multi-replica needs sticky sessions at the ingress layer. Scale
+up only after pinning that.
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "orbital.componentName" (list . "reverb") }}
+  labels:
+    {{- include "orbital.componentLabels" (list . "reverb") | nindent 4 }}
+spec:
+  replicas: {{ .Values.reverb.replicas }}
+  selector:
+    matchLabels:
+      {{- include "orbital.selectorLabels" (list . "reverb") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "orbital.componentLabels" (list . "reverb") | nindent 8 }}
+    spec:
+      {{- include "orbital.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: reverb
+          image: {{ include "orbital.image" (dict "ctx" . "name" .Values.laravel.image.name "tag" .Values.laravel.image.tag) }}
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          command: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080"]
+          ports:
+            - name: ws
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "orbital.componentName" (list . "app-env") }}
+            - secretRef:
+                name: {{ include "orbital.componentName" (list . "app-secrets") }}
+          resources:
+            {{- toYaml .Values.reverb.resources | nindent 12 }}
+          # No HTTP healthcheck endpoint — Reverb is a raw WebSocket
+          # server. TCP-level readiness is the best we can do here.
+          readinessProbe:
+            tcpSocket:
+              port: ws
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: ws
+            initialDelaySeconds: 30
+            periodSeconds: 15
+{{- end }}

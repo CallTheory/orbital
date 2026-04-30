@@ -1,0 +1,107 @@
+---
+# certs-acme — provisions Let's Encrypt certs via acme.sh and wires
+# the renewal hook into the cluster's TLS reload pipeline.
+#
+# Lifts the same install + deploy-hook pattern from `docker/acme/`
+# in the dev compose stack: acme.sh issues, deploys to a shared
+# directory both kamailio + rtpengine read from, and POSTs to the
+# Laravel TLS webhook so all consumers reload without restart.
+
+- name: Bail if domain not set
+  ansible.builtin.fail:
+    msg: "certs_acme_domain must be set (e.g. sip.orbital.calltheory.com)"
+  when: certs_acme_domain | length == 0
+
+- name: Install acme.sh prerequisites
+  ansible.builtin.apt:
+    name:
+      - cron
+      - socat
+      - openssl
+    state: present
+  when: ansible_os_family == 'Debian'
+
+# acme.sh's install script (run as the orbital admin) drops the
+# client into ~/.acme.sh/ and installs a cron entry for daily
+# renewal checks.
+- name: Check whether acme.sh is already installed
+  ansible.builtin.stat:
+    path: "{{ certs_acme_home }}/acme.sh"
+  register: acme_sh_stat
+
+- name: Install acme.sh
+  become: true
+  become_user: "{{ certs_acme_user }}"
+  ansible.builtin.shell:
+    cmd: |
+      curl https://get.acme.sh | sh -s -- email={{ certs_acme_email }}
+    creates: "{{ certs_acme_home }}/acme.sh"
+  when: not acme_sh_stat.stat.exists
+
+# Set Let's Encrypt as the default CA. ZeroSSL is acme.sh's default
+# but Let's Encrypt has wider trust + no account email lock-in.
+- name: Configure acme.sh to use Let's Encrypt
+  become: true
+  become_user: "{{ certs_acme_user }}"
+  ansible.builtin.command:
+    cmd: "{{ certs_acme_home }}/acme.sh --set-default-ca --server letsencrypt"
+  changed_when: true
+
+- name: Ensure shared cert directory exists
+  ansible.builtin.file:
+    path: "{{ certs_acme_dir }}"
+    state: directory
+    owner: root
+    group: kamailio
+    mode: "0750"
+
+- name: Issue cert via acme.sh (HTTP-01)
+  become: true
+  become_user: "{{ certs_acme_user }}"
+  ansible.builtin.command:
+    cmd: >-
+      {{ certs_acme_home }}/acme.sh --issue --standalone
+      -d {{ certs_acme_domain }}
+      {% for d in certs_acme_extra_domains %}-d {{ d }} {% endfor %}
+  args:
+    creates: "{{ certs_acme_home }}/{{ certs_acme_domain }}_ecc/{{ certs_acme_domain }}.cer"
+  when: certs_acme_dns_provider | length == 0
+  register: acme_issue_http
+  failed_when:
+    - acme_issue_http.rc != 0
+    - "'Domains not changed' not in (acme_issue_http.stderr | default(''))"
+
+- name: Issue cert via acme.sh (DNS-01 — {{ certs_acme_dns_provider }})
+  become: true
+  become_user: "{{ certs_acme_user }}"
+  ansible.builtin.command:
+    cmd: >-
+      {{ certs_acme_home }}/acme.sh --issue --dns {{ certs_acme_dns_provider }}
+      -d {{ certs_acme_domain }}
+      {% for d in certs_acme_extra_domains %}-d {{ d }} {% endfor %}
+  args:
+    creates: "{{ certs_acme_home }}/{{ certs_acme_domain }}_ecc/{{ certs_acme_domain }}.cer"
+  when: certs_acme_dns_provider | length > 0
+
+# Install — acme.sh's `--install-cert` writes the renewed chain
+# into the shared dir and (via reloadcmd) fires the post-renewal
+# webhook so the cluster reloads TLS.
+- name: Install cert + register reload hook
+  become: true
+  become_user: "{{ certs_acme_user }}"
+  ansible.builtin.command:
+    cmd: >-
+      {{ certs_acme_home }}/acme.sh --install-cert
+      -d {{ certs_acme_domain }}
+      --key-file       {{ certs_acme_dir }}/privkey.pem
+      --fullchain-file {{ certs_acme_dir }}/fullchain.pem
+      --reloadcmd     "{{ certs_acme_dir }}/reload-hook.sh"
+  changed_when: true
+
+- name: Render local reload-hook (kamailio reload + webhook POST)
+  ansible.builtin.template:
+    src: reload-hook.sh.j2
+    dest: "{{ certs_acme_dir }}/reload-hook.sh"
+    owner: root
+    group: kamailio
+    mode: "0755"

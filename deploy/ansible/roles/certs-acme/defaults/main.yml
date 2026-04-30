@@ -1,0 +1,32 @@
+---
+# certs-acme role — defaults
+#
+# Lifts the existing `docker/acme/` setup onto the edge VMs.
+# acme.sh runs as a systemd timer; on renewal it deploys to a
+# shared `/etc/orbital-tls/` directory and POSTs to the Laravel
+# webhook so kamailio reloads its TLS context.
+
+certs_acme_email: admin@example.com
+certs_acme_domain: ""        # required; e.g. sip.orbital.calltheory.com
+certs_acme_extra_domains: [] # SAN list — operator softphones may want
+                             # `wss.orbital.calltheory.com` too
+
+# Where the issued cert + key land. Both kamailio and rtpengine
+# (when SRTP is enabled) read from this dir.
+certs_acme_dir: /etc/orbital-tls
+
+# Webhook target — Laravel's TlsRenewalWebhookController. Triggers
+# `KamailioService::reloadTls()` (and Asterisk PJSIP reload) so
+# the new chain is active without a kamailio restart.
+certs_acme_webhook_url: ""
+certs_acme_webhook_token: ""
+
+# DNS provider for ACME DNS-01 challenge. Set to one of acme.sh's
+# supported providers (vultr, dns_cf, dns_aws, etc.) when the VMs
+# don't have port 80 reachable. Empty = HTTP-01 (port 80 open).
+certs_acme_dns_provider: ""
+
+# acme.sh install prefix — installed as a per-user shell client
+# in the orbital admin's home dir.
+certs_acme_user: "{{ common_admin_user | default('orbital') }}"
+certs_acme_home: "/home/{{ certs_acme_user }}/.acme.sh"

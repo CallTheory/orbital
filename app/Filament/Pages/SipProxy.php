@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace App\Filament\Pages;
 
+use App\Models\RtpengineNode;
 use App\Services\Telephony\AsteriskClusterActivity;
 use App\Services\Telephony\AsteriskDrainService;
 use App\Services\Telephony\KamailioService;
+use App\Services\Telephony\RtpengineDrainService;
+use App\Services\Telephony\RtpengineService;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
@@ -70,6 +73,23 @@ class SipProxy extends Page
      */
     public array $activity = [];
 
+    /**
+     * Per-rtpengine state map. Lets the SIP Proxy page render the
+     * media-relay tier alongside the Asterisk dispatchers, with the
+     * same drain/activate UX. Same shape as `$activity` but for the
+     * NG control surface.
+     *
+     * @var array<int, array{
+     *     id: int,
+     *     hostname: string,
+     *     label: string,
+     *     is_active: bool,
+     *     ng_responding: bool,
+     *     active_sessions: int,
+     * }>
+     */
+    public array $rtpengineNodes = [];
+
     public static function canAccess(): bool
     {
         if (! config('telephony.kamailio.enabled')) {
@@ -111,6 +131,92 @@ class SipProxy extends Page
         // (two commands over a short-lived socket per node) so
         // the 5s poll doesn't stress the Asterisks.
         $this->activity = app(AsteriskClusterActivity::class)->all();
+        $this->rtpengineNodes = $this->loadRtpengineNodes();
+    }
+
+    /**
+     * @return array<int, array{id: int, hostname: string, label: string, is_active: bool, ng_responding: bool, active_sessions: int}>
+     */
+    protected function loadRtpengineNodes(): array
+    {
+        $rtpengine = app(RtpengineService::class);
+        $rows = [];
+        foreach (RtpengineNode::query()->orderBy('sort_order')->orderBy('id')->get() as $node) {
+            $sessions = 0;
+            $responding = false;
+            if ($node->is_active) {
+                $stats = $rtpengine->statistics($node);
+                if (is_array($stats)) {
+                    $responding = true;
+                    $sessions = (int) ($stats['statistics']['currentstatistics']['sessionsown']
+                        ?? $stats['currentstatistics']['sessionsown']
+                        ?? 0);
+                }
+            }
+            $rows[] = [
+                'id' => (int) $node->id,
+                'hostname' => $node->hostname,
+                'label' => $node->label(),
+                'is_active' => (bool) $node->is_active,
+                'ng_responding' => $responding,
+                'active_sessions' => $sessions,
+            ];
+        }
+        return $rows;
+    }
+
+    public function drainRtpengineAction(): Action
+    {
+        return Action::make('drainRtpengine')
+            ->label('Drain')
+            ->icon('heroicon-o-pause')
+            ->color('warning')
+            ->requiresConfirmation()
+            ->modalHeading(fn (array $arguments) => "Drain {$arguments['hostname']}?")
+            ->modalDescription(
+                'Stops new RTP offers landing on this rtpengine node — '.
+                'the registry flag flips off and NG `set-forwarding off` '.
+                'rejects fresh dialogs. Calls already relayed by this '.
+                'node finish naturally.',
+            )
+            ->action(function (array $arguments): void {
+                $node = RtpengineNode::find($arguments['id']);
+                if (! $node) {
+                    Notification::make()->danger()->title('Node not found')->send();
+                    return;
+                }
+                $result = app(RtpengineDrainService::class)->drain($node);
+                $ok = $result['ng'] && $result['registry'];
+                Notification::make()
+                    ->title($ok ? "Draining {$node->hostname}" : "Partial drain of {$node->hostname}")
+                    ->body('NG: '.($result['ng'] ? 'ok' : 'FAILED').' · Registry: '.($result['registry'] ? 'ok' : 'FAILED'))
+                    ->{$ok ? 'warning' : 'danger'}()
+                    ->send();
+                $this->refreshState();
+            });
+    }
+
+    public function activateRtpengineAction(): Action
+    {
+        return Action::make('activateRtpengine')
+            ->label('Activate')
+            ->icon('heroicon-o-play')
+            ->color('success')
+            ->action(function (array $arguments): void {
+                $node = RtpengineNode::find($arguments['id']);
+                if (! $node) {
+                    Notification::make()->danger()->title('Node not found')->send();
+                    return;
+                }
+                $result = app(RtpengineDrainService::class)->activate($node);
+                $ok = $result['ng'] && $result['registry'];
+                Notification::make()
+                    ->title($ok ? "Activated {$node->hostname}" : "Partial activate of {$node->hostname}")
+                    ->body('NG: '.($result['ng'] ? 'ok' : 'FAILED').' · Registry: '.($result['registry'] ? 'ok' : 'FAILED'))
+                    ->{$ok ? 'success' : 'warning'}()
+                    ->send();
+                $this->refreshState();
+            });
     }
 
     /**

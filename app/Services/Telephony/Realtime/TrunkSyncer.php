@@ -57,6 +57,21 @@ class TrunkSyncer
             'rtp_symmetric' => 'yes',
             'dtmf_mode' => 'rfc4733',
             'identify_by' => 'ip,username',
+            // Force every outbound INVITE on this trunk through the
+            // platform edge proxy. R-URI stays the carrier address
+            // (`;lr` = loose routing per RFC 3261 §16.4) so the
+            // carrier still routes correctly; only the SIP signaling
+            // path is bent through Kamailio + rtpengine. This is the
+            // load-bearing Phase 1a invariant: no Asterisk → carrier
+            // direct path means no calls bypass recording.
+            //
+            // Configurable via `telephony.outbound_proxy` so single-
+            // node and HA setups (Kamailio behind a VIP) can both
+            // point trunks at the right edge.
+            'outbound_proxy' => (string) config(
+                'telephony.outbound_proxy',
+                'sip:kamailio:5060;lr',
+            ),
         ];
 
         $aorRow = [

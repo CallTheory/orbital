@@ -1,0 +1,93 @@
+{{- if not .Values.postgres.external.enabled -}}
+{{/*
+In-cluster Postgres — single-replica StatefulSet for the "fresh
+install just works" path. Persistence via PVC so a pod restart
+doesn't lose data.
+
+This is intentionally simple. Customers wanting HA Postgres should:
+  - flip postgres.external.enabled=true and point at managed Postgres
+    (Vultr Managed Postgres, AWS RDS, Azure DB), OR
+  - run a real Patroni operator alongside Orbital and point at it
+    via external.host.
+
+Patroni-replication operators land as a follow-up if there's demand;
+they're a substantially different chart shape and deserve their own
+opt-in instead of bloating the default path.
+*/}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "orbital.componentName" (list . "postgres") }}
+  labels:
+    {{- include "orbital.componentLabels" (list . "postgres") | nindent 4 }}
+spec:
+  replicas: 1
+  serviceName: {{ include "orbital.componentName" (list . "postgres") }}
+  selector:
+    matchLabels:
+      {{- include "orbital.selectorLabels" (list . "postgres") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "orbital.componentLabels" (list . "postgres") | nindent 8 }}
+    spec:
+      containers:
+        - name: postgres
+          image: {{ include "orbital.thirdPartyImage" .Values.postgres.inCluster.image }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: pg
+              containerPort: 5432
+              protocol: TCP
+          env:
+            - name: POSTGRES_DB
+              value: orbital
+            - name: POSTGRES_USER
+              value: orbital
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "orbital.componentName" (list . "app-secrets") }}
+                  key: DB_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          resources:
+            {{- toYaml .Values.postgres.inCluster.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "orbital", "-d", "orbital"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: pg
+            initialDelaySeconds: 30
+            periodSeconds: 30
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- include "orbital.storageClass" . | nindent 8 }}
+        resources:
+          requests:
+            storage: {{ .Values.postgres.inCluster.persistence.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "orbital.componentName" (list . "postgres") }}
+  labels:
+    {{- include "orbital.componentLabels" (list . "postgres") | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5432
+      targetPort: pg
+      name: pg
+  selector:
+    {{- include "orbital.selectorLabels" (list . "postgres") | nindent 4 }}
+{{- end }}

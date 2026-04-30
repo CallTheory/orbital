@@ -1,0 +1,87 @@
+name: Publish Helm chart to Harbor
+
+# Helm pushes the chart as an OCI artifact to Harbor alongside the
+# images. Customers can install with either:
+#
+#   # OCI install (recommended)
+#   helm install orbital oci://cr.calltheory.com/orbital/charts/orbital \
+#       --version 1.2.3 -n orbital
+#
+#   # Or git clone + local path
+#   git clone --branch v1.2.3 https://git.calltheory.com/orbital/orbital.git
+#   helm install orbital ./orbital/deploy/helm/orbital -n orbital
+#
+# Both stay supported; the OCI route avoids needing the source repo.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Chart version (semver, no leading v)'
+        required: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.0
+
+      - name: Compute chart version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            # Strip leading `v` — Helm semver requires no prefix.
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Lint chart
+        run: helm lint deploy/helm/orbital
+
+      - name: Render chart against every per-provider values file
+        run: |
+          for vals in deploy/helm/orbital/values-*.yaml; do
+            echo "==> rendering with $vals"
+            helm template orbital deploy/helm/orbital -n orbital -f "$vals" >/dev/null
+          done
+
+      - name: Package chart
+        run: |
+          helm package deploy/helm/orbital \
+              --version ${{ steps.version.outputs.version }} \
+              --app-version ${{ steps.version.outputs.version }} \
+              --destination /tmp/charts
+
+      - name: Log in to Harbor (Helm OCI)
+        run: |
+          echo "${{ secrets.HARBOR_TOKEN }}" | helm registry login cr.calltheory.com \
+              --username "${{ secrets.HARBOR_USERNAME }}" \
+              --password-stdin
+
+      - name: Push chart to oci://cr.calltheory.com/orbital/charts
+        run: |
+          helm push /tmp/charts/orbital-${{ steps.version.outputs.version }}.tgz \
+              oci://cr.calltheory.com/orbital/charts
+
+      - name: Report
+        run: |
+          echo "Chart pushed to oci://cr.calltheory.com/orbital/charts/orbital:${{ steps.version.outputs.version }}"
+          echo
+          echo "Customers install via:"
+          echo "  helm install orbital oci://cr.calltheory.com/orbital/charts/orbital \\"
+          echo "      --version ${{ steps.version.outputs.version }} \\"
+          echo "      -n orbital --create-namespace \\"
+          echo "      -f values-vultr-k3s.yaml   # or whichever provider"

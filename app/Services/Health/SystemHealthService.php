@@ -6,8 +6,11 @@ namespace App\Services\Health;
 
 use App\Events\SystemHealthUpdated;
 use App\Models\HealthCheckAcknowledgment;
+use App\Models\RtpengineNode;
 use App\Models\SipTrunk;
 use App\Services\CertificateService;
+use App\Services\Telephony\Realtime\OutboundTrunkAuditor;
+use App\Services\Telephony\RtpengineService;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Cache;
@@ -157,6 +160,8 @@ class SystemHealthService
             $this->probeResultToCheck($probes['haraka'], 'haraka', 'Inbound Mail', 'Mail', 'Haraka Inbound SMTP gateway', 'heroicon-o-envelope-open'),
             $this->probeResultToCheck($probes['reverb'], 'reverb', 'Reverb', 'System', 'Websocket broadcast server for real-time UI', 'heroicon-o-bolt'),
             $this->probeResultToCheck($probes['kamailio'], 'kamailio', 'Kamailio', 'Telephony', 'SIP proxy for call routing and draining', 'heroicon-o-arrows-right-left', optional: ! config('telephony.kamailio.enabled')),
+            $this->checkRtpengine(),
+            $this->checkOutboundTrunkInvariant(),
             $this->probeResultToCheck($probes['haproxy'], 'haproxy', 'HAProxy', 'System', 'Internal L4 load balancer', 'heroicon-o-arrows-right-left'),
             $this->probeResultToCheck($probes['whisper_local'], 'whisper_local', 'Whisper (local)', 'AI', 'Local whisper.cpp transcription service for voicemail', 'heroicon-o-microphone', optional: true),
             $this->checkTlsCertificate(),
@@ -294,6 +299,129 @@ class SystemHealthService
             'label' => 'OK',
             'message' => 'Every check is passing.',
         ];
+    }
+
+    /**
+     * rtpengine — aggregate health across the active node registry.
+     *
+     * NG protocol is bencode-over-UDP, so this can't ride the
+     * generic TCP probe path. We dispatch a `ping` to every active
+     * node and roll up: all-up = OK, partial = WARN, none-up = DOWN.
+     * No active nodes registered = optional/degraded so a fresh
+     * install with the registry empty doesn't show red.
+     *
+     * Recording-spool disk usage is intentionally NOT checked here —
+     * the spool lives on the rtpengine VMs, not the app host. The
+     * Prometheus exporter on each VM (rtpengine 11.x `--listen-prom`,
+     * plus node_exporter for filesystem metrics) is the right place
+     * for that alert, and the Grafana rtpengine dashboard surfaces it.
+     */
+    private function checkRtpengine(): HealthCheck
+    {
+        try {
+            $totalActive = RtpengineNode::active()->count();
+
+            if ($totalActive === 0) {
+                return new HealthCheck(
+                    key: 'rtpengine',
+                    name: 'rtpengine',
+                    category: 'Telephony',
+                    status: HealthCheck::WARN,
+                    message: 'No active rtpengine nodes registered.',
+                    icon: 'heroicon-o-signal',
+                );
+            }
+
+            $results = app(RtpengineService::class)->pingAll();
+            $up = count(array_filter($results));
+            $down = $totalActive - $up;
+
+            $status = match (true) {
+                $up === 0 => HealthCheck::DOWN,
+                $down > 0 => HealthCheck::WARN,
+                default => HealthCheck::OK,
+            };
+
+            $message = $status === HealthCheck::OK
+                ? 'Media relay daemons responding on every active node.'
+                : ($up === 0
+                    ? 'No rtpengine nodes are responding to NG ping.'
+                    : "{$down} of {$totalActive} rtpengine node(s) unresponsive.");
+
+            return new HealthCheck(
+                key: 'rtpengine',
+                name: 'rtpengine',
+                category: 'Telephony',
+                status: $status,
+                message: $message,
+                metrics: [
+                    'Active nodes' => (string) $totalActive,
+                    'Responding' => (string) $up,
+                ],
+                icon: 'heroicon-o-signal',
+            );
+        } catch (Throwable $e) {
+            return new HealthCheck(
+                key: 'rtpengine',
+                name: 'rtpengine',
+                category: 'Telephony',
+                status: HealthCheck::DOWN,
+                message: $e->getMessage(),
+                icon: 'heroicon-o-signal',
+            );
+        }
+    }
+
+    /**
+     * Outbound-trunk invariant — every Asterisk trunk endpoint must
+     * point at the platform edge (Kamailio / LiveKit-SIP), never
+     * directly at a carrier IP. A leak means that trunk's outbound
+     * calls bypass rtpengine and silently go un-recorded.
+     *
+     * The auditor is non-destructive (detector only); when this card
+     * goes red, the fix is to update the leaking trunk's contact in
+     * `TrunkSyncer` so it routes through Kamailio.
+     */
+    private function checkOutboundTrunkInvariant(): HealthCheck
+    {
+        try {
+            $leaks = app(OutboundTrunkAuditor::class)->findLeaks();
+            if ($leaks === []) {
+                return new HealthCheck(
+                    key: 'outbound_trunk_invariant',
+                    name: 'Outbound trunk invariant',
+                    category: 'Telephony',
+                    status: HealthCheck::OK,
+                    message: 'Every trunk routes outbound through the platform edge.',
+                    icon: 'heroicon-o-shield-check',
+                );
+            }
+
+            $sample = array_slice($leaks, 0, 3);
+            $sampleSummary = implode(', ', array_map(
+                fn ($l) => ($l['trunk_name'] ?? $l['endpoint_id']).' (proxy: '.$l['outbound_proxy'].')',
+                $sample,
+            ));
+
+            return new HealthCheck(
+                key: 'outbound_trunk_invariant',
+                name: 'Outbound trunk invariant',
+                category: 'Telephony',
+                status: HealthCheck::DOWN,
+                message: count($leaks).' trunk(s) without a Kamailio outbound_proxy: '.$sampleSummary,
+                metrics: ['Leaking trunks' => (string) count($leaks)],
+                icon: 'heroicon-o-shield-exclamation',
+            );
+        } catch (Throwable $e) {
+            return new HealthCheck(
+                key: 'outbound_trunk_invariant',
+                name: 'Outbound trunk invariant',
+                category: 'Telephony',
+                status: HealthCheck::WARN,
+                message: 'Auditor failed to run: '.$e->getMessage(),
+                icon: 'heroicon-o-shield-exclamation',
+            );
+        }
     }
 
     private function checkPostgres(): HealthCheck

@@ -7,9 +7,11 @@ namespace App\Console\Commands;
 use App\Models\AgentPersona;
 use App\Models\CallQueue;
 use App\Models\Extension;
+use App\Models\RtpengineNode;
 use App\Models\SipTrunk;
 use App\Services\Telephony\AsteriskAmiService;
 use App\Services\Telephony\LiveKitConfigService;
+use App\Services\Telephony\RtpengineService;
 use Illuminate\Console\Command;
 
 class TelephonyStatus extends Command
@@ -18,7 +20,7 @@ class TelephonyStatus extends Command
 
     protected $description = 'Check the status of telephony services (Asterisk, LiveKit)';
 
-    public function handle(AsteriskAmiService $ami, LiveKitConfigService $livekit): int
+    public function handle(AsteriskAmiService $ami, LiveKitConfigService $livekit, RtpengineService $rtpengine): int
     {
         $this->info('Checking Orbital telephony services...');
         $this->newLine();
@@ -39,6 +41,27 @@ class TelephonyStatus extends Command
             $this->info('OK');
         } else {
             $this->error('UNREACHABLE');
+        }
+
+        // rtpengine — NG ping fan-out across every active node
+        $totalActive = RtpengineNode::active()->count();
+        if ($totalActive === 0) {
+            $this->output->write('  rtpengine ... ');
+            $this->warn('No active nodes registered');
+        } else {
+            $results = $rtpengine->pingAll();
+            $up = count(array_filter($results));
+            $this->output->write('  rtpengine ... ');
+            if ($up === $totalActive) {
+                $this->info("OK ({$up}/{$totalActive} responding)");
+            } elseif ($up === 0) {
+                $this->error("DOWN (0/{$totalActive} responding)");
+            } else {
+                $this->warn("DEGRADED ({$up}/{$totalActive} responding)");
+            }
+            foreach ($results as $hostname => $ok) {
+                $this->line('    '.($ok ? '✓' : '✗').' '.$hostname);
+            }
         }
 
         // Database counts

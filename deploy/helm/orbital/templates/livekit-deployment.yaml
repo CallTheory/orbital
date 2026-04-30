@@ -1,0 +1,71 @@
+{{- if .Values.livekit.enabled -}}
+{{/*
+LiveKit — WebRTC media server for AI agent voice sessions.
+
+Cluster-internal only. External SIP traffic enters via
+the rtpengine edge (NOT through this LiveKit pod), then hops
+to LiveKit-SIP, which bridges into LiveKit. Operator browsers
+connecting for in-room observation go through the ingress.
+
+Phase 2 dropped the wide RTP port range (50000-60000) that the
+docker-compose setup used — rtpengine owns RTP at the edge, so
+internal LiveKit only needs its API port and a small ICE-mux range.
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "orbital.componentName" (list . "livekit") }}
+  labels:
+    {{- include "orbital.componentLabels" (list . "livekit") | nindent 4 }}
+spec:
+  replicas: {{ .Values.livekit.replicas }}
+  selector:
+    matchLabels:
+      {{- include "orbital.selectorLabels" (list . "livekit") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "orbital.componentLabels" (list . "livekit") | nindent 8 }}
+    spec:
+      containers:
+        - name: livekit
+          image: {{ include "orbital.thirdPartyImage" .Values.livekit.image }}
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          ports:
+            - name: api
+              containerPort: 7880
+              protocol: TCP
+          env:
+            # LiveKit reads its config from /etc/livekit/livekit.yaml.
+            # The chart writes the rendered yaml as a configmap
+            # mounted at that path — keeps secrets in
+            # `app-secrets` (api_key / api_secret) and routine knobs
+            # in the configmap.
+            - name: LIVEKIT_CONFIG_FILE
+              value: /etc/livekit/livekit.yaml
+          envFrom:
+            - secretRef:
+                name: {{ include "orbital.componentName" (list . "app-secrets") }}
+          resources:
+            {{- toYaml .Values.livekit.resources | nindent 12 }}
+          volumeMounts:
+            - name: livekit-config
+              mountPath: /etc/livekit
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /
+              port: api
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: api
+            initialDelaySeconds: 30
+            periodSeconds: 15
+      volumes:
+        - name: livekit-config
+          configMap:
+            name: {{ include "orbital.componentName" (list . "livekit-config") }}
+{{- end }}

@@ -101,6 +101,15 @@ services:
             # the PEM files here for the admin dashboard + health
             # probe. Read-only because Laravel never writes certs.
             - 'tls-certs:/etc/tls:ro'
+            # Read-only mounts of each rtpengine node's recording-
+            # daemon spool. The `orbital:upload-recordings` watcher
+            # walks these dirs every minute, parses Call-ID +
+            # direction from the filename, dispatches an upload job
+            # per finalized WAV. Read-only so we can't accidentally
+            # disturb a file mid-flush — the upload job deletes via
+            # the rtpengine container's writable mount.
+            - 'rtpengine-1-spool:/var/spool/rtpengine/rtpengine-1:ro'
+            - 'rtpengine-2-spool:/var/spool/rtpengine/rtpengine-2:ro'
         networks:
             - sail
             - telephony
@@ -386,6 +395,9 @@ services:
             - '5060:5060/udp'
             - '5060:5060/tcp'
             - '5061:5061/tcp'
+            # WSS listener for operator softphones (Phase 1b). SipJS
+            # in the operator panel connects to wss://sip-edge:7443/.
+            - '7443:7443/tcp'
             # JSON-RPC management for the admin UI's drain/activate
             # controls. Loopback-only because it has no auth — the
             # app container reaches it via the telephony network,
@@ -398,10 +410,100 @@ services:
             # file is baked into the image at build time and admin UI
             # changes would require a rebuild to take effect.
             - './docker/kamailio/dispatcher.list:/etc/kamailio/dispatcher.list'
+            # Bind-mount kamailio.cfg so iteration on the routing
+            # script doesn't require rebuilding the image. Phase 1b
+            # turned this into a moving target (rtpengine_manage,
+            # DMQ, TLS, websocket) — a baked-in copy lags every edit.
+            - './docker/kamailio/kamailio.cfg:/etc/kamailio/kamailio.cfg'
+            # TLS profile + cert chain shared with nginx-tls / Asterisk.
+            # Reloaded on every cert renewal via KamailioService::reloadTls().
+            - './docker/kamailio/tls.cfg:/etc/kamailio/tls.cfg'
+            - 'tls-certs:/etc/tls:ro'
         networks:
             - telephony
         depends_on:
             - asterisk-1
+        restart: unless-stopped
+
+    # ──────────────────────────────────────────────────────────────────
+    # rtpengine — edge media relay.
+    # Two nodes (rtpengine-1 / rtpengine-2) match the registered rows in
+    # the `rtpengine_nodes` table so Failover Central + the Dashboard
+    # health card key off real reachable daemons. Phase 1a runs them in
+    # userspace mode (no `xt_RTPENGINE` kernel module); Kamailio's
+    # `rtpengine_manage()` integration that actually relays RTP through
+    # them lands in the next chunk of work.
+    # ──────────────────────────────────────────────────────────────────
+    rtpengine-1:
+        image: drachtio/rtpengine:latest
+        # Both nodes are flagged active (no keepalived warm-standby
+        # in this topology). Phase 3's load-bearing change is the
+        # `--redis` flag below: rtpengine state lives in the shared
+        # Valkey cluster, so an in-flight call relayed through this
+        # node survives the node going away — node-2 picks up the
+        # signaling cleanup from the same state. HAProxy fronts the
+        # Valkey master across the 3-node Sentinel pool so a Valkey
+        # failover is transparent to rtpengine.
+        #
+        # Shell-form entrypoint so $REDIS_PASSWORD is expanded inside
+        # the container; drachtio's image doesn't substitute env into
+        # exec-form args.
+        entrypoint:
+            - sh
+            - -c
+            - >-
+                exec rtpengine
+                --foreground
+                --log-stderr
+                --interface=eth0
+                --listen-ng=0.0.0.0:22222
+                --port-min=23000
+                --port-max=23099
+                --recording-dir=/var/spool/rtpengine
+                --recording-method=pcap
+                --recording-format=eth
+                --log-level=5
+                --redis="$$REDIS_PASSWORD@haproxy:6379/3"
+                --redis-num-threads=2
+                --redis-allowed-errors=20
+                --no-redis-required
+        environment:
+            REDIS_PASSWORD: '${REDIS_PASSWORD}'
+        volumes:
+            - 'rtpengine-1-spool:/var/spool/rtpengine'
+        networks:
+            - sail
+            - telephony
+        restart: unless-stopped
+
+    rtpengine-2:
+        image: drachtio/rtpengine:latest
+        entrypoint:
+            - sh
+            - -c
+            - >-
+                exec rtpengine
+                --foreground
+                --log-stderr
+                --interface=eth0
+                --listen-ng=0.0.0.0:22222
+                --port-min=23000
+                --port-max=23099
+                --recording-dir=/var/spool/rtpengine
+                --recording-method=pcap
+                --recording-format=eth
+                --log-level=5
+                --redis="$$REDIS_PASSWORD@haproxy:6379/3"
+                --redis-num-threads=2
+                --redis-allowed-errors=20
+                --no-redis-required
+        environment:
+            REDIS_PASSWORD: '${REDIS_PASSWORD}'
+        volumes:
+            - 'rtpengine-2-spool:/var/spool/rtpengine'
+        networks:
+            - sail
+            - telephony
         restart: unless-stopped
 
     asterisk-1:
@@ -869,4 +971,11 @@ volumes:
     tls-certs:
         driver: local
     acme-data:
+        driver: local
+    # Per-node recording-daemon spool. Each rtpengine writes its
+    # paired `*-recv.wav` / `*-send.wav` files here; the upload
+    # watcher reads them out and creates `call_recordings` rows.
+    rtpengine-1-spool:
+        driver: local
+    rtpengine-2-spool:
         driver: local

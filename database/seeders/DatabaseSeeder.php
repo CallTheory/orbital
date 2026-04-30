@@ -24,6 +24,10 @@ class DatabaseSeeder extends Seeder
             // Must run before SystemBootstrapSeeder, which generates
             // Asterisk dialplan + dispatcher config from this roster.
             AsteriskBackendSeeder::class,
+            // rtpengine roster — co-located with the Kamailio VMs.
+            // Failover Central + the rtpengine health probe key off
+            // these rows.
+            RtpengineNodeSeeder::class,
             // Runs after DB-backed seeding so external services see
             // the final row set — SeaweedFS buckets, Ollama models,
             // Asterisk configs, etc.

@@ -1,0 +1,91 @@
+{{- if not .Values.valkey.external.enabled -}}
+{{/*
+In-cluster Valkey — single-replica StatefulSet. Same simplicity
+philosophy as the Postgres template: HA Valkey lives behind
+external.enabled=true (managed Redis / ElastiCache / Vultr-managed)
+or a real Sentinel/Cluster operator deployed separately.
+
+The Reverb broadcast server, Laravel cache + queue + sessions, and
+LiveKit's cluster state all key off this. Sized small by default
+(256Mi); bump `valkey.inCluster.resources.limits.memory` for larger
+deployments.
+*/}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "orbital.componentName" (list . "valkey") }}
+  labels:
+    {{- include "orbital.componentLabels" (list . "valkey") | nindent 4 }}
+spec:
+  replicas: 1
+  serviceName: {{ include "orbital.componentName" (list . "valkey") }}
+  selector:
+    matchLabels:
+      {{- include "orbital.selectorLabels" (list . "valkey") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "orbital.componentLabels" (list . "valkey") | nindent 8 }}
+    spec:
+      containers:
+        - name: valkey
+          image: {{ include "orbital.thirdPartyImage" .Values.valkey.inCluster.image }}
+          imagePullPolicy: IfNotPresent
+          command:
+            - valkey-server
+            - --requirepass
+            - $(VALKEY_PASSWORD)
+            - --appendonly
+            - "yes"
+            - --maxmemory-policy
+            - allkeys-lru
+          ports:
+            - name: valkey
+              containerPort: 6379
+              protocol: TCP
+          env:
+            - name: VALKEY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "orbital.componentName" (list . "app-secrets") }}
+                  key: REDIS_PASSWORD
+          resources:
+            {{- toYaml .Values.valkey.inCluster.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            exec:
+              command: ["valkey-cli", "-a", "$(VALKEY_PASSWORD)", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: valkey
+            initialDelaySeconds: 30
+            periodSeconds: 30
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- include "orbital.storageClass" . | nindent 8 }}
+        resources:
+          requests:
+            storage: {{ .Values.valkey.inCluster.persistence.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "orbital.componentName" (list . "valkey") }}
+  labels:
+    {{- include "orbital.componentLabels" (list . "valkey") | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: 6379
+      targetPort: valkey
+      name: valkey
+  selector:
+    {{- include "orbital.selectorLabels" (list . "valkey") | nindent 4 }}
+{{- end }}

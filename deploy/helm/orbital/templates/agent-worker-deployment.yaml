@@ -1,0 +1,55 @@
+{{- if .Values.agentWorker.enabled -}}
+{{/*
+agent-worker — Python LiveKit agent workers. Each replica runs the
+agent.py entrypoint, registers with LiveKit, and waits for room-
+created events. Multiple replicas share the load; LiveKit's job-
+dispatcher hands out rooms round-robin.
+
+Reads:
+- LiveKit URL + API key/secret (from `app-env` configmap + `app-secrets`)
+- Orbital API base URL + Sanctum token (for fetching persona configs +
+  triggering Egress webhooks back to the Laravel side)
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "orbital.componentName" (list . "agent-worker") }}
+  labels:
+    {{- include "orbital.componentLabels" (list . "agent-worker") | nindent 4 }}
+spec:
+  replicas: {{ .Values.agentWorker.replicas }}
+  selector:
+    matchLabels:
+      {{- include "orbital.selectorLabels" (list . "agent-worker") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "orbital.componentLabels" (list . "agent-worker") | nindent 8 }}
+    spec:
+      {{- include "orbital.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: agent-worker
+          image: {{ include "orbital.image" (dict "ctx" . "name" .Values.agentWorker.image.name "tag" .Values.agentWorker.image.tag) }}
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "orbital.componentName" (list . "app-env") }}
+            - secretRef:
+                name: {{ include "orbital.componentName" (list . "app-secrets") }}
+          env:
+            - name: ORBITAL_API_URL
+              value: "http://{{ include "orbital.componentName" (list . "laravel") }}:{{ .Values.laravel.service.port }}"
+            - name: LIVEKIT_URL
+              value: "ws://{{ include "orbital.componentName" (list . "livekit") }}:{{ .Values.livekit.service.port }}"
+          resources:
+            {{- toYaml .Values.agentWorker.resources | nindent 12 }}
+          # No HTTP / TCP healthcheck — the worker is a long-running
+          # job consumer. A liveness probe based on the worker's
+          # last-heartbeat write to the Orbital API would be ideal;
+          # for now the container's exit-on-error semantics + K8s
+          # restartPolicy are good enough.
+{{- end }}

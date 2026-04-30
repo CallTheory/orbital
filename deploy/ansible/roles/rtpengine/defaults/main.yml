@@ -1,0 +1,44 @@
+---
+# rtpengine role — defaults
+#
+# Phase 1a settings mirror the dev `docker/rtpengine/rtpengine.conf`
+# we built earlier — same NG control port, same `output-single`
+# recording-daemon shape. Phase 3 active/active overrides
+# `rtpengine_redis_address` to point at the cluster Valkey HAProxy
+# frontend so both edge VMs share state.
+
+# NG protocol control endpoint — bound to 0.0.0.0 so the K8s app
+# stack can reach it across the public IP. Production should
+# restrict via UFW to the cluster-egress IPs only.
+rtpengine_ng_listen: "0.0.0.0:22222"
+
+# Public RTP relay range. Carriers send their RTP into this range,
+# rtpengine forwards to the Asterisk pod inside the cluster.
+rtpengine_port_min: 30000
+rtpengine_port_max: 40000
+
+# The interface rtpengine binds + advertises in SDP. On Vultr
+# instances this is typically `eno1` or `ens3`; on bare metal it's
+# whatever the public-facing NIC is. cloud-init derives this and
+# writes it into group_vars.
+rtpengine_interface: "{{ ansible_default_ipv4.interface }}"
+
+# Recording-daemon spool — paired `*-recv.wav` / `*-send.wav` per
+# SIP dialog. The Laravel `orbital:upload-recordings` watcher reads
+# these via SSH or a shared mount and creates CallRecording rows.
+rtpengine_recording_dir: /var/spool/rtpengine
+rtpengine_recording_method: pcap   # pcap → recording-daemon converts to WAV
+
+# Valkey state sharing (Phase 3 active/active). When set, both edge
+# VMs share rtpengine session state via Valkey, so an in-flight call
+# survives one VM going away. Empty string = standalone (Phase 1).
+# Format: "PASSWORD@HOST:PORT/DB"
+rtpengine_redis_address: ""
+rtpengine_redis_num_threads: 2
+
+rtpengine_log_level: 5
+
+# Run as the package's default user (rtpengine in Debian, ngcp-rtpe
+# in some other repos).
+rtpengine_user: rtpengine
+rtpengine_group: rtpengine

@@ -7,6 +7,7 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToTeam;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class CallLog extends Model
 {
@@ -16,6 +17,7 @@ class CallLog extends Model
         'team_id',
         'unique_id',
         'linked_id',
+        'sip_call_id',
         'channel',
         'sip_trunk_id',
         'extension_id',
@@ -72,5 +74,16 @@ class CallLog extends Model
     public function callQueue(): BelongsTo
     {
         return $this->belongsTo(CallQueue::class);
+    }
+
+    /**
+     * Per-leg recording rows produced for this call. Replaces the
+     * legacy `recording_*` path columns going forward — those stay
+     * populated until consumers migrate, but new pipeline paths
+     * (rtpengine recording-daemon, LiveKit Egress) write here.
+     */
+    public function recordings(): HasMany
+    {
+        return $this->hasMany(CallRecording::class);
     }
 }

@@ -1,0 +1,46 @@
+---
+# common role — defaults
+#
+# Per-host overrides land in inventory's group_vars/host_vars.
+# Production deployments should override `common_admin_user` and
+# `common_admin_authorized_keys` so SSH access is properly scoped.
+
+# Time + locale
+common_timezone: UTC
+common_locale: en_US.UTF-8
+
+# Admin user that owns the box. cloud-init typically creates `ubuntu`
+# or `debian` already; this role ensures a known sudo-capable account
+# exists with the operator's keys.
+common_admin_user: orbital
+common_admin_authorized_keys: []
+
+# UFW firewall — default deny, explicit allows. Per-role tasks add
+# their own rules (rtpengine opens RTP range; kamailio opens SIP).
+common_ufw_enabled: true
+common_ufw_allow:
+  - { port: 22, proto: tcp, from: any, comment: "SSH" }
+
+# fail2ban
+common_fail2ban_enabled: true
+
+# journald — keep logs bounded so a crash-loop doesn't fill /var/log.
+common_journald_max_size: 2G
+common_journald_max_retention: 14d
+
+# Base packages every edge VM needs. Distro-specific tasks add on
+# top of this list.
+common_base_packages:
+  - curl
+  - git
+  - jq
+  - htop
+  - iotop
+  - tmux
+  - unzip
+  - rsync
+  - python3
+  - python3-pip
+  - ca-certificates
+  - gnupg
+  - lsb-release

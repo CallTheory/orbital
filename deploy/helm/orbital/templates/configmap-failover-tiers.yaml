@@ -1,0 +1,17 @@
+{{/*
+Failover tier modes — surfaced to Laravel as env vars. Drives whether
+FailoverCentral renders Patroni / Sentinel / SeaweedFS-aware tiles
+(when in-cluster + `cluster` mode) or simple connectivity probes
+(when external + `managed` mode). Read by config/failover-tiers.php
+on the Laravel side.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "orbital.componentName" (list . "failover-tiers") }}
+  labels:
+    {{- include "orbital.componentLabels" (list . "failover-tiers") | nindent 4 }}
+data:
+  ORBITAL_FAILOVER_POSTGRES_MODE: {{ include "orbital.tierMode" (dict "ctx" . "tier" "postgres") | quote }}
+  ORBITAL_FAILOVER_VALKEY_MODE: {{ include "orbital.tierMode" (dict "ctx" . "tier" "valkey") | quote }}
+  ORBITAL_FAILOVER_OBJECT_STORAGE_MODE: {{ include "orbital.tierMode" (dict "ctx" . "tier" "objectStorage") | quote }}

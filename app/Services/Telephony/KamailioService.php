@@ -170,6 +170,40 @@ class KamailioService
     }
 
     /**
+     * Reload the TLS profile on every Kamailio node. Mirrors the
+     * `setBackendState` fan-out shape — every node has to reload
+     * for the cert rotation to actually take effect; if we only
+     * reloaded the first reachable node, the second would keep
+     * serving the old cert until restart.
+     *
+     * Called from `ReloadServicesAfterCertRenewalJob` after acme.sh
+     * writes a new cert chain to the shared `tls-certs` volume.
+     *
+     * @return array{ok: bool, results: array<string, bool>, output: string}
+     */
+    public function reloadTls(): array
+    {
+        $results = [];
+        $allOk = true;
+        foreach ($this->jsonrpcUrls as $url) {
+            $resp = $this->rpcAt($url, 'tls.reload', []);
+            $ok = $resp !== null;
+            $allOk = $allOk && $ok;
+            $results[$url] = $ok;
+        }
+        $summary = implode('; ', array_map(
+            fn ($url, $ok) => $url.' '.($ok ? 'ok' : 'FAILED'),
+            array_keys($results),
+            $results,
+        ));
+        return [
+            'ok' => $allOk,
+            'results' => $results,
+            'output' => "tls.reload — {$summary}",
+        ];
+    }
+
+    /**
      * Returns the number of active SIP dialogs (in-progress calls)
      * tracked by the dialog module. This is the key metric the
      * admin watches during drain — when it reaches 0, Asterisk

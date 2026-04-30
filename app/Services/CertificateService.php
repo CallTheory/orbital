@@ -162,8 +162,11 @@ class CertificateService
     {
         return [
             ['name' => 'nginx-tls', 'port' => '443', 'protocol' => 'HTTPS + WSS'],
-            ['name' => 'Asterisk', 'port' => '5061 / 8089', 'protocol' => 'SIP TLS + WSS'],
-            ['name' => 'Kamailio', 'port' => '5061', 'protocol' => 'SIP TLS'],
+            // Phase 1b moved operator WSS from Asterisk:8089 to
+            // Kamailio:7443. Asterisk's TLS listener (5061) is now
+            // legacy — kept around for trunks that haven't migrated.
+            ['name' => 'Asterisk', 'port' => '5061', 'protocol' => 'SIP TLS (legacy)'],
+            ['name' => 'Kamailio', 'port' => '5061 + 7443', 'protocol' => 'SIP TLS + Operator WSS'],
             ['name' => 'Haraka', 'port' => '25', 'protocol' => 'SMTP STARTTLS'],
             ['name' => 'LiveKit', 'port' => '7880', 'protocol' => 'HTTPS + WSS'],
         ];

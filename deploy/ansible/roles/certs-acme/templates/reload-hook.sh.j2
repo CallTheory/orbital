@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# acme.sh reload hook — runs every cert renewal.
+#
+# 1. Reload kamailio TLS in-process (no service restart, no
+#    dropped dialogs) via JSON-RPC against loopback.
+# 2. POST to the Laravel TLS-renewal webhook so the rest of the
+#    cluster (Asterisk PJSIP, etc.) picks up the new chain too.
+#
+# {{ ansible_managed }}
+
+set -euo pipefail
+
+# 1. Local kamailio TLS reload
+if command -v kamcmd >/dev/null 2>&1; then
+    kamcmd tls.reload || true
+fi
+
+# 2. Webhook POST — Laravel's TlsRenewalWebhookController dispatches
+#    ReloadServicesAfterCertRenewalJob which fans out to every
+#    Kamailio + Asterisk in the cluster.
+{% if certs_acme_webhook_url %}
+curl -fsS -X POST \
+    -H "X-Orbital-Token: {{ certs_acme_webhook_token }}" \
+    -H "Content-Type: application/json" \
+    -d '{"domain":"{{ certs_acme_domain }}","host":"'"$(hostname -f)"'"}' \
+    "{{ certs_acme_webhook_url }}" \
+    || echo "WARN: TLS webhook POST failed (cluster reload skipped)" >&2
+{% else %}
+echo "WARN: certs_acme_webhook_url not set — skipping cluster TLS reload" >&2
+{% endif %}

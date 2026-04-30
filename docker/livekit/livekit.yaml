@@ -25,3 +25,13 @@ redis:
   # on the valkey container. Regenerate via `openssl rand -hex 24`
   # and update all three in lockstep if you rotate it.
   password: 8b630691e6e6c2292489d353cbfbccdbdd6073cbcf680f72
+
+# Webhook destination for LiveKit events (room_started, room_finished,
+# track_published, egress_started, egress_ended). The orbital.test
+# Laravel app catches the egress_ended payload via
+# IngestLivekitEgressJob and writes a CallRecording row pointing at
+# the Egress output (track WAVs in SeaweedFS).
+webhook:
+  api_key: APIorbitaldev4a85eae7
+  urls:
+    - http://orbital.test/api/livekit/webhook

@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace App\Filament\Pages;
 
 use App\Models\FailoverAuditLog;
+use App\Models\RtpengineNode;
 use App\Services\HighAvailability\HAProxyStatsClient;
 use App\Services\HighAvailability\PatroniClient;
 use App\Services\HighAvailability\SeaweedMasterClient;
 use App\Services\HighAvailability\SentinelClient;
+use App\Services\Telephony\RtpengineDrainService;
+use App\Services\Telephony\RtpengineService;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Select;
@@ -58,6 +61,18 @@ class FailoverCentral extends Page
 
     public array $haproxyServers = [];
 
+    /**
+     * @var array<int, array{
+     *     id: int,
+     *     hostname: string,
+     *     label: string,
+     *     is_active: bool,
+     *     ng_responding: bool,
+     *     statistics: array<string, mixed>|null,
+     * }>
+     */
+    public array $rtpengineNodes = [];
+
     public static function canAccess(): bool
     {
         return auth()->user()?->isSuperAdmin() ?? false;
@@ -70,10 +85,96 @@ class FailoverCentral extends Page
 
     public function refreshState(): void
     {
-        $this->patroni = app(PatroniClient::class)->cluster();
-        $this->sentinel = app(SentinelClient::class)->status();
-        $this->seaweed = app(SeaweedMasterClient::class)->status();
+        // Per-tier mode gates the cluster-state probes — when a customer
+        // is using managed Postgres / Valkey / S3 those endpoints
+        // (Patroni REST, Sentinel SENTINEL MASTER, SeaweedFS /cluster/status)
+        // don't exist. The blade template likewise hides the tier rows
+        // when the matching `*Mode` is not 'cluster'.
+        $this->patroni = $this->isClusterMode('postgres')
+            ? app(PatroniClient::class)->cluster()
+            : null;
+        $this->sentinel = $this->isClusterMode('valkey')
+            ? app(SentinelClient::class)->status()
+            : null;
+        $this->seaweed = $this->isClusterMode('object_storage')
+            ? app(SeaweedMasterClient::class)->status()
+            : null;
         $this->haproxyServers = app(HAProxyStatsClient::class)->servers();
+        $this->rtpengineNodes = $this->loadRtpengineNodes();
+    }
+
+    /**
+     * Whether a given tier is in 'cluster' mode (vs 'managed' / 'none').
+     * Used to gate cluster-aware probes + UI rows.
+     */
+    public function isClusterMode(string $tier): bool
+    {
+        return config("failover-tiers.{$tier}", 'cluster') === 'cluster';
+    }
+
+    /**
+     * Whether a tier should render at all on the page. 'none' means
+     * the tier doesn't apply to this install (e.g. some future
+     * deployment that skips object storage entirely).
+     */
+    public function isTierVisible(string $tier): bool
+    {
+        return config("failover-tiers.{$tier}", 'cluster') !== 'none';
+    }
+
+    /**
+     * Pull every registered rtpengine node + per-node NG state.
+     * `is_active` is the registry flag (drain has flipped this off);
+     * `ng_responding` is whether the daemon answered our most recent
+     * ping; `statistics` is the raw NG `statistics` reply (current
+     * sessions, bytes, etc.) for the modal.
+     *
+     * @return array<int, array{id: int, hostname: string, label: string, is_active: bool, ng_responding: bool, statistics: array<string, mixed>|null}>
+     */
+    protected function loadRtpengineNodes(): array
+    {
+        $rtpengine = app(RtpengineService::class);
+        $rows = [];
+        foreach (RtpengineNode::query()->orderBy('sort_order')->orderBy('id')->get() as $node) {
+            $statistics = null;
+            $responding = false;
+            if ($node->is_active) {
+                $statistics = $rtpengine->statistics($node);
+                $responding = is_array($statistics);
+            }
+            $rows[] = [
+                'id' => (int) $node->id,
+                'hostname' => $node->hostname,
+                'label' => $node->label(),
+                'is_active' => (bool) $node->is_active,
+                'ng_responding' => $responding,
+                'statistics' => $statistics,
+            ];
+        }
+        return $rows;
+    }
+
+    /**
+     * Aggregate health summary for the rtpengine tier card. Same
+     * grammar as the other tiers (`healthy` / `degraded` / `down`)
+     * so the blade can colour the section header consistently.
+     */
+    public function rtpengineHealth(): string
+    {
+        $active = array_filter($this->rtpengineNodes, fn ($n) => $n['is_active']);
+        if ($active === []) {
+            // No active nodes registered → treat as warn so the card
+            // surfaces but doesn't pretend to be down.
+            return 'warn';
+        }
+        $up = array_filter($active, fn ($n) => $n['ng_responding']);
+        if (count($up) === count($active)) {
+            return 'ok';
+        }
+        if (count($up) === 0) {
+            return 'down';
+        }
+        return 'warn';
     }
 
     /** Group HAProxy server rows by backend name for the per-frontend card list. */
@@ -484,6 +585,69 @@ class FailoverCentral extends Page
                     ->title($ok ? 'Failover triggered' : 'Failover failed')
                     ->body($out)
                     ->status($ok ? 'success' : 'danger')
+                    ->send();
+                $this->refreshState();
+            });
+    }
+
+    /**
+     * Per-node action — drain a rtpengine node. Both control points
+     * flip off (NG `set-forwarding off` + `is_active=false` on the
+     * registry row). Existing relayed RTP keeps flowing; new offers
+     * route to surviving nodes.
+     */
+    public function rtpengineDrainAction(): Action
+    {
+        return Action::make('rtpengineDrain')
+            ->label('Drain')
+            ->icon('heroicon-o-pause-circle')
+            ->color('warning')
+            ->requiresConfirmation()
+            ->modalHeading(fn (array $arguments) => "Drain {$arguments['hostname']}?")
+            ->modalDescription(
+                'New RTP offers route to surviving rtpengine nodes. '.
+                'Calls already relayed by this node keep flowing — they '.
+                'finish when the SIP dialog ends.'
+            )
+            ->action(function (array $arguments): void {
+                $node = RtpengineNode::find($arguments['id']);
+                if (! $node) {
+                    Notification::make()->danger()->title('Node not found')->send();
+                    return;
+                }
+                $result = app(RtpengineDrainService::class)->drain($node);
+                $ok = $result['ng'] && $result['registry'];
+                Notification::make()
+                    ->title($ok ? "Drained {$node->hostname}" : "Drain partial on {$node->hostname}")
+                    ->body('ng='.($result['ng'] ? 'ok' : 'fail').' registry='.($result['registry'] ? 'ok' : 'fail'))
+                    ->status($ok ? 'success' : 'warning')
+                    ->send();
+                $this->refreshState();
+            });
+    }
+
+    /** Per-node action — return a drained rtpengine node to service. */
+    public function rtpengineActivateAction(): Action
+    {
+        return Action::make('rtpengineActivate')
+            ->label('Activate')
+            ->icon('heroicon-o-play-circle')
+            ->color('success')
+            ->requiresConfirmation()
+            ->modalHeading(fn (array $arguments) => "Activate {$arguments['hostname']}?")
+            ->modalDescription('Re-enables the registry flag and toggles NG `set-forwarding on`. New RTP offers can land on this node again.')
+            ->action(function (array $arguments): void {
+                $node = RtpengineNode::find($arguments['id']);
+                if (! $node) {
+                    Notification::make()->danger()->title('Node not found')->send();
+                    return;
+                }
+                $result = app(RtpengineDrainService::class)->activate($node);
+                $ok = $result['ng'] && $result['registry'];
+                Notification::make()
+                    ->title($ok ? "Activated {$node->hostname}" : "Activate partial on {$node->hostname}")
+                    ->body('ng='.($result['ng'] ? 'ok' : 'fail').' registry='.($result['registry'] ? 'ok' : 'fail'))
+                    ->status($ok ? 'success' : 'warning')
                     ->send();
                 $this->refreshState();
             });

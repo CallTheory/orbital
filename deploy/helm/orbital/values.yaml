@@ -1,0 +1,271 @@
+# Orbital Helm chart — default values.
+#
+# Every knob below is overridable via per-provider values files
+# (values-vultr-k3s.yaml, values-vultr-vke.yaml, values-onprem-k3s.yaml)
+# or via `--set` on the command line. Defaults assume a fresh K3s cluster
+# with everything in-cluster — `helm install` produces a working Orbital
+# without any external service dependencies.
+
+global:
+  # Image registry. Defaults to Patrick's Harbor; per-customer values
+  # files override. The chart concatenates {registry}/{repository}/<image>
+  # for every Pod's image reference.
+  image:
+    registry: cr.calltheory.com
+    repository: orbital
+    tag: 0.1.0
+    pullPolicy: IfNotPresent
+
+  # Pull-secret name(s) every Pod attaches. Customers create the secret
+  # themselves with their per-customer Harbor robot-account credentials:
+  #
+  #   kubectl create secret docker-registry orbital-registry-creds \
+  #     --docker-server=cr.calltheory.com \
+  #     --docker-username='robot$<customer>-pull' \
+  #     --docker-password='<token>'
+  imagePullSecrets:
+    - name: orbital-registry-creds
+
+  # Customer-facing domain. Sub-resources derive from it (admin, sip,
+  # webhook, etc.) unless explicitly overridden in `ingress.hosts`.
+  domain: orbital.example.com
+
+  # Storage class for PVCs. Empty = use cluster default. Provider
+  # overrides set this explicitly (vultr-block-storage, gp3, etc.).
+  storageClass: ""
+
+# ============================================================================
+# Application tier — Orbital-specific code
+# ============================================================================
+
+laravel:
+  enabled: true
+  replicas: 2
+  image:
+    name: laravel       # full ref: {registry}/{repository}/laravel:{tag}
+    tag: ""             # blank = inherit global.image.tag
+  resources:
+    requests: {cpu: "250m", memory: "512Mi"}
+    limits: {cpu: "1500m", memory: "2Gi"}
+  service:
+    port: 80
+    targetPort: 80
+  env: {}               # extra env vars merged with chart-defined defaults
+
+horizon:
+  enabled: true
+  replicas: 1
+  # Horizon shares the laravel image — same code, different command.
+  resources:
+    requests: {cpu: "200m", memory: "512Mi"}
+    limits: {cpu: "1000m", memory: "1Gi"}
+
+reverb:
+  enabled: true
+  replicas: 1
+  resources:
+    requests: {cpu: "100m", memory: "256Mi"}
+    limits: {cpu: "500m", memory: "512Mi"}
+  service:
+    port: 8080
+
+asterisk:
+  enabled: true
+  # StatefulSet because Kamailio's dispatcher uses node identity
+  # (`asterisk-0` / `asterisk-1` are stable hostnames). Replicas
+  # grow horizontally — each new node automatically registers in
+  # the dispatcher pool when Laravel regenerates the list.
+  replicas: 2
+  image:
+    name: asterisk
+    tag: ""
+  resources:
+    requests: {cpu: "500m", memory: "1Gi"}
+    limits: {cpu: "2000m", memory: "2Gi"}
+  persistence:
+    # Spool dir for voicemail + recordings + sounds rendered by
+    # Laravel's DisclosureRenderer. PVC is per-pod; cluster default
+    # storage class unless `global.storageClass` is set.
+    enabled: true
+    size: 10Gi
+
+livekit:
+  enabled: true
+  replicas: 1
+  # Third-party image. Defaults to docker.io; override if mirrored.
+  image:
+    registry: docker.io
+    repository: livekit
+    name: livekit-server
+    tag: latest
+  resources:
+    requests: {cpu: "500m", memory: "512Mi"}
+    limits: {cpu: "2000m", memory: "2Gi"}
+  service:
+    port: 7880
+
+livekitSip:
+  enabled: true
+  replicas: 1
+  image:
+    registry: docker.io
+    repository: livekit
+    name: sip
+    tag: latest
+  resources:
+    requests: {cpu: "200m", memory: "256Mi"}
+    limits: {cpu: "1000m", memory: "1Gi"}
+  service:
+    sipPort: 5069   # cluster-internal SIP only — no wide UDP RTP
+                    # range; rtpengine at the edge owns RTP relay.
+
+agentWorker:
+  enabled: true
+  replicas: 2
+  image:
+    name: agent-worker
+    tag: ""
+  resources:
+    requests: {cpu: "250m", memory: "512Mi"}
+    limits: {cpu: "1000m", memory: "1Gi"}
+
+# ============================================================================
+# Stateful dependencies — in-cluster by default, external opt-in
+# ============================================================================
+
+postgres:
+  external:
+    enabled: false
+    # When external.enabled=true, populate these and create a
+    # `postgres-creds` secret with `password`.
+    host: ""
+    port: 5432
+    database: orbital
+    username: orbital
+    sslMode: prefer
+  # In-cluster (default) deploys a single-replica StatefulSet for
+  # the "fresh install just works" path. HA Postgres is a future
+  # opt-in (Patroni operator) or external managed.
+  inCluster:
+    image:
+      registry: docker.io
+      repository: library
+      name: postgres
+      tag: "16-alpine"
+    persistence:
+      size: 20Gi
+    resources:
+      requests: {cpu: "500m", memory: "512Mi"}
+      limits: {cpu: "2000m", memory: "2Gi"}
+
+valkey:
+  external:
+    enabled: false
+    host: ""
+    port: 6379
+    sentinelHost: ""    # blank = no Sentinel; use external.host directly
+    sentinelPort: 26379
+    # `valkey-creds` secret carries the password.
+  # In-cluster (default) deploys single-replica Valkey. HA Valkey
+  # (Sentinel-backed) is a future opt-in or external managed.
+  inCluster:
+    image:
+      registry: docker.io
+      repository: valkey
+      name: valkey
+      tag: "8"
+    persistence:
+      size: 5Gi
+    resources:
+      requests: {cpu: "100m", memory: "256Mi"}
+      limits: {cpu: "500m", memory: "1Gi"}
+
+objectStorage:
+  external:
+    enabled: false
+    # S3-compatible endpoint. Vultr Object Storage, AWS S3, etc.
+    s3Endpoint: ""
+    region: ""
+    bucket: orbital-recordings
+    # `object-storage-creds` secret carries access_key + secret_key.
+  # In-cluster (default) deploys a single-pod combined SeaweedFS
+  # (master + volume + filer in `weed server` mode). HA SeaweedFS
+  # with separate masters / volumes / filers is a future opt-in or
+  # external S3-compatible (Vultr / AWS / etc).
+  inCluster:
+    image:
+      registry: docker.io
+      repository: chrislusf
+      name: seaweedfs
+      tag: "3.74"
+    persistence:
+      volumeSize: 50Gi
+    resources:
+      requests: {cpu: "200m", memory: "256Mi"}
+      limits: {cpu: "1000m", memory: "1Gi"}
+
+# ============================================================================
+# Ingress — public-facing entry point
+# ============================================================================
+
+ingress:
+  enabled: true
+  className: ""           # provider-specific; e.g. "traefik", "nginx", "alb"
+  annotations: {}
+  hosts:
+    - host: orbital.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: laravel
+        - path: /app
+          pathType: Prefix
+          service: reverb   # WSS endpoint for the Filament real-time panel
+  tls:
+    - secretName: orbital-tls
+      hosts:
+        - orbital.example.com
+
+# ============================================================================
+# Failover / status-page tier modes
+# ============================================================================
+#
+# Generated env vars from these (via configmap-failover-tiers.yaml):
+#   ORBITAL_FAILOVER_POSTGRES_MODE
+#   ORBITAL_FAILOVER_VALKEY_MODE
+#   ORBITAL_FAILOVER_OBJECT_STORAGE_MODE
+#
+# Values: cluster | managed | none
+# - cluster: full Patroni/Sentinel/SeaweedFS-aware monitoring + drain UI
+# - managed: simple connectivity probe; FailoverCentral hides the tier
+# - none:    no probe at all; tier hidden everywhere
+#
+# Defaults derived from the per-tier `external.enabled` flag (cluster vs
+# managed), but each can be force-set via the explicit `mode` knob below.
+
+failoverTiers:
+  postgres:
+    mode: ""              # blank = derive from postgres.external.enabled
+  valkey:
+    mode: ""
+  objectStorage:
+    mode: ""
+
+# ============================================================================
+# Common pod settings
+# ============================================================================
+
+podSecurityContext:
+  fsGroup: 1000
+  runAsNonRoot: true
+  runAsUser: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop: [ALL]
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

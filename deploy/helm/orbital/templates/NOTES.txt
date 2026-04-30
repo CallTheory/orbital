@@ -1,0 +1,56 @@
+Orbital {{ .Chart.AppVersion }} installed as `{{ .Release.Name }}` in namespace `{{ .Release.Namespace }}`.
+
+What's running:
+{{- if .Values.laravel.enabled }}
+  - Laravel admin panel ({{ .Values.laravel.replicas }} replica{{ if gt (int .Values.laravel.replicas) 1 }}s{{ end }})
+{{- end }}
+{{- if .Values.horizon.enabled }}
+  - Horizon queue worker
+{{- end }}
+{{- if .Values.reverb.enabled }}
+  - Reverb broadcast server
+{{- end }}
+{{- if .Values.asterisk.enabled }}
+  - Asterisk PBX (StatefulSet, {{ .Values.asterisk.replicas }} pod{{ if gt (int .Values.asterisk.replicas) 1 }}s{{ end }})
+{{- end }}
+{{- if .Values.livekit.enabled }}
+  - LiveKit + LiveKit-SIP bridge
+{{- end }}
+{{- if .Values.agentWorker.enabled }}
+  - agent-worker ({{ .Values.agentWorker.replicas }} replica{{ if gt (int .Values.agentWorker.replicas) 1 }}s{{ end }})
+{{- end }}
+
+Stateful tiers:
+{{- if .Values.postgres.external.enabled }}
+  - Postgres: external ({{ .Values.postgres.external.host }})
+{{- else }}
+  - Postgres: in-cluster (3-node)
+{{- end }}
+{{- if .Values.valkey.external.enabled }}
+  - Valkey: external ({{ .Values.valkey.external.host }})
+{{- else }}
+  - Valkey: in-cluster (3-node + Sentinel)
+{{- end }}
+{{- if .Values.objectStorage.external.enabled }}
+  - Object storage: external ({{ .Values.objectStorage.external.s3Endpoint }})
+{{- else }}
+  - Object storage: in-cluster SeaweedFS
+{{- end }}
+
+Reach the admin panel:
+  https://{{ .Values.global.domain }}
+
+Or via port-forward (no DNS / TLS required):
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "orbital.componentName" (list . "laravel") }} 8000:{{ .Values.laravel.service.port }}
+  open http://localhost:8000
+
+Image pull check:
+  kubectl --namespace {{ .Release.Namespace }} get events --field-selector reason=Failed
+  (look for ImagePullBackOff — typically a missing or wrong-named
+   `orbital-registry-creds` secret; see deploy/helm/README.md)
+
+Next:
+  - Create the secrets per templates/secrets.example.yaml
+  - Point your DNS at the ingress LoadBalancer IP / hostname
+  - Edge VMs (Kamailio + rtpengine) live OUTSIDE the cluster — see
+    deploy/terraform/vultr/{self-hosted-k3s,managed-vke}/ to provision them

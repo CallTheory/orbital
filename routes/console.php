@@ -48,3 +48,15 @@ Schedule::command('orbital:roll-up-queue-metrics')
     ->name('roll-up-queue-metrics')
     ->withoutOverlapping()
     ->onOneServer();
+
+// Drain rtpengine recording-daemon spool dirs into CallRecording rows.
+// Polled rather than inotify-driven so we don't need a sidecar
+// watcher container per node. Once-a-minute is fine — the upload
+// job is idempotent (deletes the source after success), and the
+// recording-daemon's `output-single=yes` mode finalizes a file
+// only on call end, so we're not racing with active flushes.
+Schedule::command('orbital:upload-recordings')
+    ->everyMinute()
+    ->name('upload-rtpengine-recordings')
+    ->withoutOverlapping()
+    ->onOneServer();

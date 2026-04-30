@@ -62,6 +62,11 @@ Route::get('/mail/validate-recipient', [InboundMailController::class, 'validateR
  */
 Route::post('/voicemail/received', [VoicemailWebhookController::class, 'store']);
 
+// LiveKit server-side webhook target. LiveKit POSTs JWT-signed
+// JSON bodies for room/egress/track lifecycle events; the
+// controller acts on `egress_ended` to register CallRecording rows.
+Route::post('/livekit/webhook', \App\Http\Controllers\Api\LivekitWebhookController::class);
+
 // Agent worker API (Sanctum token auth)
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/agent-personas/{agentPersona}', [AgentPersonaController::class, 'show']);

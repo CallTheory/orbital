@@ -1,0 +1,66 @@
+{{- if .Values.horizon.enabled -}}
+{{/*
+Horizon — Laravel queue worker. Same image as the laravel pod, just
+runs `php artisan horizon` instead of php-fpm. Singleton replica is
+fine for most installs; scale up if queue depth grows.
+
+Reads the same env / secrets as the Laravel pod so jobs that touch
+DB / Valkey / S3 see identical config.
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "orbital.componentName" (list . "horizon") }}
+  labels:
+    {{- include "orbital.componentLabels" (list . "horizon") | nindent 4 }}
+spec:
+  replicas: {{ .Values.horizon.replicas }}
+  selector:
+    matchLabels:
+      {{- include "orbital.selectorLabels" (list . "horizon") | nindent 6 }}
+  # Horizon must wind down jobs cleanly on rollout — no parallel
+  # workers fighting over the same queue keys mid-deploy.
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        {{- include "orbital.componentLabels" (list . "horizon") | nindent 8 }}
+      annotations:
+        checksum/failover-tiers: {{ include (print $.Template.BasePath "/configmap-failover-tiers.yaml") . | sha256sum }}
+    spec:
+      {{- include "orbital.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: horizon
+          image: {{ include "orbital.image" (dict "ctx" . "name" .Values.laravel.image.name "tag" .Values.laravel.image.tag) }}
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          command: ["php", "artisan", "horizon"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "orbital.componentName" (list . "failover-tiers") }}
+            - configMapRef:
+                name: {{ include "orbital.componentName" (list . "app-env") }}
+            - secretRef:
+                name: {{ include "orbital.componentName" (list . "app-secrets") }}
+          resources:
+            {{- toYaml .Values.horizon.resources | nindent 12 }}
+          # Horizon's `horizon:status` exits 0 when the supervisor is
+          # running. Wraps it in a tiny shell so the probe doesn't
+          # depend on the artisan binary path.
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "php artisan horizon:status | grep -q running"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+      terminationGracePeriodSeconds: 60
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

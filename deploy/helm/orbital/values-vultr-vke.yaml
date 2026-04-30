@@ -1,0 +1,46 @@
+# Vultr Kubernetes Engine (managed control plane) overrides.
+#
+# Apply with:
+#   helm install orbital ./deploy/helm/orbital \
+#     -f ./deploy/helm/orbital/values-vultr-vke.yaml \
+#     --set global.domain=orbital.your-company.com
+#
+# VKE ships:
+# - vultr-block-storage CSI driver (RWO)
+# - Vultr cloud controller (managed LB for Service type=LoadBalancer)
+# - NO ingress controller by default — the OpenTofu VKE module
+#   installs ingress-nginx + cert-manager via separate Helm releases
+#   before this chart goes in.
+
+global:
+  storageClass: "vultr-block-storage"
+
+ingress:
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"     # large for media uploads
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"   # WSS keepalive
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+
+# Same single-replica Asterisk caveat — Vultr block storage is RWO.
+# VKE does NOT ship an RWX class out of the box; longhorn / Vultr's
+# NFS-style option, or scaling Asterisk with sharded per-pod state,
+# are paths forward when this becomes a real constraint.
+asterisk:
+  replicas: 1
+
+laravel:
+  replicas: 2
+horizon:
+  replicas: 1
+agentWorker:
+  replicas: 2
+
+# Tighter pod-level resource bounds for managed VKE — control plane
+# is "free" but worker nodes are billed; trim limits so we don't
+# over-provision per-pod.
+laravel:
+  resources:
+    requests: {cpu: "200m", memory: "384Mi"}
+    limits: {cpu: "1000m", memory: "1Gi"}

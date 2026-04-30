@@ -1,0 +1,113 @@
+{{/*
+ClusterIP services for every component that needs intra-cluster
+addressing. The headless Service for the Asterisk StatefulSet
+gives each pod a stable per-ordinal DNS name; everything else
+gets a regular load-balancing ClusterIP.
+
+Public exposure (HTTPS, WSS) goes through the Ingress, not these.
+*/}}
+
+{{- if .Values.laravel.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "orbital.componentName" (list . "laravel") }}
+  labels:
+    {{- include "orbital.componentLabels" (list . "laravel") | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.laravel.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "orbital.selectorLabels" (list . "laravel") | nindent 4 }}
+{{- end }}
+
+{{- if .Values.reverb.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "orbital.componentName" (list . "reverb") }}
+  labels:
+    {{- include "orbital.componentLabels" (list . "reverb") | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.reverb.service.port }}
+      targetPort: ws
+      protocol: TCP
+      name: ws
+  selector:
+    {{- include "orbital.selectorLabels" (list . "reverb") | nindent 4 }}
+{{- end }}
+
+{{- if .Values.asterisk.enabled }}
+{{/* Headless Service for the StatefulSet — required so the pods
+     get stable per-ordinal DNS names. Used by Kamailio's
+     dispatcher.list to address `asterisk-0` / `asterisk-1` etc. */}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "orbital.componentName" (list . "asterisk-headless") }}
+  labels:
+    {{- include "orbital.componentLabels" (list . "asterisk") | nindent 4 }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  publishNotReadyAddresses: true   # let Kamailio probe before AMI is up
+  ports:
+    - port: 5060
+      name: sip-udp
+      protocol: UDP
+    - port: 5060
+      name: sip-tcp
+      protocol: TCP
+    - port: 5038
+      name: ami
+      protocol: TCP
+  selector:
+    {{- include "orbital.selectorLabels" (list . "asterisk") | nindent 4 }}
+{{- end }}
+
+{{- if .Values.livekit.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "orbital.componentName" (list . "livekit") }}
+  labels:
+    {{- include "orbital.componentLabels" (list . "livekit") | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.livekit.service.port }}
+      targetPort: api
+      protocol: TCP
+      name: api
+  selector:
+    {{- include "orbital.selectorLabels" (list . "livekit") | nindent 4 }}
+{{- end }}
+
+{{- if .Values.livekitSip.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "orbital.componentName" (list . "livekit-sip") }}
+  labels:
+    {{- include "orbital.componentLabels" (list . "livekit-sip") | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.livekitSip.service.sipPort }}
+      targetPort: sip
+      protocol: UDP
+      name: sip
+  selector:
+    {{- include "orbital.selectorLabels" (list . "livekit-sip") | nindent 4 }}
+{{- end }}

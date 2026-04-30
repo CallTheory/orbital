@@ -1,0 +1,124 @@
+---
+# common — base hardening every Orbital VM gets first.
+#
+# Runs at the top of edge-bootstrap.yml AND k3s-bootstrap.yml so
+# every node — edge VMs running rtpengine + kamailio AND K3s nodes
+# running the app stack — shares the same baseline (timezone, ufw,
+# fail2ban, journald limits, admin user with operator SSH keys).
+#
+# Idempotent — every task can re-run cleanly.
+
+- name: Ensure base packages are installed
+  ansible.builtin.apt:
+    name: "{{ common_base_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when: ansible_os_family == 'Debian'
+
+- name: Set timezone
+  community.general.timezone:
+    name: "{{ common_timezone }}"
+
+- name: Generate locale
+  community.general.locale_gen:
+    name: "{{ common_locale }}"
+    state: present
+  when: ansible_os_family == 'Debian'
+
+# --- Admin user ---------------------------------------------------
+# cloud-init usually creates the distro default user (ubuntu / debian).
+# We add `orbital` as the role's known sudo account so day-2 ops
+# scripts have a stable username.
+
+- name: Ensure orbital admin group exists
+  ansible.builtin.group:
+    name: "{{ common_admin_user }}"
+    state: present
+
+- name: Ensure orbital admin user exists
+  ansible.builtin.user:
+    name: "{{ common_admin_user }}"
+    group: "{{ common_admin_user }}"
+    groups: sudo
+    shell: /bin/bash
+    state: present
+
+- name: Configure passwordless sudo for orbital admin
+  ansible.builtin.copy:
+    dest: "/etc/sudoers.d/90-{{ common_admin_user }}"
+    content: |
+      {{ common_admin_user }} ALL=(ALL) NOPASSWD:ALL
+    mode: "0440"
+    validate: "visudo -cf %s"
+
+- name: Authorize operator SSH keys for orbital admin
+  ansible.posix.authorized_key:
+    user: "{{ common_admin_user }}"
+    key: "{{ item }}"
+    state: present
+  loop: "{{ common_admin_authorized_keys }}"
+  when: common_admin_authorized_keys | length > 0
+
+# --- UFW ---------------------------------------------------------
+# Default-deny inbound, explicit allows below. Edge / k3s roles
+# extend `common_ufw_allow` via group_vars.
+
+- name: Install UFW
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+  when: common_ufw_enabled and ansible_os_family == 'Debian'
+
+- name: Configure UFW default policies
+  community.general.ufw:
+    direction: "{{ item.direction }}"
+    policy: "{{ item.policy }}"
+  loop:
+    - { direction: incoming, policy: deny }
+    - { direction: outgoing, policy: allow }
+    - { direction: routed, policy: deny }
+  when: common_ufw_enabled
+
+- name: Apply UFW rules
+  community.general.ufw:
+    rule: allow
+    port: "{{ item.port }}"
+    proto: "{{ item.proto }}"
+    from_ip: "{{ item.from | default('any') }}"
+    comment: "{{ item.comment | default(omit) }}"
+  loop: "{{ common_ufw_allow }}"
+  when: common_ufw_enabled
+
+- name: Enable UFW
+  community.general.ufw:
+    state: enabled
+  when: common_ufw_enabled
+
+# --- fail2ban ----------------------------------------------------
+
+- name: Install fail2ban
+  ansible.builtin.apt:
+    name: fail2ban
+    state: present
+  when: common_fail2ban_enabled and ansible_os_family == 'Debian'
+
+- name: Enable + start fail2ban
+  ansible.builtin.systemd:
+    name: fail2ban
+    enabled: true
+    state: started
+  when: common_fail2ban_enabled
+
+# --- journald ----------------------------------------------------
+# Bound log retention so a crash-loop can't fill /var/log/journal.
+
+- name: Configure journald retention
+  ansible.builtin.copy:
+    dest: /etc/systemd/journald.conf.d/orbital.conf
+    content: |
+      [Journal]
+      SystemMaxUse={{ common_journald_max_size }}
+      MaxRetentionSec={{ common_journald_max_retention }}
+    mode: "0644"
+  notify: restart journald

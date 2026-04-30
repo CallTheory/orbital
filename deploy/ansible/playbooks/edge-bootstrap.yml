@@ -1,0 +1,36 @@
+---
+# Edge VM bootstrap — applies common hardening + cert provisioning
+# + rtpengine + kamailio to every host in the `edge_vms` group.
+#
+# Idempotent. cloud-init's `ansible-pull` triggers this on first
+# boot; operators can re-run anytime via:
+#
+#   cd deploy/ansible
+#   ansible-playbook -i inventory/hosts.ini playbooks/edge-bootstrap.yml
+#
+# Required inventory variables (in group_vars/edge_vms.yml or via
+# --extra-vars):
+#   common_admin_authorized_keys: list of SSH pubkeys
+#   certs_acme_email:             ACME registration email
+#   certs_acme_domain:            SIP edge hostname (e.g. sip.orbital.calltheory.com)
+#   certs_acme_webhook_url:       Laravel TLS webhook URL
+#   certs_acme_webhook_token:     Webhook shared secret
+#   kamailio_dispatcher_targets:  list of K8s Asterisk endpoints
+#   kamailio_dmq_peers:           list of peer edge VM hostnames
+
+- name: Bootstrap Orbital edge VMs
+  hosts: edge_vms
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Wait for cloud-init to finish (so package list is settled)
+      ansible.builtin.command: cloud-init status --wait
+      changed_when: false
+      failed_when: false
+
+  roles:
+    - role: common
+    - role: certs-acme
+    - role: rtpengine
+    - role: kamailio

@@ -1,13 +1,20 @@
 # Installation
 
-## Prerequisites
+Two paths depending on what you're doing:
+
+- **Local development** — clone the repo, `./vendor/bin/sail up -d`, edit code, see changes. Everything runs in docker-compose. **Section below.**
+- **Production deployment** — point `tofu apply` at Vultr / AWS / your own VMs, then `helm install` the K8s chart. See [`deploy/README.md`](../../deploy/README.md) for the full operator guide; the rest of this page covers local dev only.
+
+## Local development quick start
+
+### Prerequisites
 
 - Docker and Docker Compose
 - PHP 8.4+
 - Composer
 - Node.js 20+ with pnpm
 
-## Quick Start
+### Quick Start
 
 ```bash
 cp .env.example .env

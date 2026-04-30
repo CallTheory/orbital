@@ -1,0 +1,51 @@
+{{- if .Values.livekitSip.enabled -}}
+{{/*
+LiveKit-SIP — bridges SIP signaling into LiveKit rooms.
+
+Cluster-internal SIP only (port 5069). External SIP enters via the
+Kamailio + rtpengine edge; Kamailio dispatches to this pod when an
+inbound dialog matches a routing rule that targets a LiveKit AI agent.
+RTP relay is handled by rtpengine at the edge — no UDP port range
+exposed here.
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "orbital.componentName" (list . "livekit-sip") }}
+  labels:
+    {{- include "orbital.componentLabels" (list . "livekit-sip") | nindent 4 }}
+spec:
+  replicas: {{ .Values.livekitSip.replicas }}
+  selector:
+    matchLabels:
+      {{- include "orbital.selectorLabels" (list . "livekit-sip") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "orbital.componentLabels" (list . "livekit-sip") | nindent 8 }}
+    spec:
+      containers:
+        - name: livekit-sip
+          image: {{ include "orbital.thirdPartyImage" .Values.livekitSip.image }}
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          ports:
+            - name: sip
+              containerPort: {{ .Values.livekitSip.service.sipPort }}
+              protocol: UDP
+          env:
+            - name: SIP_CONFIG_FILE
+              value: /etc/livekit-sip/sip-config.yaml
+          envFrom:
+            - secretRef:
+                name: {{ include "orbital.componentName" (list . "app-secrets") }}
+          resources:
+            {{- toYaml .Values.livekitSip.resources | nindent 12 }}
+          volumeMounts:
+            - name: sip-config
+              mountPath: /etc/livekit-sip
+              readOnly: true
+      volumes:
+        - name: sip-config
+          configMap:
+            name: {{ include "orbital.componentName" (list . "livekit-sip-config") }}
+{{- end }}

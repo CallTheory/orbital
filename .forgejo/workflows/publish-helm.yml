@@ -22,6 +22,8 @@ on:
       version:
         description: 'Chart version (semver, no leading v)'
         required: true
+        type: string
+        default: '0.1.2'
 
 jobs:
   publish:

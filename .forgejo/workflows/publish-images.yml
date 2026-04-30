@@ -26,6 +26,7 @@ on:
       tag:
         description: 'Extra image tag to publish (e.g. 1.2.3-hotfix). Optional.'
         required: false
+        type: string
         default: ''
 
 jobs:

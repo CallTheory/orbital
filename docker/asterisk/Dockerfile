@@ -108,7 +108,9 @@ RUN make -j$(nproc) && make install && make samples
 # Runtime image
 FROM debian:bookworm-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends \
     libedit2 \
     libjansson4 \
     libsqlite3-0 \

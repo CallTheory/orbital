@@ -67,21 +67,21 @@ jobs:
 
       - name: Log in to Harbor (Helm OCI)
         run: |
-          echo "${{ secrets.HARBOR_TOKEN }}" | helm registry login cr.calltheory.com \
+          echo "${{ secrets.HARBOR_PASSWORD }}" | helm registry login "${{ secrets.HARBOR_REGISTRY }}" \
               --username "${{ secrets.HARBOR_USERNAME }}" \
               --password-stdin
 
-      - name: Push chart to oci://cr.calltheory.com/orbital/charts
+      - name: Push chart
         run: |
           helm push /tmp/charts/orbital-${{ steps.version.outputs.version }}.tgz \
-              oci://cr.calltheory.com/orbital/charts
+              "oci://${{ secrets.HARBOR_REGISTRY }}/orbital/charts"
 
       - name: Report
         run: |
-          echo "Chart pushed to oci://cr.calltheory.com/orbital/charts/orbital:${{ steps.version.outputs.version }}"
+          echo "Chart pushed to oci://${{ secrets.HARBOR_REGISTRY }}/orbital/charts/orbital:${{ steps.version.outputs.version }}"
           echo
           echo "Customers install via:"
-          echo "  helm install orbital oci://cr.calltheory.com/orbital/charts/orbital \\"
+          echo "  helm install orbital oci://${{ secrets.HARBOR_REGISTRY }}/orbital/charts/orbital \\"
           echo "      --version ${{ steps.version.outputs.version }} \\"
           echo "      -n orbital --create-namespace \\"
           echo "      -f values-vultr-k3s.yaml   # or whichever provider"

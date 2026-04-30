@@ -41,7 +41,9 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 # extension parity with dev (Filament, Livewire, the agent-worker API,
 # the recording pipeline, and the SipJS softphone all assume the same
 # extension set), with `php8.4-fpm` and `nginx` added on top.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends \
         gnupg gosu curl ca-certificates zip unzip git supervisor sqlite3 libcap2-bin \
         nginx \
         python3 dnsutils librsvg2-bin fswatch ffmpeg sox libsox-fmt-mp3 \

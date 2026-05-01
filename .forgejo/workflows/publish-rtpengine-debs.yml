@@ -1,0 +1,290 @@
+name: Build + publish rtpengine .debs to orbital-setup
+
+# Builds rtpengine from upstream source, packages as Debian .debs,
+# signs with the same Cosign key as chart + images, and cross-repo
+# pushes to calltheory/orbital-setup's release for the matching tag.
+#
+# Why this lives here, not in orbital-setup:
+# - orbital-setup is a thin consumer of pre-built artifacts. Adding a
+#   compile step on every customer edge VM at provision time would
+#   add 5-10 min to first-boot, drag build-essential + kernel headers
+#   onto production VMs, and make per-VM rtpengine binaries non-
+#   reproducible. Build once here in CI; consume there.
+# - Co-locates with publish-images.yml + publish-helm.yml so all of
+#   "what gets shipped" lives in one CI tree.
+#
+# Why orbital-setup's PUBLIC release (not orbital private):
+# - Edge VMs fetch at provision time with no human in the loop. Public
+#   release means no auth credential to manage. Cosign signature is the
+#   trust anchor; binary distribution doesn't need source-repo access.
+# - orbital-setup is already public + customer-facing; edge VMs already
+#   clone it via cloud-init's ansible-pull.
+#
+# Recipe of record: orbital-setup/ansible/roles/rtpengine/SOURCE-BUILD.md
+# When bumping rtpengine, edit RTPENGINE_TAG below; that's the source of
+# truth for which version ships in the next orbital release.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      orbital_tag:
+        description: 'orbital tag this build is associated with (e.g. v0.1.7)'
+        required: true
+        type: string
+      rtpengine_tag:
+        description: 'rtpengine git tag (default: mr26.0.1.4)'
+        required: false
+        type: string
+        default: 'mr26.0.1.4'
+
+env:
+  # Pinned rtpengine version. Bump = visible PR change.
+  RTPENGINE_TAG_DEFAULT: 'mr26.0.1.4'
+  TARGET_REPO: 'calltheory/orbital-setup'
+
+jobs:
+  build:
+    # MUST match edge VM OS — libavcodec / libwebsockets / glib versions
+    # need to line up with what the .deb's runtime deps will pull from
+    # apt mirrors on the customer's edge VM.
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read   # workflow runs from this repo's tag; doesn't push back here
+
+    steps:
+      - name: Compute tags
+        id: tags
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            ORBITAL_TAG="${{ github.event.inputs.orbital_tag }}"
+            RTPENGINE_TAG="${{ github.event.inputs.rtpengine_tag }}"
+            : "${RTPENGINE_TAG:=${RTPENGINE_TAG_DEFAULT}}"
+          else
+            ORBITAL_TAG="${GITHUB_REF_NAME}"
+            RTPENGINE_TAG="${RTPENGINE_TAG_DEFAULT}"
+          fi
+          echo "orbital_tag=${ORBITAL_TAG}" >> "$GITHUB_OUTPUT"
+          echo "rtpengine_tag=${RTPENGINE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "Building rtpengine ${RTPENGINE_TAG} for orbital ${ORBITAL_TAG}"
+
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+              git ca-certificates devscripts equivs build-essential dpkg-dev fakeroot \
+              debhelper pkg-config jq curl
+
+      - name: Clone rtpengine at pinned tag
+        env:
+          RTPENGINE_TAG: ${{ steps.tags.outputs.rtpengine_tag }}
+        run: |
+          git clone --depth 1 --branch "${RTPENGINE_TAG}" \
+              https://github.com/sipwise/rtpengine.git /tmp/rtpengine
+          cd /tmp/rtpengine
+          echo "HEAD: $(git log -1 --oneline)"
+
+      - name: Install rtpengine build dependencies
+        # mk-build-deps reads rtpengine's own debian/control and resolves
+        # ~100 build deps. Lets rtpengine's upstream dictate the dep list
+        # — we don't have to chase when they bump versions.
+        run: |
+          cd /tmp/rtpengine
+          sudo DEBIAN_FRONTEND=noninteractive mk-build-deps \
+              -i -r \
+              -t "apt-get -y --no-install-recommends" \
+              debian/control
+
+      - name: Build .debs
+        # -us -uc -b: unsigned source, unsigned changes, binary-only.
+        # Source-package signing is irrelevant — we Cosign-sign the .debs
+        # downstream. Test suite (~672 tests) runs as part of build.
+        run: |
+          cd /tmp/rtpengine
+          DEB_BUILD_OPTIONS="parallel=$(nproc)" dpkg-buildpackage -us -uc -b 2>&1 | tail -40
+          echo "=== output ==="
+          ls -lh /tmp/*.deb
+
+      - name: Stage production package set
+        # Keep only what production edges install. Drop:
+        #   *-dbgsym (debug symbols, ddeb files, not needed at runtime)
+        #   ngcp-rtpengine-perftest{,-data} (test fixtures, 5 MB unneeded)
+        #   ngcp-rtpengine (meta — depends on perftest)
+        run: |
+          mkdir -p /tmp/release
+          for pkg in ngcp-rtpengine-daemon ngcp-rtpengine-kernel-dkms \
+                     ngcp-rtpengine-recording-daemon ngcp-rtpengine-utils; do
+              find /tmp -maxdepth 1 -name "${pkg}_*_*.deb" \
+                  ! -name '*-dbgsym*' \
+                  -exec cp {} /tmp/release/ \;
+          done
+          ls -lh /tmp/release/
+          # Sanity: must have at least 4 .debs.
+          count=$(ls /tmp/release/*.deb 2>/dev/null | wc -l)
+          if [[ "${count}" -lt 4 ]]; then
+              echo "Expected >=4 .debs, got ${count}" >&2
+              exit 1
+          fi
+
+      - name: Generate RTPENGINE-SHA256SUMS
+        run: |
+          cd /tmp/release
+          sha256sum *.deb > RTPENGINE-SHA256SUMS
+          cat RTPENGINE-SHA256SUMS
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: v2.4.0
+
+      - name: Cosign sign-blob each .deb + SHA256SUMS
+        # Same key used to sign chart + images. Sign each file and the
+        # checksum file too; verifying RTPENGINE-SHA256SUMS.sig gives
+        # transitive trust over the whole bundle.
+        env:
+          COSIGN_KEY: ${{ secrets.COSIGN_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          cd /tmp/release
+          for f in *.deb RTPENGINE-SHA256SUMS; do
+              echo "==> signing ${f}"
+              cosign sign-blob --yes --key env://COSIGN_KEY \
+                  --output-signature "${f}.sig" \
+                  "$f"
+          done
+          ls -lh
+
+      - name: Push to orbital-setup release (cross-repo)
+        # GET-or-create the matching tag's release on orbital-setup,
+        # then idempotently delete-then-upload each asset (so re-runs
+        # don't 409 on duplicate names).
+        #
+        # If the tag doesn't exist on orbital-setup yet, POST creates a
+        # lightweight tag pointing at orbital-setup's main HEAD.
+        # Documented in docs/release/cross-repo-tagging.md.
+        env:
+          TARGET_TOKEN: ${{ secrets.ORBITAL_SETUP_RELEASE_TOKEN }}
+          TAG_NAME: ${{ steps.tags.outputs.orbital_tag }}
+          RTPENGINE_TAG: ${{ steps.tags.outputs.rtpengine_tag }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+        run: |
+          set -euo pipefail
+          API="${GITHUB_SERVER_URL}/api/v1/repos/${TARGET_REPO}"
+          AUTH="Authorization: token ${TARGET_TOKEN}"
+
+          BODY=$(cat <<EOF
+          ## rtpengine .debs for orbital ${TAG_NAME}
+
+          Pre-built [rtpengine](https://github.com/sipwise/rtpengine) packages
+          (\`${RTPENGINE_TAG}\`, linux/amd64) for Ubuntu 24.04 edge VMs.
+          Consumed by the \`rtpengine\` Ansible role in this repo.
+
+          ### Files
+
+          | File | Contents |
+          |------|----------|
+          | \`ngcp-rtpengine-daemon_*.deb\` | Userspace media-relay daemon |
+          | \`ngcp-rtpengine-kernel-dkms_*.deb\` | DKMS source for the in-kernel forwarding module |
+          | \`ngcp-rtpengine-recording-daemon_*.deb\` | Optional recording daemon |
+          | \`ngcp-rtpengine-utils_*.deb\` | CLI utilities |
+          | \`RTPENGINE-SHA256SUMS\` | SHA-256 checksums |
+          | \`*.sig\` | Cosign \`sign-blob\` signature for each file (including SHA256SUMS) |
+
+          ### Verifying
+
+          \`\`\`bash
+          sha256sum -c RTPENGINE-SHA256SUMS
+
+          # Verifying SHA256SUMS suffices — it covers every .deb.
+          cosign verify-blob --key cosign.pub \\
+              --signature RTPENGINE-SHA256SUMS.sig RTPENGINE-SHA256SUMS
+          \`\`\`
+
+          ### Installing manually
+
+          \`\`\`bash
+          sudo apt install -y "linux-headers-\$(uname -r)" dkms
+          sudo apt install -y ./ngcp-rtpengine-*.deb
+          \`\`\`
+
+          DKMS auto-compiles the kernel module against the running kernel.
+          \`ngcp-rtpengine-daemon\` systemd unit auto-starts after install.
+
+          ### Source
+
+          Built from <https://github.com/sipwise/rtpengine> at tag
+          \`${RTPENGINE_TAG}\` under GPL-3.0+ (kernel module GPL-2.0).
+          Each .deb's \`/usr/share/doc/<pkg>/copyright\` carries the full
+          notice. No proprietary modifications.
+          EOF
+          )
+          BODY_JSON=$(jq -Rs . <<<"$BODY")
+
+          # --- Get-or-create release on orbital-setup ---
+          GET_CODE=$(curl -sS -o /tmp/get.json -w '%{http_code}' \
+              -H "$AUTH" "${API}/releases/tags/${TAG_NAME}")
+
+          if [[ "$GET_CODE" == "200" ]]; then
+              RELEASE_ID=$(jq -r '.id' /tmp/get.json)
+              echo "Found existing release id ${RELEASE_ID}; updating body."
+              # Don't clobber existing name (orbital-setup session may have
+              # set its own name + body); only update body if no body set.
+              EXISTING_BODY=$(jq -r '.body // ""' /tmp/get.json)
+              if [[ -z "$EXISTING_BODY" || "$EXISTING_BODY" == "null" ]]; then
+                  curl -sS -X PATCH "${API}/releases/${RELEASE_ID}" \
+                      -H "$AUTH" -H "Content-Type: application/json" \
+                      -d "{\"body\":${BODY_JSON}}" >/dev/null
+              fi
+          elif [[ "$GET_CODE" == "404" ]]; then
+              echo "Creating new release on ${TARGET_REPO} for ${TAG_NAME}."
+              curl -sS -X POST "${API}/releases" \
+                  -H "$AUTH" -H "Content-Type: application/json" \
+                  -d "{\"tag_name\":\"${TAG_NAME}\",\"name\":\"${TAG_NAME}\",\"target_commitish\":\"main\",\"body\":${BODY_JSON},\"draft\":false,\"prerelease\":false}" \
+                  > /tmp/create.json
+              RELEASE_ID=$(jq -r '.id' /tmp/create.json)
+              if [[ -z "$RELEASE_ID" || "$RELEASE_ID" == "null" ]]; then
+                  echo "Release creation failed:" >&2
+                  cat /tmp/create.json >&2
+                  exit 1
+              fi
+          else
+              echo "Unexpected ${GET_CODE} from release lookup:" >&2
+              cat /tmp/get.json >&2
+              exit 1
+          fi
+          echo "Release ID: ${RELEASE_ID}"
+
+          # --- Delete-then-upload (idempotent re-runs) ---
+          EXISTING=$(curl -sS -H "$AUTH" "${API}/releases/${RELEASE_ID}/assets")
+          cd /tmp/release
+          for f in *; do
+              EXISTING_ID=$(echo "$EXISTING" \
+                  | jq -r ".[] | select(.name == \"${f}\") | .id")
+              if [[ -n "$EXISTING_ID" && "$EXISTING_ID" != "null" ]]; then
+                  echo "==> deleting existing asset ${f} (id ${EXISTING_ID})"
+                  curl -sS -X DELETE "${API}/releases/${RELEASE_ID}/assets/${EXISTING_ID}" \
+                      -H "$AUTH"
+              fi
+              echo "==> uploading ${f}"
+              curl -sS -X POST "${API}/releases/${RELEASE_ID}/assets?name=${f}" \
+                  -H "$AUTH" \
+                  -F "attachment=@${f}" \
+                  >/dev/null
+          done
+          echo "All assets uploaded to ${TARGET_REPO} release ${TAG_NAME}."
+
+      - name: Cleanup
+        if: ${{ always() }}
+        run: rm -rf /tmp/release /tmp/rtpengine /tmp/get.json /tmp/create.json
+
+      - name: Report
+        env:
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          TAG_NAME: ${{ steps.tags.outputs.orbital_tag }}
+          RTPENGINE_TAG: ${{ steps.tags.outputs.rtpengine_tag }}
+        run: |
+          echo "Built rtpengine ${RTPENGINE_TAG} for orbital ${TAG_NAME}"
+          echo "Release: ${GITHUB_SERVER_URL}/${TARGET_REPO}/releases/tag/${TAG_NAME}"

@@ -313,6 +313,15 @@ jobs:
               -f your-values.yaml \\
               --set global.image.registry=your-registry.example.com
           \`\`\`
+
+          ### rtpengine .debs (separate, public release)
+
+          The kamailio + rtpengine edge runs on bare Ubuntu VMs, outside
+          the cluster. Its Debian packages live on **orbital-setup**'s
+          matching public release (no auth required, signed by the same
+          Cosign key as everything above):
+
+          <https://git.calltheory.com/calltheory/orbital-setup/releases/tag/${TAG_NAME}>
           EOF
           )
           BODY_JSON=$(jq -Rs . <<<"$BODY")

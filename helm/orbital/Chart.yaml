@@ -17,7 +17,7 @@ version: 0.0.0-dev
 appVersion: 0.0.0-dev
 kubeVersion: ">=1.28.0"
 
-home: https://orbital.calltheory.com
+home: https://calltheory.com/orbital
 sources:
   - https://git.calltheory.com/calltheory/orbital
   - https://git.calltheory.com/calltheory/orbital-setup

@@ -1,0 +1,352 @@
+name: Attach release archives to Forgejo
+
+# Builds a self-contained customer handoff bundle and attaches it to
+# the Forgejo release for the tag. Lets a customer leave Call Theory's
+# Harbor registry and run Orbital entirely from local archives.
+#
+# Triggered in parallel with publish-images.yml + publish-helm.yml on
+# `v*` tag push. Polls Harbor (~30 min cap) until all four artifacts
+# (3 images + chart) are present, then mirrors them to OCI archive
+# format, signs, checksums, and uploads to the Forgejo release.
+#
+# Output bundle (per tag):
+#   laravel-X.Y.Z.oci.tar
+#   asterisk-X.Y.Z.oci.tar
+#   agent-worker-X.Y.Z.oci.tar
+#   orbital-X.Y.Z.tgz                  (Helm chart)
+#   SHA256SUMS                          (covers all .oci.tar + .tgz)
+#   *.sig                               (cosign sign-blob per file,
+#                                        including SHA256SUMS itself)
+#
+# Format choice: OCI archive only (no Docker archive). Modern OCI
+# archives are loadable via `docker load` on Docker 20.10+ and via
+# `skopeo copy` to any registry; covers both legacy and forward use.
+# Architecture: linux/amd64 only (Vultr + on-prem x86 deployments).
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to bundle (e.g. v0.1.1 — leading v is required)'
+        required: true
+        type: string
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # create + update releases, attach assets
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          # Tag is `vX.Y.Z`; version (used for image tags + chart version) is `X.Y.Z`.
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Install tooling (skopeo, jq, curl)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends skopeo jq curl
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.0
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: v2.4.0
+
+      - name: Authenticate to Harbor
+        # Skopeo reads ~/.docker/config.json; Helm uses its own
+        # registry creds store via `helm registry login`. Set up both.
+        # Same `env:`-block pattern publish-helm.yml uses to keep
+        # Harbor robot usernames (containing `$`) intact through bash.
+        env:
+          HARBOR_REGISTRY: ${{ secrets.HARBOR_REGISTRY }}
+          HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
+          HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.docker
+          AUTH=$(printf '%s:%s' "$HARBOR_USERNAME" "$HARBOR_PASSWORD" | base64 -w0)
+          cat > ~/.docker/config.json <<JSON
+          {"auths": {"${HARBOR_REGISTRY}": {"auth": "${AUTH}"}}}
+          JSON
+          chmod 600 ~/.docker/config.json
+          # printf %s, not echo — `helm registry login --password-stdin`
+          # treats trailing \n as part of the password.
+          printf '%s' "$HARBOR_PASSWORD" | helm registry login "$HARBOR_REGISTRY" \
+              --username "$HARBOR_USERNAME" \
+              --password-stdin
+
+      - name: Wait for Harbor artifacts
+        # Both publish-images.yml and publish-helm.yml fire on the same
+        # tag push as this workflow. Poll until all four are present.
+        # 60 attempts × 30s = 30 min hard cap (image builds are the
+        # slow path; agent-worker can take 15+ min cold).
+        env:
+          HARBOR_REGISTRY: ${{ secrets.HARBOR_REGISTRY }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          IMAGES=(laravel asterisk agent-worker)
+          for image in "${IMAGES[@]}"; do
+            ref="docker://${HARBOR_REGISTRY}/orbital/${image}:${VERSION}"
+            echo "==> waiting for ${ref}"
+            attempts=0
+            until skopeo inspect "$ref" >/dev/null 2>&1; do
+              attempts=$((attempts + 1))
+              if [[ $attempts -gt 60 ]]; then
+                echo "Timeout waiting for ${ref}" >&2
+                exit 1
+              fi
+              echo "  attempt ${attempts}/60 — sleeping 30s"
+              sleep 30
+            done
+            echo "  found"
+          done
+
+          # Helm chart presence: `helm pull` is the cleanest probe.
+          # We discard the result here; we'll re-pull into the release
+          # staging dir below.
+          echo "==> waiting for chart"
+          mkdir -p /tmp/chart-probe
+          attempts=0
+          until helm pull "oci://${HARBOR_REGISTRY}/orbital/charts/orbital" \
+                  --version "${VERSION}" \
+                  --destination /tmp/chart-probe >/dev/null 2>&1; do
+            attempts=$((attempts + 1))
+            if [[ $attempts -gt 60 ]]; then
+              echo "Timeout waiting for chart" >&2
+              exit 1
+            fi
+            echo "  chart attempt ${attempts}/60 — sleeping 30s"
+            sleep 30
+          done
+          rm -rf /tmp/chart-probe
+          echo "All Harbor artifacts present."
+
+      - name: Export images to OCI archives (linux/amd64)
+        # Skopeo streams registry → oci-archive without an intermediate
+        # in-memory or layer-cache step, so peak disk is bounded by the
+        # final archive size. --override-os/--arch picks the amd64
+        # manifest from any multi-arch index without rebuilding.
+        env:
+          HARBOR_REGISTRY: ${{ secrets.HARBOR_REGISTRY }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/release
+          for image in laravel asterisk agent-worker; do
+            src="docker://${HARBOR_REGISTRY}/orbital/${image}:${VERSION}"
+            dst="oci-archive:/tmp/release/${image}-${VERSION}.oci.tar"
+            echo "==> ${src} → ${dst}"
+            skopeo copy --override-os linux --override-arch amd64 "$src" "$dst"
+          done
+          ls -lh /tmp/release/
+
+      - name: Pull Helm chart .tgz
+        env:
+          HARBOR_REGISTRY: ${{ secrets.HARBOR_REGISTRY }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          helm pull "oci://${HARBOR_REGISTRY}/orbital/charts/orbital" \
+              --version "${VERSION}" \
+              --destination /tmp/release
+          ls -lh /tmp/release/
+
+      - name: Generate SHA256SUMS
+        # Covers .oci.tar + chart .tgz only. The .sig files are
+        # signatures over those, generated next; SHA256SUMS itself is
+        # then signed too, so verifying SHA256SUMS.sig with our public
+        # key gives transitive trust over the full bundle.
+        run: |
+          set -euo pipefail
+          cd /tmp/release
+          sha256sum *.oci.tar *.tgz > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Cosign sign-blob each archive + the checksum file
+        env:
+          COSIGN_KEY: ${{ secrets.COSIGN_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          cd /tmp/release
+          for f in *.oci.tar *.tgz SHA256SUMS; do
+            echo "==> signing ${f}"
+            cosign sign-blob --yes --key env://COSIGN_KEY \
+                --output-signature "${f}.sig" \
+                "$f"
+          done
+          ls -lh
+
+      - name: Create or update Forgejo release with all archives
+        # Idempotent on re-run: if the release exists, PATCH the body;
+        # if any asset already exists with the same name (e.g. a retry
+        # after a failed upload), DELETE then re-upload. Forgejo's
+        # asset-name uniqueness constraint would otherwise reject.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          API="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}"
+          AUTH_HEADER="Authorization: token ${GITHUB_TOKEN}"
+
+          # --- Render release body --------------------------------
+          # Unquoted heredoc: ${VERSION} expands; \${var} stays literal
+          # (so the customer-facing example code blocks render with
+          # placeholders intact).
+          BODY=$(cat <<EOF
+          ## Orbital ${VERSION}
+
+          Self-hosted artifact bundle. Use these to leave Call Theory's
+          Harbor registry and run Orbital from your own infrastructure
+          with no further pull dependency on \`cr.calltheory.com\`.
+
+          ### Files
+
+          | File | Contents |
+          |------|----------|
+          | \`laravel-${VERSION}.oci.tar\` | Laravel app image (linux/amd64) |
+          | \`asterisk-${VERSION}.oci.tar\` | Asterisk image (linux/amd64) |
+          | \`agent-worker-${VERSION}.oci.tar\` | Python agent-worker image (linux/amd64) |
+          | \`orbital-${VERSION}.tgz\` | Helm chart |
+          | \`SHA256SUMS\` | SHA-256 checksums for all archives above |
+          | \`*.sig\` | Cosign \`sign-blob\` signature for each file (including SHA256SUMS) |
+
+          ### Verifying integrity (no Cosign required)
+
+          \`\`\`bash
+          sha256sum -c SHA256SUMS
+          \`\`\`
+
+          ### Verifying signatures (Cosign)
+
+          Same Cosign public key used to sign the registry-hosted images
+          and chart. Ask Call Theory for \`cosign.pub\` if you don't
+          have it.
+
+          \`\`\`bash
+          # Verifying SHA256SUMS suffices — it covers every other file.
+          cosign verify-blob --key cosign.pub \\
+              --signature SHA256SUMS.sig SHA256SUMS
+
+          # Per-file (optional):
+          cosign verify-blob --key cosign.pub \\
+              --signature laravel-${VERSION}.oci.tar.sig \\
+              laravel-${VERSION}.oci.tar
+          \`\`\`
+
+          ### Loading into Docker
+
+          \`\`\`bash
+          docker load -i laravel-${VERSION}.oci.tar
+          docker load -i asterisk-${VERSION}.oci.tar
+          docker load -i agent-worker-${VERSION}.oci.tar
+          \`\`\`
+
+          ### Pushing to your own registry
+
+          \`\`\`bash
+          for image in laravel asterisk agent-worker; do
+              skopeo copy oci-archive:\${image}-${VERSION}.oci.tar \\
+                  docker://your-registry.example.com/orbital/\${image}:${VERSION}
+          done
+          \`\`\`
+
+          ### Installing the chart
+
+          \`\`\`bash
+          helm install orbital orbital-${VERSION}.tgz \\
+              -n orbital --create-namespace \\
+              -f your-values.yaml \\
+              --set global.image.registry=your-registry.example.com
+          \`\`\`
+          EOF
+          )
+          BODY_JSON=$(jq -Rs . <<<"$BODY")
+
+          # --- Get-or-create release ------------------------------
+          echo "==> Looking up release for tag ${TAG_NAME}"
+          GET_RESP=$(curl -sS -w '\n%{http_code}' -H "$AUTH_HEADER" \
+              "${API}/releases/tags/${TAG_NAME}" || true)
+          GET_CODE="${GET_RESP##*$'\n'}"
+          GET_BODY="${GET_RESP%$'\n'$GET_CODE}"
+
+          if [[ "$GET_CODE" == "200" ]]; then
+              RELEASE_ID=$(echo "$GET_BODY" | jq -r '.id')
+              echo "Existing release id ${RELEASE_ID}; updating body."
+              curl -sS -X PATCH "${API}/releases/${RELEASE_ID}" \
+                  -H "$AUTH_HEADER" \
+                  -H "Content-Type: application/json" \
+                  -d "{\"name\":\"Orbital ${VERSION}\",\"body\":${BODY_JSON}}" \
+                  >/dev/null
+          elif [[ "$GET_CODE" == "404" ]]; then
+              echo "Creating new release."
+              CREATE_RESP=$(curl -sS -X POST "${API}/releases" \
+                  -H "$AUTH_HEADER" \
+                  -H "Content-Type: application/json" \
+                  -d "{\"tag_name\":\"${TAG_NAME}\",\"name\":\"Orbital ${VERSION}\",\"body\":${BODY_JSON},\"draft\":false,\"prerelease\":false}")
+              RELEASE_ID=$(echo "$CREATE_RESP" | jq -r '.id')
+              if [[ -z "$RELEASE_ID" || "$RELEASE_ID" == "null" ]]; then
+                  echo "Release creation failed: $CREATE_RESP" >&2
+                  exit 1
+              fi
+          else
+              echo "Unexpected ${GET_CODE} from release lookup: $GET_BODY" >&2
+              exit 1
+          fi
+          echo "Release ID: ${RELEASE_ID}"
+
+          # --- Idempotently delete same-named assets, then upload --
+          EXISTING=$(curl -sS -H "$AUTH_HEADER" \
+              "${API}/releases/${RELEASE_ID}/assets")
+
+          cd /tmp/release
+          for f in *; do
+              EXISTING_ID=$(echo "$EXISTING" \
+                  | jq -r ".[] | select(.name == \"${f}\") | .id")
+              if [[ -n "$EXISTING_ID" && "$EXISTING_ID" != "null" ]]; then
+                  echo "==> deleting existing asset ${f} (id ${EXISTING_ID})"
+                  curl -sS -X DELETE "${API}/releases/${RELEASE_ID}/assets/${EXISTING_ID}" \
+                      -H "$AUTH_HEADER"
+              fi
+              echo "==> uploading ${f}"
+              curl -sS -X POST "${API}/releases/${RELEASE_ID}/assets?name=${f}" \
+                  -H "$AUTH_HEADER" \
+                  -F "attachment=@${f}" \
+                  >/dev/null
+          done
+          echo "All assets uploaded."
+
+      - name: Cleanup
+        if: ${{ always() }}
+        run: rm -rf /tmp/release /tmp/chart-probe
+
+      - name: Report
+        env:
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          TAG_NAME: ${{ steps.version.outputs.tag }}
+        run: |
+          echo "Release: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${TAG_NAME}"

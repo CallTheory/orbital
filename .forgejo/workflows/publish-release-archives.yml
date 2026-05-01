@@ -99,26 +99,52 @@ jobs:
         # tag push as this workflow. Poll until all four are present.
         # 60 attempts × 30s = 30 min hard cap (image builds are the
         # slow path; agent-worker can take 15+ min cold).
+        #
+        # Diagnostics: skopeo / helm stderr is captured and surfaced on
+        # attempt 1, every 5th attempt, and on final timeout — so a
+        # stuck run shows the actual upstream error (412 vuln-block,
+        # 401 robot scope, 404 wrong path, etc.) instead of polling
+        # silently.
         env:
           HARBOR_REGISTRY: ${{ secrets.HARBOR_REGISTRY }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
+          ERR_LOG=$(mktemp)
+          # shellcheck disable=SC2064
+          trap "rm -f '${ERR_LOG}'" EXIT
+
+          maybe_log_err() {
+              local attempt="$1"
+              local label="$2"
+              if [[ "$attempt" -eq 1 || $((attempt % 5)) -eq 0 ]]; then
+                  echo "  attempt ${attempt}/60 — ${label} says:"
+                  sed 's/^/    /' "${ERR_LOG}" 2>/dev/null || true
+              else
+                  echo "  attempt ${attempt}/60 — sleeping 30s"
+              fi
+          }
+
           IMAGES=(laravel asterisk agent-worker)
           for image in "${IMAGES[@]}"; do
             ref="docker://${HARBOR_REGISTRY}/orbital/${image}:${VERSION}"
             echo "==> waiting for ${ref}"
             attempts=0
-            until skopeo inspect "$ref" >/dev/null 2>&1; do
+            while true; do
+              if skopeo inspect "$ref" >/dev/null 2>"${ERR_LOG}"; then
+                  echo "  found"
+                  break
+              fi
               attempts=$((attempts + 1))
               if [[ $attempts -gt 60 ]]; then
-                echo "Timeout waiting for ${ref}" >&2
-                exit 1
+                  echo "Timeout waiting for ${ref}" >&2
+                  echo "  last skopeo error:" >&2
+                  sed 's/^/    /' "${ERR_LOG}" >&2 || true
+                  exit 1
               fi
-              echo "  attempt ${attempts}/60 — sleeping 30s"
+              maybe_log_err "$attempts" "skopeo"
               sleep 30
             done
-            echo "  found"
           done
 
           # Helm chart presence: `helm pull` is the cleanest probe.
@@ -127,15 +153,20 @@ jobs:
           echo "==> waiting for chart"
           mkdir -p /tmp/chart-probe
           attempts=0
-          until helm pull "oci://${HARBOR_REGISTRY}/orbital/charts/orbital" \
+          while true; do
+            if helm pull "oci://${HARBOR_REGISTRY}/orbital/charts/orbital" \
                   --version "${VERSION}" \
-                  --destination /tmp/chart-probe >/dev/null 2>&1; do
+                  --destination /tmp/chart-probe >/dev/null 2>"${ERR_LOG}"; then
+                break
+            fi
             attempts=$((attempts + 1))
             if [[ $attempts -gt 60 ]]; then
               echo "Timeout waiting for chart" >&2
+              echo "  last helm error:" >&2
+              sed 's/^/    /' "${ERR_LOG}" >&2 || true
               exit 1
             fi
-            echo "  chart attempt ${attempts}/60 — sleeping 30s"
+            maybe_log_err "$attempts" "helm"
             sleep 30
           done
           rm -rf /tmp/chart-probe

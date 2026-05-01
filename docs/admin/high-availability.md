@@ -4,7 +4,7 @@ This is the administrative guide for running Orbital's HA stack: what each
 tier does, how it self-heals, how to run planned maintenance without a
 customer-visible outage, and what to do when something breaks.
 
-> **Looking to install Orbital on real infrastructure?** See [`deploy/README.md`](../../deploy/README.md) — the OpenTofu + Helm + Ansible deployment workflow that produces the topology described here. This doc is the operator handbook for what already exists.
+> **Looking to install Orbital on real infrastructure?** See the [orbital-setup repo](https://git.calltheory.com/calltheory/orbital-setup) — the OpenTofu + Ansible deployment workflow that produces the topology described here. The Helm chart it installs lives in this repo at `helm/orbital/` and ships to Harbor on every tagged release. This doc is the operator handbook for what already exists.
 
 
 Orbital's HA is **single-site active/active**: every customer-facing service

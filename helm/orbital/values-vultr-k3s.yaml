@@ -1,0 +1,36 @@
+# Vultr self-hosted K3s overrides.
+#
+# Apply with:
+#   helm install orbital ./helm/orbital \
+#     -f ./helm/orbital/values-vultr-k3s.yaml \
+#     --set global.domain=orbital.your-company.com
+#
+# Assumes the OpenTofu module at `terraform/vultr/self-hosted-k3s/`
+# in the orbital-setup repo has provisioned the K3s cluster. That module
+# installs the Vultr CSI driver (vultr-block-storage) and a Vultr cloud
+# controller (vultr-load-balancer for Service type=LoadBalancer).
+
+global:
+  storageClass: "vultr-block-storage"
+
+ingress:
+  className: "traefik"
+  annotations:
+    # Tells the Vultr cloud controller to provision a managed LB.
+    service.beta.kubernetes.io/vultr-loadbalancer-protocol: "https"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+
+# Vultr block storage is RWO-only too. Same caveat as on-prem K3s —
+# multi-pod RWX needs longhorn or similar. Asterisk single-replica
+# is the safe default for the standard Vultr K3s install.
+asterisk:
+  replicas: 1
+
+# Vultr instance sizes — slightly bumped from defaults so a
+# 2-vCPU/4GB-RAM node can host the full default stack comfortably.
+laravel:
+  replicas: 2
+horizon:
+  replicas: 1
+agentWorker:
+  replicas: 2

@@ -78,8 +78,21 @@ Filament panel based on their role:
 - `agent-worker/` — Python LiveKit agent worker
 - `docker/asterisk/` — Asterisk 22 Dockerfile, baked configs, entrypoint
 - `docker/livekit/` — LiveKit server + SIP bridge configs
+- `helm/orbital/` — Helm chart packaged on tag push to Harbor OCI
+- `local/` — k3d helpers for chart iteration
+- `scripts/build-and-push.sh` — local image build + push to Harbor
 - `resources/views/asterisk/` — Blade templates that render
   `extensions.conf`, `pjsip_generated.conf`, etc.
+
+## Deploying
+
+Infrastructure code (Terraform, Ansible, cloud-init, customer install
+scripts) lives in a separate **public** repo:
+**https://git.calltheory.com/calltheory/orbital-setup**
+
+Clone that repo to provision a Vultr or on-prem K3s cluster. Its install
+scripts pull this chart from Harbor at `oci://cr.calltheory.com/orbital/charts/orbital`,
+so the deployment never needs read access to this private app repo.
 
 ## Conventions
 

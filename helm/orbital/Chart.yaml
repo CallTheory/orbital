@@ -1,0 +1,32 @@
+apiVersion: v2
+name: orbital
+description: |-
+  Orbital — multi-tenant answering-service / virtual-receptionist platform.
+  Combines Asterisk (SIP), LiveKit (AI agents + WebRTC), and Laravel
+  (management UI). The chart ships with sensible in-cluster defaults
+  for Postgres, Valkey, and SeaweedFS — everything works out of the
+  box on a fresh K3s/K8s cluster. Each stateful tier has an
+  `external.enabled` flag for customers who'd rather use managed
+  services (Vultr Managed Postgres, AWS RDS, ElastiCache, S3, etc.).
+
+type: application
+# version + appVersion are sentinels — publish-helm.yml overrides both
+# with the git tag at package time. Local `helm install ./helm/orbital`
+# shows 0.0.0-dev so it's visibly distinct from a Harbor-published release.
+version: 0.0.0-dev
+appVersion: 0.0.0-dev
+kubeVersion: ">=1.28.0"
+
+home: https://orbital.calltheory.com
+sources:
+  - https://git.calltheory.com/calltheory/orbital
+  - https://git.calltheory.com/calltheory/orbital-setup
+
+maintainers:
+  - name: Patrick Labbett
+    email: patrick@calltheory.net
+
+# Annotations — render in registry UIs (Harbor, ArtifactHub, etc.)
+annotations:
+  category: Telephony
+  licenses: Proprietary

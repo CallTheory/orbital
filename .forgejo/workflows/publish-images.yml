@@ -83,5 +83,5 @@ jobs:
           echo "Pull with:"
           echo "  docker pull <HARBOR_REGISTRY>/orbital/laravel:<tag>"
           echo "Deploy with:"
-          echo "  helm upgrade --install orbital deploy/helm/orbital \\"
-          echo "      --set global.image.tag=<tag>"
+          echo "  helm upgrade --install orbital oci://<HARBOR_REGISTRY>/orbital/charts/orbital \\"
+          echo "      --version <tag> --set global.image.tag=<tag>"

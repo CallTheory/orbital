@@ -9,7 +9,7 @@ name: Publish Helm chart to Harbor
 #
 #   # Or git clone + local path
 #   git clone --branch v1.2.3 https://git.calltheory.com/orbital/orbital.git
-#   helm install orbital ./orbital/deploy/helm/orbital -n orbital
+#   helm install orbital ./orbital/helm/orbital -n orbital
 #
 # Both stay supported; the OCI route avoids needing the source repo.
 
@@ -51,18 +51,18 @@ jobs:
           fi
 
       - name: Lint chart
-        run: helm lint deploy/helm/orbital
+        run: helm lint helm/orbital
 
       - name: Render chart against every per-provider values file
         run: |
-          for vals in deploy/helm/orbital/values-*.yaml; do
+          for vals in helm/orbital/values-*.yaml; do
             echo "==> rendering with $vals"
-            helm template orbital deploy/helm/orbital -n orbital -f "$vals" >/dev/null
+            helm template orbital helm/orbital -n orbital -f "$vals" >/dev/null
           done
 
       - name: Package chart
         run: |
-          helm package deploy/helm/orbital \
+          helm package helm/orbital \
               --version ${{ steps.version.outputs.version }} \
               --app-version ${{ steps.version.outputs.version }} \
               --destination /tmp/charts

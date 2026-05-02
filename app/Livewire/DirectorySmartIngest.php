@@ -152,6 +152,7 @@ class DirectorySmartIngest extends Component
         try {
             if (empty($this->definitions)) {
                 $this->error = 'This directory has no field definitions yet. Define some fields on the Directory Fields page first.';
+
                 return;
             }
 
@@ -179,6 +180,7 @@ class DirectorySmartIngest extends Component
 
             if ($text === '' && $imageBase64 === null) {
                 $this->error = 'Please upload a file or paste some text first.';
+
                 return;
             }
 
@@ -217,6 +219,7 @@ class DirectorySmartIngest extends Component
         $correction = trim($this->pastedText);
         if ($correction === '') {
             $this->error = 'Type a correction in the input below, then click Revise.';
+
             return;
         }
 
@@ -259,6 +262,7 @@ class DirectorySmartIngest extends Component
     {
         if (empty($this->rows)) {
             $this->error = 'Nothing to import yet. Paste or upload something first.';
+
             return;
         }
 
@@ -317,6 +321,7 @@ class DirectorySmartIngest extends Component
             }
             $out[$key] = is_array($value) ? $value : (is_scalar($value) ? $value : null);
         }
+
         return array_filter($out, fn ($v) => $v !== null && $v !== '');
     }
 

@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Telephony;
 
+use App\Jobs\RegenerateTelephonyConfig;
 use App\Models\Extension;
 use App\Models\Team;
 use App\Models\User;
-use App\Jobs\RegenerateTelephonyConfig;
 use App\Services\Telephony\CallRecordingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
@@ -137,6 +137,7 @@ class CallRecordingServiceTest extends TestCase
     protected function makeTeam(array $attrs = []): Team
     {
         $owner = User::factory()->create();
+
         return Team::forceCreate(array_merge([
             'user_id' => $owner->id,
             'name' => 'Resolver Test '.uniqid(),

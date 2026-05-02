@@ -162,6 +162,7 @@ class SipProxy extends Page
                 'active_sessions' => $sessions,
             ];
         }
+
         return $rows;
     }
 
@@ -183,6 +184,7 @@ class SipProxy extends Page
                 $node = RtpengineNode::find($arguments['id']);
                 if (! $node) {
                     Notification::make()->danger()->title('Node not found')->send();
+
                     return;
                 }
                 $result = app(RtpengineDrainService::class)->drain($node);
@@ -206,6 +208,7 @@ class SipProxy extends Page
                 $node = RtpengineNode::find($arguments['id']);
                 if (! $node) {
                     Notification::make()->danger()->title('Node not found')->send();
+
                     return;
                 }
                 $result = app(RtpengineDrainService::class)->activate($node);

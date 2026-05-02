@@ -37,9 +37,9 @@ class IngestLivekitEgressJob implements ShouldQueue
 
     /**
      * @param  array<string, mixed>  $egressInfo
-     *   The `EgressInfo` struct LiveKit sends in the webhook body.
-     *   Carries `egress_id`, `room_name`, `room_id`, `status`,
-     *   `track_results[]`, `started_at`, `ended_at`, and so on.
+     *                                            The `EgressInfo` struct LiveKit sends in the webhook body.
+     *                                            Carries `egress_id`, `room_name`, `room_id`, `status`,
+     *                                            `track_results[]`, `started_at`, `ended_at`, and so on.
      */
     public function __construct(
         public readonly array $egressInfo,
@@ -54,6 +54,7 @@ class IngestLivekitEgressJob implements ShouldQueue
             Log::warning('livekit egress: missing room/egress id', [
                 'payload' => $this->egressInfo,
             ]);
+
             return;
         }
 
@@ -77,6 +78,7 @@ class IngestLivekitEgressJob implements ShouldQueue
                 'egress_id' => $egressId,
             ]);
             $this->release(now()->addMinutes(2));
+
             return;
         }
 
@@ -87,6 +89,7 @@ class IngestLivekitEgressJob implements ShouldQueue
             Log::info('livekit egress: no track results in payload', [
                 'egress_id' => $egressId,
             ]);
+
             return;
         }
 
@@ -143,6 +146,7 @@ class IngestLivekitEgressJob implements ShouldQueue
     protected function guessFormat(string $path): string
     {
         $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+
         return $ext !== '' ? $ext : 'ogg';
     }
 }

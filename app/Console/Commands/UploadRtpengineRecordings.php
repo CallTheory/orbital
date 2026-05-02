@@ -45,6 +45,7 @@ class UploadRtpengineRecordings extends Command
         }
         if ($nodes->isEmpty()) {
             $this->warn('No active rtpengine nodes registered.');
+
             return self::SUCCESS;
         }
 
@@ -53,6 +54,7 @@ class UploadRtpengineRecordings extends Command
             $localBase = $this->localSpoolFor($node->hostname);
             if (! is_dir($localBase)) {
                 $this->line("  skip {$node->hostname} — spool not mounted at {$localBase}");
+
                 continue;
             }
 
@@ -62,6 +64,7 @@ class UploadRtpengineRecordings extends Command
         }
 
         $this->info("Done. {$totalDispatched} upload job(s) dispatched.");
+
         return self::SUCCESS;
     }
 
@@ -104,6 +107,7 @@ class UploadRtpengineRecordings extends Command
                     'node' => $hostname,
                     'file' => $path,
                 ]);
+
                 continue;
             }
 

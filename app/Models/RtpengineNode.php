@@ -66,6 +66,7 @@ class RtpengineNode extends Model
         $host = $this->prom_host !== null && $this->prom_host !== ''
             ? $this->prom_host
             : $this->hostname;
+
         return "http://{$host}:{$this->prom_port}/metrics";
     }
 

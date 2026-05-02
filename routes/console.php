@@ -33,7 +33,7 @@ Schedule::call(fn () => Cache::forever('scheduler:heartbeat', now()->toIso8601St
 // Walk every call log past its client's retention window, delete the
 // S3 objects, and null the columns. Runs at 03:15 local so overnight
 // upload jobs have already settled.
-Schedule::job(new PruneExpiredCallRecordingsJob())
+Schedule::job(new PruneExpiredCallRecordingsJob)
     ->dailyAt('03:15')
     ->name('prune-expired-call-recordings')
     ->withoutOverlapping()

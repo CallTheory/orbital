@@ -47,7 +47,7 @@ class PruneExpiredCallRecordingsJobTest extends TestCase
             'ended_at' => now()->subDays(60),
         ]);
 
-        dispatch_sync(new PruneExpiredCallRecordingsJob());
+        dispatch_sync(new PruneExpiredCallRecordingsJob);
 
         Storage::disk('s3')->assertMissing($path);
         $this->assertDatabaseHas('call_logs', [
@@ -70,7 +70,7 @@ class PruneExpiredCallRecordingsJobTest extends TestCase
             'ended_at' => now()->subDays(5),
         ]);
 
-        dispatch_sync(new PruneExpiredCallRecordingsJob());
+        dispatch_sync(new PruneExpiredCallRecordingsJob);
 
         Storage::disk('s3')->assertExists($path);
         $this->assertDatabaseHas('call_logs', [
@@ -95,7 +95,7 @@ class PruneExpiredCallRecordingsJobTest extends TestCase
             'ended_at' => now()->subDays(10),
         ]);
 
-        dispatch_sync(new PruneExpiredCallRecordingsJob());
+        dispatch_sync(new PruneExpiredCallRecordingsJob);
 
         Storage::disk('s3')->assertMissing($path);
         $this->assertDatabaseHas('call_logs', [
@@ -119,7 +119,7 @@ class PruneExpiredCallRecordingsJobTest extends TestCase
             'ended_at' => now()->subYears(3),
         ]);
 
-        dispatch_sync(new PruneExpiredCallRecordingsJob());
+        dispatch_sync(new PruneExpiredCallRecordingsJob);
 
         Storage::disk('s3')->assertExists($path);
         $this->assertDatabaseHas('call_logs', [
@@ -143,6 +143,7 @@ class PruneExpiredCallRecordingsJobTest extends TestCase
     protected function makeTeam(array $attrs = []): Team
     {
         $owner = User::factory()->create();
+
         return Team::forceCreate(array_merge([
             'user_id' => $owner->id,
             'name' => 'Prune Test Client '.uniqid(),

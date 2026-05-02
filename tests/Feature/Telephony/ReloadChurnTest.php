@@ -151,6 +151,7 @@ class ReloadChurnTest extends TestCase
     protected function makeTeam(string $name = 'Acme'): Team
     {
         $owner = User::factory()->create();
+
         return Team::forceCreate([
             'user_id' => $owner->id,
             'name' => $name,

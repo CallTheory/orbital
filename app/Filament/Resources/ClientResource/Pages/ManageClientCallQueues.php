@@ -14,10 +14,12 @@ use App\Models\Team;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
+use Filament\Forms\Components\Component;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ManageRelatedRecords;
 use Filament\Schemas\Schema;
 use Filament\Tables;
+use Filament\Tables\Columns\Column;
 use Filament\Tables\Table;
 
 class ManageClientCallQueues extends ManageRelatedRecords
@@ -62,7 +64,7 @@ class ManageClientCallQueues extends ManageRelatedRecords
     }
 
     /**
-     * @return array<int, \Filament\Forms\Components\Component>
+     * @return array<int, Component>
      */
     public static function formSchemaFor(Team $owner): array
     {
@@ -119,7 +121,7 @@ class ManageClientCallQueues extends ManageRelatedRecords
     }
 
     /**
-     * @return array<int, \Filament\Tables\Columns\Column>
+     * @return array<int, Column>
      */
     public static function tableColumns(?Actions\Action $rowEditAction = null): array
     {

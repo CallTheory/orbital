@@ -1,13 +1,14 @@
 <?php
 
+use App\Http\Controllers\Admin\OrchestrationController;
 use App\Http\Controllers\Api\AgentPersonaController;
 use App\Http\Controllers\Api\CallLogController;
 use App\Http\Controllers\Api\CallSessionController;
 use App\Http\Controllers\Api\ExtensionController;
 use App\Http\Controllers\Api\InboundMailController;
 use App\Http\Controllers\Api\KnowledgeController;
+use App\Http\Controllers\Api\LivekitWebhookController;
 use App\Http\Controllers\Api\TlsRenewalWebhookController;
-use App\Http\Controllers\Admin\OrchestrationController;
 use App\Http\Controllers\Api\VoicemailWebhookController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -31,6 +32,7 @@ Route::post('/agent-worker/heartbeat', function (Request $request) {
         abort(401);
     }
     Cache::put('agent_worker:heartbeat', now(), now()->addSeconds(120));
+
     return ['ok' => true];
 });
 
@@ -65,7 +67,7 @@ Route::post('/voicemail/received', [VoicemailWebhookController::class, 'store'])
 // LiveKit server-side webhook target. LiveKit POSTs JWT-signed
 // JSON bodies for room/egress/track lifecycle events; the
 // controller acts on `egress_ended` to register CallRecording rows.
-Route::post('/livekit/webhook', \App\Http\Controllers\Api\LivekitWebhookController::class);
+Route::post('/livekit/webhook', LivekitWebhookController::class);
 
 // Agent worker API (Sanctum token auth)
 Route::middleware('auth:sanctum')->group(function () {

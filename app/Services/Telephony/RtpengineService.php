@@ -45,6 +45,7 @@ class RtpengineService
             $resp = $this->send($node, ['command' => 'ping']);
             $results[$node->hostname] = ($resp['result'] ?? null) === 'pong';
         }
+
         return $results;
     }
 
@@ -73,6 +74,7 @@ class RtpengineService
         if ($resp === null) {
             return null;
         }
+
         return is_array($resp['calls'] ?? null) ? $resp['calls'] : [];
     }
 
@@ -92,6 +94,7 @@ class RtpengineService
             'command' => 'set-forwarding',
             'set' => $enabled ? 'on' : 'off',
         ]);
+
         return ($resp['result'] ?? null) === 'ok';
     }
 
@@ -123,6 +126,7 @@ class RtpengineService
                 'error' => $errstr,
                 'errno' => $errno,
             ]);
+
             return null;
         }
 
@@ -144,6 +148,7 @@ class RtpengineService
                     'sent' => $cookie,
                     'recv' => $echoed,
                 ]);
+
                 return null;
             }
 
@@ -153,6 +158,7 @@ class RtpengineService
                 'node' => $node->hostname,
                 'error' => $e->getMessage(),
             ]);
+
             return null;
         } finally {
             fclose($sock);
@@ -182,6 +188,7 @@ class RtpengineService
                 foreach ($v as $vv) {
                     $out .= $this->bencode($vv);
                 }
+
                 return $out.'e';
             }
             ksort($v);
@@ -189,6 +196,7 @@ class RtpengineService
             foreach ($v as $k => $vv) {
                 $out .= $this->bencode((string) $k).$this->bencode($vv);
             }
+
             return $out.'e';
         }
         throw new RuntimeException('rtpengine NG: unsupported bencode type '.gettype($v));
@@ -197,13 +205,12 @@ class RtpengineService
     /**
      * Decode a bencoded string. One-pass cursor parser — bencode is
      * unambiguous so no lookahead is needed beyond the type tag.
-     *
-     * @return mixed
      */
     protected function bdecode(string $s): mixed
     {
         $pos = 0;
         $value = $this->bdecodeAt($s, $pos);
+
         return $value;
     }
 
@@ -218,6 +225,7 @@ class RtpengineService
             }
             $n = (int) substr($s, $pos + 1, $end - $pos - 1);
             $pos = $end + 1;
+
             return $n;
         }
 
@@ -228,6 +236,7 @@ class RtpengineService
                 $list[] = $this->bdecodeAt($s, $pos);
             }
             $pos++;
+
             return $list;
         }
 
@@ -242,6 +251,7 @@ class RtpengineService
                 $dict[$key] = $this->bdecodeAt($s, $pos);
             }
             $pos++;
+
             return $dict;
         }
 
@@ -254,6 +264,7 @@ class RtpengineService
             $len = (int) substr($s, $pos, $colon - $pos);
             $val = substr($s, $colon + 1, $len);
             $pos = $colon + 1 + $len;
+
             return $val;
         }
 

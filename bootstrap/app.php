@@ -1,8 +1,21 @@
 <?php
 
+use App\Http\Middleware\AppendOidcIdToken;
+use App\Http\Middleware\ApplyUserPreferences;
+use App\Http\Middleware\CheckRole;
+use App\Http\Middleware\CheckToolPermission;
+use App\Http\Middleware\PanelRedirect;
+use App\Http\Middleware\RequirePlatformRole;
+use App\Http\Middleware\SetPermissionsTeamContext;
+use App\Http\Middleware\VerifyInboundMailToken;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Request;
+use Spatie\Permission\Middleware\PermissionMiddleware;
+use Spatie\Permission\Middleware\RoleMiddleware;
+use Spatie\Permission\Middleware\RoleOrPermissionMiddleware;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -47,25 +60,25 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->web(append: [
-            \App\Http\Middleware\SetPermissionsTeamContext::class,
-            \App\Http\Middleware\ApplyUserPreferences::class,
+            SetPermissionsTeamContext::class,
+            ApplyUserPreferences::class,
             // OIDC id_token injection for Passport's /oauth/token
             // endpoint. No-ops on every other route — see the
             // middleware class docblock.
-            \App\Http\Middleware\AppendOidcIdToken::class,
+            AppendOidcIdToken::class,
         ]);
 
         $middleware->alias([
-            'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
-            'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
-            'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
-            'check.role' => \App\Http\Middleware\CheckRole::class,
-            'platform.role' => \App\Http\Middleware\RequirePlatformRole::class,
-            'panel.redirect' => \App\Http\Middleware\PanelRedirect::class,
-            'inbound-mail-token' => \App\Http\Middleware\VerifyInboundMailToken::class,
+            'role' => RoleMiddleware::class,
+            'permission' => PermissionMiddleware::class,
+            'role_or_permission' => RoleOrPermissionMiddleware::class,
+            'check.role' => CheckRole::class,
+            'platform.role' => RequirePlatformRole::class,
+            'panel.redirect' => PanelRedirect::class,
+            'inbound-mail-token' => VerifyInboundMailToken::class,
             // Gates the SSO entry points on the tooling.* permission
             // pattern shared with `AdminPanelProvider::userCanAccessTool`.
-            'tool' => \App\Http\Middleware\CheckToolPermission::class,
+            'tool' => CheckToolPermission::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
@@ -81,7 +94,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // catches anything that slipped past (Filament's own
         // Authenticate::authenticate() throws 403 at a point our
         // middleware can't reliably intercept in every test path).
-        $exceptions->render(function (\Symfony\Component\HttpKernel\Exception\HttpException $e, \Illuminate\Http\Request $request) {
+        $exceptions->render(function (HttpException $e, Request $request) {
             if ($e->getStatusCode() !== 403) {
                 return null;
             }
@@ -107,6 +120,7 @@ return Application::configure(basePath: dirname(__DIR__))
             if ($currentRoot === $home) {
                 return null;
             }
+
             return redirect($home);
         });
     })->create();

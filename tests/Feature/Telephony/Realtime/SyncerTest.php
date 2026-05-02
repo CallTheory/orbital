@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Telephony\Realtime;
 
+use App\Models\AgentGroup;
 use App\Models\CallQueue;
 use App\Models\Extension;
+use App\Models\QueueStrategyTemplate;
 use App\Models\SipTrunk;
 use App\Models\Team;
 use App\Models\User;
@@ -218,14 +220,14 @@ class SyncerTest extends TestCase
     public function test_queue_syncer_writes_queues_row_with_prefixed_name(): void
     {
         $team = $this->makeTeam();
-        $template = \App\Models\QueueStrategyTemplate::create([
+        $template = QueueStrategyTemplate::create([
             'name' => 'Test Strategy',
             'strategy' => 'rrmemory',
             'timeout' => 25,
             'retry' => 5,
             'wrapup_time' => 10,
         ]);
-        $group = \App\Models\AgentGroup::create([
+        $group = AgentGroup::create([
             'name' => 'test_group',
             'label' => 'Test Group',
             'strategy_template_id' => $template->id,
@@ -291,6 +293,7 @@ class SyncerTest extends TestCase
     protected function makeTeam(string $name = 'Acme'): Team
     {
         $owner = User::factory()->create();
+
         return Team::forceCreate([
             'user_id' => $owner->id,
             'name' => $name,

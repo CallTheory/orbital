@@ -196,6 +196,7 @@ class KamailioService
             array_keys($results),
             $results,
         ));
+
         return [
             'ok' => $allOk,
             'results' => $results,

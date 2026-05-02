@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\Sso\GrafanaProxyController;
+use App\Http\Controllers\Admin\Sso\HAProxyStatsProxyController;
 use App\Http\Controllers\Admin\Sso\IcecastProxyController;
 use App\Http\Controllers\Admin\Sso\MailpitProxyController;
 use App\Http\Controllers\Admin\Sso\PgAdminProxyController;
@@ -9,11 +10,13 @@ use App\Http\Controllers\Admin\Sso\RedisCommanderProxyController;
 use App\Http\Controllers\Admin\Sso\RedisCommanderSsoController;
 use App\Http\Controllers\Admin\Sso\SeaweedFsProxyController;
 use App\Http\Controllers\ChatController;
+use App\Http\Controllers\ClientInvitationController;
 use App\Http\Controllers\ImpersonationController;
 use App\Http\Controllers\Mail\AttachmentDownloadController;
 use App\Http\Controllers\Oidc\OidcDiscoveryController;
 use App\Http\Controllers\Oidc\OidcJwksController;
 use App\Http\Controllers\Oidc\OidcUserinfoController;
+use App\Models\Orchestration;
 use Illuminate\Support\Facades\Route;
 
 /**
@@ -73,7 +76,7 @@ Route::get('/chat/{client}/{persona}', [ChatController::class, 'show'])
 // Filament Intake Flows list. Session-cookie auth via the web
 // guard; super-admin enforcement happens inline.
 Route::middleware(['auth'])->group(function () {
-    Route::get('/admin/flow-editor/{orchestration}', function (\App\Models\Orchestration $orchestration) {
+    Route::get('/admin/flow-editor/{orchestration}', function (Orchestration $orchestration) {
         abort_unless(auth()->user()?->isSuperAdmin(), 403);
 
         return view('admin.flow-editor', [
@@ -143,7 +146,7 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
         ->middleware('tool:tooling.prometheus')
         ->name('admin.prometheus.forward');
 
-    Route::any('haproxy-stats/{path?}', [\App\Http\Controllers\Admin\Sso\HAProxyStatsProxyController::class, 'forward'])
+    Route::any('haproxy-stats/{path?}', [HAProxyStatsProxyController::class, 'forward'])
         ->where('path', '.*')
         ->middleware('tool:tooling.haproxy_stats')
         ->name('admin.haproxy-stats.forward');
@@ -173,8 +176,7 @@ Route::get('oauth/userinfo', OidcUserinfoController::class)
 // already signed in as the invited email, signed in as the wrong
 // email. The controller resolves which; the view branches.
 // ──────────────────────────────────────────────────────────────────
-Route::get('/invite/{token}', [\App\Http\Controllers\ClientInvitationController::class, 'show'])
+Route::get('/invite/{token}', [ClientInvitationController::class, 'show'])
     ->name('invitation.show');
-Route::post('/invite/{token}', [\App\Http\Controllers\ClientInvitationController::class, 'accept'])
+Route::post('/invite/{token}', [ClientInvitationController::class, 'accept'])
     ->name('invitation.accept');
-

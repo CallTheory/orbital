@@ -211,6 +211,7 @@ class PerTenantDialplanTest extends TestCase
     protected function makeTenant(string $name = 'Acme'): Team
     {
         $owner = User::factory()->create();
+
         return Team::forceCreate([
             'user_id' => $owner->id,
             'name' => $name,

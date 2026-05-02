@@ -37,6 +37,7 @@ class LivekitWebhookController extends Controller
             Log::warning('livekit webhook: signature verification failed', [
                 'remote' => $request->ip(),
             ]);
+
             return response()->json(['error' => 'unauthorized'], 401);
         }
 

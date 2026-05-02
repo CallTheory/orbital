@@ -43,13 +43,13 @@ class UploadCallRecordingJob implements ShouldQueue
 
     /**
      * @param  string  $sourcePath  Absolute path to the file on the local
-     *   filesystem (the spool volume mounted into the orbital.test container).
+     *                              filesystem (the spool volume mounted into the orbital.test container).
      * @param  string  $sipCallId  SIP Call-ID stamped on the file by
-     *   the recording-daemon metadata; correlates to `call_logs.sip_call_id`.
+     *                             the recording-daemon metadata; correlates to `call_logs.sip_call_id`.
      * @param  string  $direction  CallRecording::DIRECTION_* — caller_in / caller_out.
      * @param  string|null  $legUuid  Optional grouping key for paired files
-     *   (typically equals sip_call_id; carried separately so multi-leg
-     *   sessions can stitch differently if needed).
+     *                                (typically equals sip_call_id; carried separately so multi-leg
+     *                                sessions can stitch differently if needed).
      * @param  string  $source  CallRecording::SOURCE_* — defaults to rtpengine_edge.
      */
     public function __construct(
@@ -85,6 +85,7 @@ class UploadCallRecordingJob implements ShouldQueue
                 'sip_call_id' => $this->sipCallId,
                 'source' => $this->sourcePath,
             ]);
+
             return;
         }
 
@@ -99,6 +100,7 @@ class UploadCallRecordingJob implements ShouldQueue
             ->first();
         if ($existing) {
             @unlink($this->sourcePath);
+
             return;
         }
 

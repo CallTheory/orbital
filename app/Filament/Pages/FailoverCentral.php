@@ -151,6 +151,7 @@ class FailoverCentral extends Page
                 'statistics' => $statistics,
             ];
         }
+
         return $rows;
     }
 
@@ -174,6 +175,7 @@ class FailoverCentral extends Page
         if (count($up) === 0) {
             return 'down';
         }
+
         return 'warn';
     }
 
@@ -613,6 +615,7 @@ class FailoverCentral extends Page
                 $node = RtpengineNode::find($arguments['id']);
                 if (! $node) {
                     Notification::make()->danger()->title('Node not found')->send();
+
                     return;
                 }
                 $result = app(RtpengineDrainService::class)->drain($node);
@@ -640,6 +643,7 @@ class FailoverCentral extends Page
                 $node = RtpengineNode::find($arguments['id']);
                 if (! $node) {
                     Notification::make()->danger()->title('Node not found')->send();
+
                     return;
                 }
                 $result = app(RtpengineDrainService::class)->activate($node);

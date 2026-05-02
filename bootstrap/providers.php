@@ -1,5 +1,16 @@
 <?php
 
+use App\Providers\AppServiceProvider;
+use App\Providers\Filament\AdminPanelProvider;
+use App\Providers\Filament\OperatorPanelProvider;
+use App\Providers\Filament\PortalPanelProvider;
+use App\Providers\FortifyServiceProvider;
+use App\Providers\HorizonServiceProvider;
+use App\Providers\JetstreamServiceProvider;
+use App\Providers\PgvectorProvider;
+use App\Providers\RuntimeConfigOverrideProvider;
+use App\Providers\TelescopeServiceProvider;
+
 return [
     // MUST boot before any Filament PanelProvider. Filament's internal
     // service providers resolve PanelRegistry during their boot pass,
@@ -8,17 +19,17 @@ return [
     // platform_settings DB overrides (brand name, logo path, primary
     // color, etc.) — otherwise panel() reads the .env defaults, bakes
     // them in, and the admin-UI edits appear to not take effect.
-    App\Providers\RuntimeConfigOverrideProvider::class,
-    App\Providers\AppServiceProvider::class,
-    App\Providers\Filament\AdminPanelProvider::class,
-    App\Providers\Filament\OperatorPanelProvider::class,
-    App\Providers\Filament\PortalPanelProvider::class,
-    App\Providers\FortifyServiceProvider::class,
-    App\Providers\HorizonServiceProvider::class,
-    App\Providers\JetstreamServiceProvider::class,
+    RuntimeConfigOverrideProvider::class,
+    AppServiceProvider::class,
+    AdminPanelProvider::class,
+    OperatorPanelProvider::class,
+    PortalPanelProvider::class,
+    FortifyServiceProvider::class,
+    HorizonServiceProvider::class,
+    JetstreamServiceProvider::class,
     // Replaces Pgvector\Laravel\PgvectorServiceProvider (disabled via
     // composer dont-discover) — registers the vector schema macros
     // without auto-loading the package's unconditional migration.
-    App\Providers\PgvectorProvider::class,
-    App\Providers\TelescopeServiceProvider::class,
+    PgvectorProvider::class,
+    TelescopeServiceProvider::class,
 ];

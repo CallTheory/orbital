@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Telephony;
 
+use App\Models\CallRecording;
 use App\Models\Extension;
 use App\Models\Team;
 
@@ -121,8 +122,8 @@ class CallRecordingService
      * first, then livekit. Empty list = recording disabled by policy.
      *
      * @param  array{has_livekit_room?: bool, has_sip_dialog?: bool}  $context
-     *   Per-call hints. Defaults assume both surfaces apply, which is
-     *   correct for the most common path (external SIP → AI in LK room).
+     *                                                                          Per-call hints. Defaults assume both surfaces apply, which is
+     *                                                                          correct for the most common path (external SIP → AI in LK room).
      * @return list<string>
      */
     public function resolveSurfaces(CallRecordingPolicy $policy, array $context = []): array
@@ -136,10 +137,10 @@ class CallRecordingService
 
         $surfaces = [];
         if ($hasSip) {
-            $surfaces[] = \App\Models\CallRecording::SOURCE_RTPENGINE_EDGE;
+            $surfaces[] = CallRecording::SOURCE_RTPENGINE_EDGE;
         }
         if ($hasLk) {
-            $surfaces[] = \App\Models\CallRecording::SOURCE_LIVEKIT_EGRESS;
+            $surfaces[] = CallRecording::SOURCE_LIVEKIT_EGRESS;
         }
 
         return $surfaces;

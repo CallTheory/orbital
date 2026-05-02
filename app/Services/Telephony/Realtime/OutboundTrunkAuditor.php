@@ -109,6 +109,7 @@ class OutboundTrunkAuditor
         if (! preg_match('/^sip:(?:[^@]+@)?(?<host>[^:;\/?>]+)/i', $contact, $m)) {
             return null;
         }
+
         return strtolower($m['host']);
     }
 
@@ -117,6 +118,7 @@ class OutboundTrunkAuditor
         if (! preg_match('/^trunk_(\d+)$/', $endpointId, $m)) {
             return null;
         }
+
         return (int) $m[1];
     }
 
@@ -126,6 +128,7 @@ class OutboundTrunkAuditor
         if ($id === null) {
             return null;
         }
+
         return SipTrunk::query()
             ->withoutGlobalScope('team')
             ->where('id', $id)

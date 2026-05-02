@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Telephony\Realtime;
 
+use App\Models\AgentGroup;
+use App\Models\AgentGroupMember;
 use App\Models\CallQueue;
 use App\Models\Extension;
 use App\Models\Skill;
@@ -171,7 +173,7 @@ class OperatorSkillRoutingTest extends TestCase
         // just verify the fallback is reached and produces a row
         // when the agent group exists.
         $team = $this->makeTeam();
-        $group = \App\Models\AgentGroup::create([
+        $group = AgentGroup::create([
             'name' => 'fallback',
             'label' => 'Fallback Pool',
             'is_active' => true,
@@ -185,7 +187,7 @@ class OperatorSkillRoutingTest extends TestCase
         ]);
 
         $operator = $this->makeOperator('Legacy Op', '5030');
-        \App\Models\AgentGroupMember::create([
+        AgentGroupMember::create([
             'agent_group_id' => $group->id,
             'member_type' => User::class,
             'member_id' => $operator->id,
@@ -208,6 +210,7 @@ class OperatorSkillRoutingTest extends TestCase
     protected function makeTeam(string $name = 'Acme', string $tier = 'free'): Team
     {
         $owner = User::factory()->create();
+
         return Team::forceCreate([
             'user_id' => $owner->id,
             'name' => $name,
@@ -231,6 +234,7 @@ class OperatorSkillRoutingTest extends TestCase
             'assignable_type' => User::class,
             'assignable_id' => $user->id,
         ]);
+
         return $user->fresh();
     }
 }

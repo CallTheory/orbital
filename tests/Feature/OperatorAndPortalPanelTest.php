@@ -40,7 +40,7 @@ class OperatorAndPortalPanelTest extends TestCase
         $user = $this->makeUserWithTeamlessRole('operator');
 
         $this->actingAs($user)
-            ->get('/operator')
+            ->get('/operator/workspace')
             ->assertOk();
     }
 
@@ -49,7 +49,7 @@ class OperatorAndPortalPanelTest extends TestCase
         $user = $this->makeUserWithTeamlessRole('super_admin');
 
         $this->actingAs($user)
-            ->get('/operator')
+            ->get('/operator/workspace')
             ->assertOk();
     }
 

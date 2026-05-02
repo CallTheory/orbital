@@ -28,6 +28,15 @@ jobs:
       - name: Checkout
         uses: https://git.calltheory.com/actions/checkout@v4
 
+      - name: Install PHP runtime libraries
+        # The act-based runner image is minimal and ships without
+        # libsodium23, which PHP 8.4 from setup-php is dynamically
+        # linked against. Without it `php -v` fails before any
+        # extension setup runs. Move into the runner image later.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libsodium23
+
       - name: Setup PHP 8.4
         # Mirrored from github.com/shivammathur/setup-php; mirror lives at
         # git.calltheory.com/actions/setup-php and tracks upstream via

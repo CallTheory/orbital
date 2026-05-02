@@ -47,14 +47,18 @@ return new class extends Migration
             $table->index(['shared_directory_id', 'sort_order']);
         });
 
-        // Exactly one parent must be set.
-        DB::statement(<<<'SQL'
-            ALTER TABLE directory_field_definitions ADD CONSTRAINT directory_field_definitions_parent_exactly_one
-            CHECK (
-                (team_id IS NOT NULL AND shared_directory_id IS NULL)
-                OR (team_id IS NULL AND shared_directory_id IS NOT NULL)
-            )
-        SQL);
+        // Exactly one parent must be set. Guarded by driver so the
+        // sqlite-backed feature test suite can still migrate; the
+        // production constraint enforces this on pgsql.
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement(<<<'SQL'
+                ALTER TABLE directory_field_definitions ADD CONSTRAINT directory_field_definitions_parent_exactly_one
+                CHECK (
+                    (team_id IS NOT NULL AND shared_directory_id IS NULL)
+                    OR (team_id IS NULL AND shared_directory_id IS NOT NULL)
+                )
+            SQL);
+        }
     }
 
     public function down(): void

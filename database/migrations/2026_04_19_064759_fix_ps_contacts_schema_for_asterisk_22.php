@@ -32,6 +32,11 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // pgsql-only schema reshape; sqlite test suite skips this.
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            return;
+        }
+
         // TRUNCATE first so the ALTER can safely convert
         // `prune_on_boot` from double → varchar without tripping
         // a cast error on existing rows (there shouldn't be any
@@ -47,6 +52,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            return;
+        }
+
         DB::statement('TRUNCATE TABLE ps_contacts');
 
         DB::statement('ALTER TABLE ps_contacts

@@ -58,7 +58,7 @@ class AdminResourceSmokeTest extends TestCase
             // Conversational AI group
             'personalities' => ['/admin/personalities'],
             'intake-goals' => ['/admin/intake-goals'],
-            'intake-flows' => ['/admin/intake-flows'],
+            'orchestrations' => ['/admin/orchestrations'],
             'voices' => ['/admin/voices'],
             'knowledge-stores' => ['/admin/knowledge-stores'],
             // Monitor group

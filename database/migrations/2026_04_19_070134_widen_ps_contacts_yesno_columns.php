@@ -23,6 +23,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            return;
+        }
+
         DB::statement('ALTER TABLE ps_contacts
             ALTER COLUMN authenticate_qualify TYPE varchar(8),
             ALTER COLUMN prune_on_boot        TYPE varchar(8),
@@ -31,6 +35,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            return;
+        }
+
         DB::statement('ALTER TABLE ps_contacts
             ALTER COLUMN authenticate_qualify TYPE varchar(3),
             ALTER COLUMN prune_on_boot        TYPE varchar(3),

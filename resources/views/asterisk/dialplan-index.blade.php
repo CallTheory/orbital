@@ -19,9 +19,9 @@
 ; DO NOT EDIT — regenerated when clients are created/deleted
 ;===============================================================================
 
-#include "generated/from-trunk.conf"
-#include "generated/extensions_generated.conf"
+#include "from-trunk.conf"
+#include "extensions_generated.conf"
 
 @foreach($teamIds as $teamId)
-#include "generated/clients/{{ $teamId }}-dialplan.conf"
+#include "clients/{{ $teamId }}-dialplan.conf"
 @endforeach

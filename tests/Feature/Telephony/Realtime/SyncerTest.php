@@ -92,7 +92,9 @@ class SyncerTest extends TestCase
         $row = DB::table('ps_endpoints')->where('id', "t{$team->id}_300")->first();
 
         $this->assertSame('yes', $row->webrtc);
-        $this->assertSame('transport-wss', $row->transport);
+        // WebRTC endpoints intentionally leave transport unset — Asterisk
+        // auto-picks from the active client contact (see EndpointSyncer).
+        $this->assertNull($row->transport);
         $this->assertSame('dtls', $row->media_encryption);
         $this->assertSame('yes', $row->ice_support);
         $this->assertSame('yes', $row->rtcp_mux);

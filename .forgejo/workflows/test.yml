@@ -69,6 +69,39 @@ jobs:
         # Fix locally with `vendor/bin/pint` (no --test) before pushing.
         run: vendor/bin/pint --test
 
+      - name: Setup Node 20
+        # Filament panels render Vite-managed assets (panel-styles partial),
+        # so feature tests that hit a panel URL fail without a built
+        # manifest at public/build/manifest.json. The frontend job builds
+        # too, but its artefacts don't cross job boundaries — so build
+        # here as well, just before the test run.
+        uses: https://git.calltheory.com/actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Enable corepack + activate pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@latest --activate
+
+      - name: Get pnpm store path
+        id: pnpm-cache
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: https://git.calltheory.com/actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.path }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-${{ runner.os }}-
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend assets
+        run: pnpm run build
+
       - name: Run tests
         # phpunit.xml configures SQLite in-memory + array cache + sync
         # queue, so no service containers are needed. `composer test`

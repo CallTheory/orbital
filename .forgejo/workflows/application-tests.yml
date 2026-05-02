@@ -1,17 +1,24 @@
 name: Application Tests
 
-# Runs PHP tests + a frontend build smoke check on every push to main,
-# every PR, every v* tag, and on manual dispatch. The publish workflows
-# (publish-images.yml, publish-helm.yml, publish-release-archives.yml)
-# trigger on this workflow's completion via workflow_run, gated to fire
-# only when:
-#   - this workflow succeeded
-#   - the original event was a tag push (not a PR / branch push)
-#   - the head_branch starts with 'v' (i.e. v* release tag)
+# Single end-to-end pipeline: PHP tests + frontend build run on every
+# push to main, every PR, every v* tag, and on manual dispatch. On a
+# v* tag push (or manual dispatch with a version), the publish jobs
+# downstream of the tests fire in sequence:
 #
-# That gating means tests run on EVERY push (so problems surface early
-# in PRs and on main), but only release-tag SHAs that pass tests reach
-# the build/publish path.
+#   php + frontend  →  tag  →  publish-images
+#                              publish-helm
+#                              publish-archives  (needs both above)
+#
+# Why one workflow instead of four cross-workflow workflow_run chains:
+# Forgejo's workflow_run dispatch was unreliable for tag pushes —
+# upstream Test runs completed, downstream publishes never fired —
+# so we stopped relying on it. `needs:` between jobs in the same
+# workflow is rock-solid in act_runner and keeps the trigger gating
+# in one file.
+#
+# rtpengine .debs stay in publish-rtpengine-debs.yml because they
+# are independent of the application bundle (built from upstream C
+# source, no dep on app tests).
 
 on:
   push:
@@ -20,6 +27,12 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 0.12.0). Leave empty to run tests only.'
+        required: false
+        type: string
+        default: ''
 
 jobs:
   php:
@@ -150,3 +163,470 @@ jobs:
         # strongest signal we have; add Vitest / Playwright later as
         # a follow-up if frontend logic grows.
         run: pnpm run build
+
+  # ────────────────────────────────────────────────────────────────────
+  # Publish gate: compute version + extra-tags, gated to push events
+  # and dispatch. PRs skip this and the entire publish chain. main
+  # pushes set version='' so only :latest + :SHA image tags get applied
+  # downstream; v* tag pushes set version=X.Y.Z which becomes the
+  # extra image tag plus the helm chart version.
+  # ────────────────────────────────────────────────────────────────────
+  tag:
+    if: github.event_name != 'pull_request'
+    needs: [php, frontend]
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.compute.outputs.version }}
+      tag:     ${{ steps.compute.outputs.tag }}
+      extra:   ${{ steps.compute.outputs.extra }}
+    steps:
+      - id: compute
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              VERSION="${{ github.event.inputs.version }}"
+              if [ -n "$VERSION" ]; then
+                  TAG="v${VERSION}"
+              else
+                  TAG=""
+              fi
+          elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+              TAG="${GITHUB_REF#refs/tags/}"
+              VERSION="${TAG#v}"
+          else
+              # main-branch push — no version. Image publish still
+              # runs; helm + archives skip via their own if: gates.
+              TAG=""
+              VERSION=""
+          fi
+          echo "tag=${TAG}"        >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          # extra-tags pass-through for the reusable image build —
+          # always equals VERSION (empty for main pushes).
+          echo "extra=${VERSION}"  >> "$GITHUB_OUTPUT"
+
+  publish-images:
+    needs: tag
+    strategy:
+      fail-fast: false
+      # One reusable-workflow call per image — they run in parallel.
+      matrix:
+        include:
+          - name: laravel
+            dockerfile: Dockerfile
+            context: .
+          - name: asterisk
+            dockerfile: Dockerfile
+            context: docker/asterisk
+          - name: agent-worker
+            dockerfile: Dockerfile
+            context: agent-worker
+    uses: actions/.forgejo-workflows/.forgejo/workflows/orbital-cosign.yml@main
+    with:
+      image-name: ${{ matrix.name }}
+      context: ${{ matrix.context }}
+      dockerfile: ${{ matrix.dockerfile }}
+      extra-tags: ${{ needs.tag.outputs.extra }}
+    secrets: inherit
+
+  publish-helm:
+    needs: tag
+    # Helm chart only publishes on actual versioned releases. main
+    # pushes don't emit a chart — only image :latest moves.
+    if: |
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'workflow_dispatch' && needs.tag.outputs.version != '')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: https://git.calltheory.com/actions/checkout@v4
+
+      - name: Set up Helm
+        uses: https://git.calltheory.com/actions/setup-helm@v4
+        with:
+          version: v3.16.0
+
+      - name: Surface chart version
+        id: version
+        # Re-export the upstream tag job's output as a step output so
+        # subsequent steps can keep using ${{ steps.version.outputs.version }}
+        # without rewriting every reference.
+        run: echo "version=${{ needs.tag.outputs.version }}" >> "$GITHUB_OUTPUT"
+
+      - name: Lint chart
+        run: helm lint helm/orbital
+
+      - name: Render chart against every per-provider values file
+        run: |
+          for vals in helm/orbital/values-*.yaml; do
+            echo "==> rendering with $vals"
+            helm template orbital helm/orbital -n orbital -f "$vals" >/dev/null
+          done
+
+      - name: Package chart
+        run: |
+          helm package helm/orbital \
+              --version ${{ steps.version.outputs.version }} \
+              --app-version ${{ steps.version.outputs.version }} \
+              --destination /tmp/charts
+
+      - name: Log in to Harbor (Helm OCI)
+        # Pass Harbor secrets through `env:` rather than splicing them
+        # into the shell line directly. Project-scoped Harbor robots
+        # have usernames like `robot$orbital+pusher`; if you do
+        # `--username "${{ secrets.HARBOR_USERNAME }}"`, Forgejo
+        # substitutes the literal string into the script and bash then
+        # expands `$orbital` as a variable (= empty), corrupting the
+        # username. `env:` puts the value in a real env var, and
+        # `"$VAR"` expands once with no further re-parsing.
+        env:
+          HARBOR_REGISTRY: ${{ secrets.HARBOR_REGISTRY }}
+          HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
+          HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
+        run: |
+          # printf %s, NOT echo — echo appends \n which helm registry
+          # login treats as part of the password and rejects.
+          printf '%s' "$HARBOR_PASSWORD" | helm registry login "$HARBOR_REGISTRY" \
+              --username "$HARBOR_USERNAME" \
+              --password-stdin
+
+      - name: Push chart
+        id: push
+        env:
+          HARBOR_REGISTRY: ${{ secrets.HARBOR_REGISTRY }}
+        run: |
+          set -euo pipefail
+          # Capture stdout+stderr so we can extract the digest. Helm
+          # prints `Digest: sha256:<hash>` after a successful push.
+          # Sign by digest (not tag) so signatures survive tag retags.
+          helm push "/tmp/charts/orbital-${{ steps.version.outputs.version }}.tgz" \
+              "oci://${HARBOR_REGISTRY}/orbital/charts" 2>&1 | tee /tmp/push.log
+          DIGEST=$(grep -oE 'sha256:[a-f0-9]{64}' /tmp/push.log | head -1)
+          if [ -z "$DIGEST" ]; then
+              echo "Failed to extract digest from helm push output" >&2
+              exit 1
+          fi
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Install Cosign
+        uses: https://git.calltheory.com/actions/cosign-installer@v3
+        with:
+          cosign-release: v2.4.0
+
+      - name: Sign chart with Cosign
+        # Same signing pattern the reusable image workflow uses for
+        # the Docker images, applied to the chart artifact. Signs by
+        # digest so the signature is bound to immutable content.
+        env:
+          HARBOR_REGISTRY: ${{ secrets.HARBOR_REGISTRY }}
+          HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
+          HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
+          COSIGN_KEY: ${{ secrets.COSIGN_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          # Cosign reads registry creds from `cosign login` (writes to
+          # ~/.docker/config.json). Reuse the Harbor robot creds.
+          cosign login "$HARBOR_REGISTRY" \
+              --username "$HARBOR_USERNAME" \
+              --password "$HARBOR_PASSWORD"
+          cosign sign --yes --key env://COSIGN_KEY \
+              "${HARBOR_REGISTRY}/orbital/charts/orbital@${DIGEST}"
+
+      - name: Report
+        env:
+          HARBOR_REGISTRY: ${{ secrets.HARBOR_REGISTRY }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          echo "Chart pushed to oci://${HARBOR_REGISTRY}/orbital/charts/orbital:${{ steps.version.outputs.version }}"
+          echo "Digest:  ${DIGEST}"
+          echo "Cosign:  signed"
+          echo
+          echo "Customers install via:"
+          echo "  helm install orbital oci://${HARBOR_REGISTRY}/orbital/charts/orbital \\"
+          echo "      --version ${{ steps.version.outputs.version }} \\"
+          echo "      -n orbital --create-namespace \\"
+          echo "      -f values-vultr-k3s.yaml   # or whichever provider"
+
+  publish-archives:
+    # Customer-handoff bundle: OCI image archives + helm chart .tgz +
+    # SHA256SUMS + cosign sign-blob signatures, attached to the Forgejo
+    # release for the tag. Lets a customer leave Call Theory's Harbor
+    # registry and run Orbital entirely from local archives.
+    needs: [tag, publish-images, publish-helm]
+    if: |
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'workflow_dispatch' && needs.tag.outputs.version != '')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # create + update releases, attach assets
+
+    steps:
+      - name: Checkout
+        uses: https://git.calltheory.com/actions/checkout@v4
+
+      - name: Surface version
+        id: version
+        run: |
+          echo "tag=${{ needs.tag.outputs.tag }}"        >> "$GITHUB_OUTPUT"
+          echo "version=${{ needs.tag.outputs.version }}" >> "$GITHUB_OUTPUT"
+
+      - name: Install tooling (skopeo, jq, curl)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends skopeo jq curl
+
+      - name: Set up Helm
+        uses: https://git.calltheory.com/actions/setup-helm@v4
+        with:
+          version: v3.16.0
+
+      - name: Install Cosign
+        uses: https://git.calltheory.com/actions/cosign-installer@v3
+        with:
+          cosign-release: v2.4.0
+
+      - name: Authenticate to Harbor
+        # Skopeo reads ~/.docker/config.json; Helm uses its own
+        # registry creds store via `helm registry login`. Set up both.
+        # Same `env:`-block pattern publish-helm uses to keep Harbor
+        # robot usernames (containing `$`) intact through bash.
+        env:
+          HARBOR_REGISTRY: ${{ secrets.HARBOR_REGISTRY }}
+          HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
+          HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.docker
+          AUTH=$(printf '%s:%s' "$HARBOR_USERNAME" "$HARBOR_PASSWORD" | base64 -w0)
+          cat > ~/.docker/config.json <<JSON
+          {"auths": {"${HARBOR_REGISTRY}": {"auth": "${AUTH}"}}}
+          JSON
+          chmod 600 ~/.docker/config.json
+          # printf %s, not echo — `helm registry login --password-stdin`
+          # treats trailing \n as part of the password.
+          printf '%s' "$HARBOR_PASSWORD" | helm registry login "$HARBOR_REGISTRY" \
+              --username "$HARBOR_USERNAME" \
+              --password-stdin
+
+      - name: Export images to OCI archives (linux/amd64)
+        # Skopeo streams registry → oci-archive without an intermediate
+        # in-memory or layer-cache step, so peak disk is bounded by the
+        # final archive size. --override-os/--arch picks the amd64
+        # manifest from any multi-arch index without rebuilding.
+        env:
+          HARBOR_REGISTRY: ${{ secrets.HARBOR_REGISTRY }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/release
+          for image in laravel asterisk agent-worker; do
+            src="docker://${HARBOR_REGISTRY}/orbital/${image}:${VERSION}"
+            dst="oci-archive:/tmp/release/${image}-${VERSION}.oci.tar"
+            echo "==> ${src} → ${dst}"
+            skopeo copy --override-os linux --override-arch amd64 "$src" "$dst"
+          done
+          ls -lh /tmp/release/
+
+      - name: Pull Helm chart .tgz
+        env:
+          HARBOR_REGISTRY: ${{ secrets.HARBOR_REGISTRY }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          helm pull "oci://${HARBOR_REGISTRY}/orbital/charts/orbital" \
+              --version "${VERSION}" \
+              --destination /tmp/release
+          ls -lh /tmp/release/
+
+      - name: Generate SHA256SUMS
+        # Covers .oci.tar + chart .tgz only. The .sig files are
+        # signatures over those, generated next; SHA256SUMS itself is
+        # then signed too, so verifying SHA256SUMS.sig with our public
+        # key gives transitive trust over the full bundle.
+        run: |
+          set -euo pipefail
+          cd /tmp/release
+          sha256sum *.oci.tar *.tgz > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Cosign sign-blob each archive + the checksum file
+        env:
+          COSIGN_KEY: ${{ secrets.COSIGN_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          cd /tmp/release
+          for f in *.oci.tar *.tgz SHA256SUMS; do
+            echo "==> signing ${f}"
+            cosign sign-blob --yes --key env://COSIGN_KEY \
+                --output-signature "${f}.sig" \
+                "$f"
+          done
+          ls -lh
+
+      - name: Create or update Forgejo release with all archives
+        # Idempotent on re-run: if the release exists, PATCH the body;
+        # if any asset already exists with the same name (e.g. a retry
+        # after a failed upload), DELETE then re-upload. Forgejo's
+        # asset-name uniqueness constraint would otherwise reject.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          API="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}"
+          AUTH_HEADER="Authorization: token ${GITHUB_TOKEN}"
+
+          # --- Render release body --------------------------------
+          # Unquoted heredoc: ${VERSION} expands; \${var} stays literal
+          # (so the customer-facing example code blocks render with
+          # placeholders intact).
+          BODY=$(cat <<EOF
+          ## Orbital ${VERSION}
+
+          Self-hosted artifact bundle. Use these to leave Call Theory's
+          Harbor registry and run Orbital from your own infrastructure
+          with no further pull dependency on \`cr.calltheory.com\`.
+
+          ### Files
+
+          | File | Contents |
+          |------|----------|
+          | \`laravel-${VERSION}.oci.tar\` | Laravel app image (linux/amd64) |
+          | \`asterisk-${VERSION}.oci.tar\` | Asterisk image (linux/amd64) |
+          | \`agent-worker-${VERSION}.oci.tar\` | Python agent-worker image (linux/amd64) |
+          | \`orbital-${VERSION}.tgz\` | Helm chart |
+          | \`SHA256SUMS\` | SHA-256 checksums for all archives above |
+          | \`*.sig\` | Cosign \`sign-blob\` signature for each file (including SHA256SUMS) |
+
+          ### Verifying integrity (no Cosign required)
+
+          \`\`\`bash
+          sha256sum -c SHA256SUMS
+          \`\`\`
+
+          ### Verifying signatures (Cosign)
+
+          Same Cosign public key used to sign the registry-hosted images
+          and chart. Ask Call Theory for \`cosign.pub\` if you don't
+          have it.
+
+          \`\`\`bash
+          # Verifying SHA256SUMS suffices — it covers every other file.
+          cosign verify-blob --key cosign.pub \\
+              --signature SHA256SUMS.sig SHA256SUMS
+
+          # Per-file (optional):
+          cosign verify-blob --key cosign.pub \\
+              --signature laravel-${VERSION}.oci.tar.sig \\
+              laravel-${VERSION}.oci.tar
+          \`\`\`
+
+          ### Loading into Docker
+
+          \`\`\`bash
+          docker load -i laravel-${VERSION}.oci.tar
+          docker load -i asterisk-${VERSION}.oci.tar
+          docker load -i agent-worker-${VERSION}.oci.tar
+          \`\`\`
+
+          ### Pushing to your own registry
+
+          \`\`\`bash
+          for image in laravel asterisk agent-worker; do
+              skopeo copy oci-archive:\${image}-${VERSION}.oci.tar \\
+                  docker://your-registry.example.com/orbital/\${image}:${VERSION}
+          done
+          \`\`\`
+
+          ### Installing the chart
+
+          \`\`\`bash
+          helm install orbital orbital-${VERSION}.tgz \\
+              -n orbital --create-namespace \\
+              -f your-values.yaml \\
+              --set global.image.registry=your-registry.example.com
+          \`\`\`
+
+          ### rtpengine .debs (separate, public release)
+
+          The kamailio + rtpengine edge runs on bare Ubuntu VMs, outside
+          the cluster. Its Debian packages live on **orbital-setup**'s
+          matching public release (no auth required, signed by the same
+          Cosign key as everything above):
+
+          <https://git.calltheory.com/actions/orbital-setup/releases/tag/${TAG_NAME}>
+          EOF
+          )
+          BODY_JSON=$(jq -Rs . <<<"$BODY")
+
+          # --- Get-or-create release ------------------------------
+          echo "==> Looking up release for tag ${TAG_NAME}"
+          GET_RESP=$(curl -sS -w '\n%{http_code}' -H "$AUTH_HEADER" \
+              "${API}/releases/tags/${TAG_NAME}" || true)
+          GET_CODE="${GET_RESP##*$'\n'}"
+          GET_BODY="${GET_RESP%$'\n'$GET_CODE}"
+
+          if [[ "$GET_CODE" == "200" ]]; then
+              RELEASE_ID=$(echo "$GET_BODY" | jq -r '.id')
+              echo "Existing release id ${RELEASE_ID}; updating body."
+              curl -sS -X PATCH "${API}/releases/${RELEASE_ID}" \
+                  -H "$AUTH_HEADER" \
+                  -H "Content-Type: application/json" \
+                  -d "{\"name\":\"Orbital ${VERSION}\",\"body\":${BODY_JSON}}" \
+                  >/dev/null
+          elif [[ "$GET_CODE" == "404" ]]; then
+              echo "Creating new release."
+              CREATE_RESP=$(curl -sS -X POST "${API}/releases" \
+                  -H "$AUTH_HEADER" \
+                  -H "Content-Type: application/json" \
+                  -d "{\"tag_name\":\"${TAG_NAME}\",\"name\":\"Orbital ${VERSION}\",\"body\":${BODY_JSON},\"draft\":false,\"prerelease\":false}")
+              RELEASE_ID=$(echo "$CREATE_RESP" | jq -r '.id')
+              if [[ -z "$RELEASE_ID" || "$RELEASE_ID" == "null" ]]; then
+                  echo "Release creation failed: $CREATE_RESP" >&2
+                  exit 1
+              fi
+          else
+              echo "Unexpected ${GET_CODE} from release lookup: $GET_BODY" >&2
+              exit 1
+          fi
+          echo "Release ID: ${RELEASE_ID}"
+
+          # --- Idempotently delete same-named assets, then upload --
+          EXISTING=$(curl -sS -H "$AUTH_HEADER" \
+              "${API}/releases/${RELEASE_ID}/assets")
+
+          cd /tmp/release
+          for f in *; do
+              EXISTING_ID=$(echo "$EXISTING" \
+                  | jq -r ".[] | select(.name == \"${f}\") | .id")
+              if [[ -n "$EXISTING_ID" && "$EXISTING_ID" != "null" ]]; then
+                  echo "==> deleting existing asset ${f} (id ${EXISTING_ID})"
+                  curl -sS -X DELETE "${API}/releases/${RELEASE_ID}/assets/${EXISTING_ID}" \
+                      -H "$AUTH_HEADER"
+              fi
+              echo "==> uploading ${f}"
+              curl -sS -X POST "${API}/releases/${RELEASE_ID}/assets?name=${f}" \
+                  -H "$AUTH_HEADER" \
+                  -F "attachment=@${f}" \
+                  >/dev/null
+          done
+          echo "All assets uploaded."
+
+      - name: Cleanup
+        if: ${{ always() }}
+        run: rm -rf /tmp/release
+
+      - name: Report
+        env:
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          TAG_NAME: ${{ steps.version.outputs.tag }}
+        run: |
+          echo "Release: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${TAG_NAME}"

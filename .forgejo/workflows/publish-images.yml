@@ -6,21 +6,19 @@ name: Publish images to Harbor
 #   - tag set: git-SHA + latest + any extra-tags supplied
 #   - Cosign signing by digest
 #
-# Triggers:
-# - Tag push (`v1.2.3`) — production releases. extra-tag = `1.2.3`.
-# - workflow_dispatch — manual run with operator-supplied tag.
-# - Branch push to `main` — pre-release builds; only the SHA + `latest`
-#   tags get pushed (no extra-tags).
+# Triggered reactively when the `Test` workflow completes successfully
+# (via workflow_run). The if: gate fires only on tag pushes (v*) or
+# main-branch pushes; PR test completions are filtered out so PR runs
+# don't push images. workflow_dispatch remains an escape hatch for
+# operator-driven hotfix builds.
 #
 # Pin: @main during iteration; switch to @v1 once their workflow cuts a
 # release tag.
 
 on:
-  push:
-    tags:
-      - 'v*'
-    branches:
-      - main
+  workflow_run:
+    workflows: ["Test"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       tag:
@@ -31,6 +29,17 @@ on:
 
 jobs:
   tag:
+    # Gate: dispatch always allowed; otherwise only fire after a Test
+    # run that succeeded and originated from a push to main or a v*
+    # tag. PR test completions evaluate to false (event != push).
+    if: |
+      github.event_name == 'workflow_dispatch' || (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' && (
+          github.event.workflow_run.head_branch == 'main' ||
+          startsWith(github.event.workflow_run.head_branch, 'v')
+        )
+      )
     runs-on: ubuntu-latest
     outputs:
       extra: ${{ steps.compute.outputs.extra }}
@@ -38,12 +47,19 @@ jobs:
       - id: compute
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.tag }}" ]; then
-            echo "extra=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.ref_type }}" = "tag" ]; then
-            # Strip leading `v` so v1.2.3 → 1.2.3 (matches Helm chart appVersion)
-            echo "extra=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+              # Manual dispatch with explicit extra-tag (e.g. hotfix build).
+              echo "extra=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
           else
-            echo "extra=" >> "$GITHUB_OUTPUT"
+              # Auto-trigger: derive extra from the head_branch of the
+              # Test workflow run that completed.
+              HEAD="${{ github.event.workflow_run.head_branch }}"
+              if [[ "${HEAD}" == v* ]]; then
+                  # v1.2.3 → 1.2.3 (matches Helm chart appVersion).
+                  echo "extra=${HEAD#v}" >> "$GITHUB_OUTPUT"
+              else
+                  # main push → no extra-tag, only :latest + :SHA get applied.
+                  echo "extra=" >> "$GITHUB_OUTPUT"
+              fi
           fi
 
   build:

@@ -1,0 +1,107 @@
+name: Test
+
+# Runs PHP tests + a frontend build smoke check on every push to main,
+# every PR, every v* tag, and on manual dispatch. The publish workflows
+# (publish-images.yml, publish-helm.yml, publish-release-archives.yml)
+# trigger on this workflow's completion via workflow_run, gated to fire
+# only when:
+#   - this workflow succeeded
+#   - the original event was a tag push (not a PR / branch push)
+#   - the head_branch starts with 'v' (i.e. v* release tag)
+#
+# That gating means tests run on EVERY push (so problems surface early
+# in PRs and on main), but only release-tag SHAs that pass tests reach
+# the build/publish path.
+
+on:
+  push:
+    branches: [main]
+    tags:     ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  php:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: bcmath, ctype, exif, fileinfo, gd, intl, mbstring, openssl, opcache, pdo, pdo_sqlite, redis, soap, tokenizer, xml
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer files
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer/files
+          key: composer-${{ runner.os }}-${{ hashFiles('composer.lock') }}
+          restore-keys: |
+            composer-${{ runner.os }}-
+
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: Lint with Pint (--test mode)
+        # Fails the job if any file would be modified by Pint.
+        # Fix locally with `vendor/bin/pint` (no --test) before pushing.
+        run: vendor/bin/pint --test
+
+      - name: Run tests
+        # phpunit.xml configures SQLite in-memory + array cache + sync
+        # queue, so no service containers are needed. `composer test`
+        # runs `php artisan config:clear && php artisan test`.
+        run: composer test
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Enable corepack + activate pnpm
+        # corepack ships with Node; no third-party action needed.
+        # `pnpm@latest` tracks the latest stable; pin a specific version
+        # in package.json's `packageManager` field if reproducibility
+        # becomes important.
+        run: |
+          corepack enable
+          corepack prepare pnpm@latest --activate
+          pnpm --version
+
+      - name: Get pnpm store path
+        id: pnpm-cache
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.path }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-${{ runner.os }}-
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend assets
+        # No frontend test framework configured in package.json yet
+        # (only `build` and `dev` scripts). Build success is the
+        # strongest signal we have; add Vitest / Playwright later as
+        # a follow-up if frontend logic grows.
+        run: pnpm run build

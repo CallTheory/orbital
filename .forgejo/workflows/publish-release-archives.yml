@@ -4,10 +4,12 @@ name: Attach release archives to Forgejo
 # the Forgejo release for the tag. Lets a customer leave Call Theory's
 # Harbor registry and run Orbital entirely from local archives.
 #
-# Triggered in parallel with publish-images.yml + publish-helm.yml on
-# `v*` tag push. Polls Harbor (~30 min cap) until all four artifacts
-# (3 images + chart) are present, then mirrors them to OCI archive
-# format, signs, checksums, and uploads to the Forgejo release.
+# Triggered reactively when the `Test` workflow completes successfully
+# on a v* tag push (via workflow_run). Runs in parallel with sibling
+# publish-images.yml + publish-helm.yml — both fire from the same Test
+# completion event. Polls Harbor (~30 min cap) until all four artifacts
+# (3 images + chart) land from those siblings, then mirrors them to OCI
+# archive format, signs, checksums, and uploads to the Forgejo release.
 #
 # Output bundle (per tag):
 #   laravel-X.Y.Z.oci.tar
@@ -24,9 +26,9 @@ name: Attach release archives to Forgejo
 # Architecture: linux/amd64 only (Vultr + on-prem x86 deployments).
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_run:
+    workflows: ["Test"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       tag:
@@ -36,6 +38,14 @@ on:
 
 jobs:
   archive:
+    # Gate: dispatch always allowed; otherwise only fire after a Test
+    # run that succeeded and originated from a v* tag push.
+    if: |
+      github.event_name == 'workflow_dispatch' || (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        startsWith(github.event.workflow_run.head_branch, 'v')
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: write   # create + update releases, attach assets
@@ -48,9 +58,10 @@ jobs:
         id: version
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            TAG="${{ github.event.inputs.tag }}"
+              TAG="${{ github.event.inputs.tag }}"
           else
-            TAG="${GITHUB_REF_NAME}"
+              # Triggered by Test workflow_run completion on a v* tag.
+              TAG="${{ github.event.workflow_run.head_branch }}"
           fi
           # Tag is `vX.Y.Z`; version (used for image tags + chart version) is `X.Y.Z`.
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"

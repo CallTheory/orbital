@@ -47,14 +47,32 @@ env:
 
 jobs:
   build:
-    # MUST match edge VM OS — libavcodec / libwebsockets / glib versions
-    # need to line up with what the .deb's runtime deps will pull from
-    # apt mirrors on the customer's edge VM.
+    # `ubuntu-24.04` is a custom runner label registered against
+    # catthehacker/ubuntu:runner-24.04 (NOT the default `ubuntu-latest`,
+    # which points at 22.04). MUST match edge VM OS — libavcodec /
+    # libwebsockets / glib versions need to line up with what the
+    # .deb's runtime deps will pull from apt mirrors on the customer's
+    # edge VM. The runtime check below is defense-in-depth in case
+    # the label mapping ever drifts.
     runs-on: ubuntu-24.04
     permissions:
       contents: read   # workflow runs from this repo's tag; doesn't push back here
 
     steps:
+      - name: Verify Ubuntu 24.04 runner
+        # If the catthehacker tag mapping ever drifts off 24.04 silently,
+        # this catches it before we build .debs against the wrong libc / glib.
+        run: |
+          set -euo pipefail
+          . /etc/os-release
+          echo "Runner: ${PRETTY_NAME} (${VERSION_ID})"
+          if [[ "${VERSION_ID}" != "24.04" ]]; then
+              echo "Expected Ubuntu 24.04 runner; got ${VERSION_ID}." >&2
+              echo "Edge VMs are 24.04. Building on a different version" >&2
+              echo "produces .debs with incompatible runtime deps." >&2
+              exit 1
+          fi
+
       - name: Compute tags
         id: tags
         run: |

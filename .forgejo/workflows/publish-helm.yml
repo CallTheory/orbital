@@ -14,9 +14,9 @@ name: Publish Helm chart to Harbor
 # Both stay supported; the OCI route avoids needing the source repo.
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_run:
+    workflows: ["Test"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       version:
@@ -26,7 +26,32 @@ on:
         default: '0.1.2'
 
 jobs:
+  # Entry job — gates the publish on Test having succeeded for a v* tag.
+  # Outputs the chart version to the publish job. If `if:` evaluates
+  # false, this job + everything downstream of it skip.
+  tag:
+    if: |
+      github.event_name == 'workflow_dispatch' || (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        startsWith(github.event.workflow_run.head_branch, 'v')
+      )
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.compute.outputs.version }}
+    steps:
+      - id: compute
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+              # Strip leading `v` — Helm semver requires no prefix.
+              HEAD="${{ github.event.workflow_run.head_branch }}"
+              echo "version=${HEAD#v}" >> "$GITHUB_OUTPUT"
+          fi
+
   publish:
+    needs: tag
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -40,15 +65,12 @@ jobs:
         with:
           version: v3.16.0
 
-      - name: Compute chart version
+      - name: Surface chart version
         id: version
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
-          else
-            # Strip leading `v` — Helm semver requires no prefix.
-            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-          fi
+        # Re-export the upstream tag job's output as a step output so
+        # subsequent steps can keep using ${{ steps.version.outputs.version }}
+        # without rewriting every reference.
+        run: echo "version=${{ needs.tag.outputs.version }}" >> "$GITHUB_OUTPUT"
 
       - name: Lint chart
         run: helm lint helm/orbital

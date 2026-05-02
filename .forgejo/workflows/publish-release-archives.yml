@@ -4,7 +4,7 @@ name: Attach release archives to Forgejo
 # the Forgejo release for the tag. Lets a customer leave Call Theory's
 # Harbor registry and run Orbital entirely from local archives.
 #
-# Triggered reactively when the `Test` workflow completes successfully
+# Triggered reactively when the `Application Tests` workflow completes successfully
 # on a v* tag push (via workflow_run). Runs in parallel with sibling
 # publish-images.yml + publish-helm.yml — both fire from the same Test
 # completion event. Polls Harbor (~30 min cap) until all four artifacts
@@ -27,7 +27,7 @@ name: Attach release archives to Forgejo
 
 on:
   workflow_run:
-    workflows: ["Test"]
+    workflows: ["Application Tests"]
     types: [completed]
   workflow_dispatch:
     inputs:
@@ -60,7 +60,7 @@ jobs:
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
               TAG="${{ github.event.inputs.tag }}"
           else
-              # Triggered by Test workflow_run completion on a v* tag.
+              # Triggered by Application Tests workflow_run completion on a v* tag.
               TAG="${{ github.event.workflow_run.head_branch }}"
           fi
           # Tag is `vX.Y.Z`; version (used for image tags + chart version) is `X.Y.Z`.

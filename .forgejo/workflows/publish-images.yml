@@ -6,7 +6,7 @@ name: Publish images to Harbor
 #   - tag set: git-SHA + latest + any extra-tags supplied
 #   - Cosign signing by digest
 #
-# Triggered reactively when the `Test` workflow completes successfully
+# Triggered reactively when the `Application Tests` workflow completes successfully
 # (via workflow_run). The if: gate fires only on tag pushes (v*) or
 # main-branch pushes; PR test completions are filtered out so PR runs
 # don't push images. workflow_dispatch remains an escape hatch for
@@ -17,7 +17,7 @@ name: Publish images to Harbor
 
 on:
   workflow_run:
-    workflows: ["Test"]
+    workflows: ["Application Tests"]
     types: [completed]
   workflow_dispatch:
     inputs:
@@ -51,7 +51,7 @@ jobs:
               echo "extra=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
           else
               # Auto-trigger: derive extra from the head_branch of the
-              # Test workflow run that completed.
+              # Application Tests workflow run that completed.
               HEAD="${{ github.event.workflow_run.head_branch }}"
               if [[ "${HEAD}" == v* ]]; then
                   # v1.2.3 → 1.2.3 (matches Helm chart appVersion).

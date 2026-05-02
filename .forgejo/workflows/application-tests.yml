@@ -1,4 +1,4 @@
-name: Test
+name: Application Tests
 
 # Runs PHP tests + a frontend build smoke check on every push to main,
 # every PR, every v* tag, and on manual dispatch. The publish workflows

@@ -15,7 +15,7 @@ name: Publish Helm chart to Harbor
 
 on:
   workflow_run:
-    workflows: ["Test"]
+    workflows: ["Application Tests"]
     types: [completed]
   workflow_dispatch:
     inputs:

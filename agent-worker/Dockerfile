@@ -6,24 +6,62 @@
 # hot-reload. This file is for `docker build` from the agent-worker/
 # context for releases pushed to Harbor.
 
-FROM python:3.12-slim AS base
+# ---------- Stage 1: wheel / venv builder ----------
+# build-essential lives here only — needed for any livekit/silero/
+# onnxruntime dep that ships only an sdist for the target arch.
+# Keeping it out of the runtime stage drops the Trivy hit count
+# significantly (gcc, libc6-dev, binutils, etc. are all gone from
+# the final image).
+FROM python:3.12-slim AS builder
+
+ENV PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Isolated venv so the runtime stage can copy a single tree and skip
+# any pip / setuptools metadata under /usr/local/lib/python3.12.
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install -r /tmp/requirements.txt
+
+# ---------- Stage 2: runtime ----------
+FROM python:3.12-slim AS runtime
 
 WORKDIR /app
 
+# `apt-get upgrade -y` picks up base-image patches that landed since
+# python:3.12-slim was last republished. curl is used by the
+# HEALTHCHECK below; ca-certificates for TLS to the Laravel
+# heartbeat endpoint + the LiveKit / Anthropic / OpenAI control
+# planes.
 RUN apt-get update \
     && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends \
-        build-essential \
         curl \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Pull in deps first so layer caching saves time on code-only changes.
-COPY requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
 # Bake every Python module into the image.
 COPY . /app/
+
+# Drop privileges. The agent worker only needs outbound network +
+# read access to /app, so a plain non-root user with no shell is
+# enough. uid 1000 matches the contract used by the laravel image.
+RUN useradd --system --uid 1000 --no-create-home --shell /usr/sbin/nologin agent \
+    && chown -R agent:agent /app
+USER agent
 
 # Heartbeat keeps the Filament admin's Agent Worker health card green.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \

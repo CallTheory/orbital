@@ -25,7 +25,10 @@ RUN apt-get update \
 
 # Isolated venv so the runtime stage can copy a single tree and skip
 # any pip / setuptools metadata under /usr/local/lib/python3.12.
-RUN python -m venv /opt/venv
+# --upgrade-deps bootstraps the venv with the latest pip + setuptools
+# from PyPI rather than the bundled-in-Python ensurepip versions, which
+# trail PyPI by several months and trip Trivy on pip CVEs.
+RUN python -m venv --upgrade-deps /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 COPY requirements.txt /tmp/requirements.txt
@@ -40,13 +43,18 @@ WORKDIR /app
 # python:3.12-slim was last republished. curl is used by the
 # HEALTHCHECK below; ca-certificates for TLS to the Laravel
 # heartbeat endpoint + the LiveKit / Anthropic / OpenAI control
-# planes.
+# planes. The trailing `pip install --upgrade pip` does the same job
+# for python:slim's bundled pip — Trivy scans the base layer's copy
+# at /usr/local/lib/python3.12 separately from the venv's, so both
+# need to be current. We never invoke base pip at runtime, but it
+# still ships in the image.
 RUN apt-get update \
     && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends \
         curl \
         ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir --upgrade pip
 
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH" \

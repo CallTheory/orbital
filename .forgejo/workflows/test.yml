@@ -26,10 +26,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: https://git.calltheory.com/actions/checkout@v4
 
       - name: Setup PHP 8.4
-        uses: shivammathur/setup-php@v2
+        # Mirrored from github.com/shivammathur/setup-php; mirror lives at
+        # git.calltheory.com/actions/setup-php and tracks upstream via
+        # Forgejo's pull-mirror sync. Updates flow through automatically.
+        uses: https://git.calltheory.com/actions/setup-php@v2
         with:
           php-version: '8.4'
           extensions: bcmath, ctype, exif, fileinfo, gd, intl, mbstring, openssl, opcache, pdo, pdo_sqlite, redis, soap, tokenizer, xml
@@ -37,7 +40,7 @@ jobs:
           tools: composer:v2
 
       - name: Cache Composer files
-        uses: actions/cache@v4
+        uses: https://git.calltheory.com/actions/cache@v4
         with:
           path: ~/.cache/composer/files
           key: composer-${{ runner.os }}-${{ hashFiles('composer.lock') }}
@@ -67,10 +70,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: https://git.calltheory.com/actions/checkout@v4
 
       - name: Setup Node 20
-        uses: actions/setup-node@v4
+        uses: https://git.calltheory.com/actions/setup-node@v4
         with:
           node-version: '20'
 
@@ -89,7 +92,7 @@ jobs:
         run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
 
       - name: Cache pnpm store
-        uses: actions/cache@v4
+        uses: https://git.calltheory.com/actions/cache@v4
         with:
           path: ${{ steps.pnpm-cache.outputs.path }}
           key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}

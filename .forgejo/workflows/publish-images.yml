@@ -78,7 +78,7 @@ jobs:
           - name: agent-worker
             dockerfile: Dockerfile
             context: agent-worker
-    uses: calltheory/.forgejo-workflows/.forgejo/workflows/orbital-cosign.yml@main
+    uses: actions/.forgejo-workflows/.forgejo/workflows/orbital-cosign.yml@main
     with:
       image-name: ${{ matrix.name }}
       context: ${{ matrix.context }}

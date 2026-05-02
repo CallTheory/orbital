@@ -153,7 +153,7 @@ jobs:
           cat RTPENGINE-SHA256SUMS
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@v3
+        uses: https://git.calltheory.com/actions/cosign-installer@v3
         with:
           cosign-release: v2.4.0
 

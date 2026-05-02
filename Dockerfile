@@ -9,7 +9,7 @@
 # only built by the Forgejo Actions release pipeline.
 
 # ---------- Stage 1: frontend assets ----------
-FROM node:22-slim AS frontend
+FROM node:22-alpine AS frontend
 
 WORKDIR /build
 
@@ -22,63 +22,80 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm run build
 
-# ---------- Stage 2: production runtime ----------
-FROM ubuntu:24.04 AS production
+# ---------- Stage 2: composer / vendor build ----------
+# composer:2 is itself an alpine image; --ignore-platform-reqs lets us
+# resolve the tree without rebuilding every PECL ext here. The runtime
+# stage installs the actual extensions, so the vendor tree is portable.
+FROM composer:2 AS vendor
+
+WORKDIR /app
+
+COPY composer.json composer.lock ./
+RUN composer install \
+        --no-dev --no-scripts --no-autoloader \
+        --prefer-dist --no-interaction \
+        --ignore-platform-reqs
+
+# ---------- Stage 3: production runtime ----------
+FROM php:8.4-fpm-alpine AS production
 
 LABEL maintainer="Orbital"
 
 ARG WWWGROUP=1000
 WORKDIR /var/www/html
 
-ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
 ENV COMPOSER_ALLOW_SUPERUSER=1
 ENV COMPOSER_NO_INTERACTION=1
 
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+# install-php-extensions is the upstream community installer that
+# resolves Alpine apk deps + PECL builds for every extension we need.
+# Pin to the major tag so the image stays reproducible per-rebuild.
+COPY --from=mlocati/php-extension-installer:2 /usr/bin/install-php-extensions /usr/local/bin/
 
-# PHP 8.4 + nginx + supervisor. Mirrors `docker/8.4/Dockerfile` for
-# extension parity with dev (Filament, Livewire, the agent-worker API,
-# the recording pipeline, and the SipJS softphone all assume the same
-# extension set), with `php8.4-fpm` and `nginx` added on top.
-RUN apt-get update \
-    && apt-get upgrade -y \
-    && apt-get install -y --no-install-recommends \
-        gnupg gosu curl ca-certificates zip unzip git supervisor sqlite3 libcap2-bin \
+# Runtime apk packages: nginx + supervisor for the web pod, su-exec
+# (alpine's gosu replacement) for entrypoint user-drop, bash for the
+# entrypoint script's `set -euo pipefail`, ca-certs + tzdata for TLS
+# + timezone, sox/ffmpeg/librsvg/sqlite for the recording + Filament
+# pipelines. install-php-extensions handles its own apk deps for each
+# PHP extension and cleans up build artefacts before we exit the layer.
+RUN apk add --no-cache \
+        bash \
+        ca-certificates \
+        curl \
+        ffmpeg \
+        librsvg \
         nginx \
-        python3 dnsutils librsvg2-bin fswatch ffmpeg sox libsox-fmt-mp3 \
-    && curl -sS 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x14aa40ec0831756756d7f66c4f4ea0aae5267a6c' | gpg --dearmor -o /etc/apt/keyrings/ppa_ondrej_php.gpg \
-    && echo "deb [signed-by=/etc/apt/keyrings/ppa_ondrej_php.gpg] https://ppa.launchpadcontent.net/ondrej/php/ubuntu noble main" > /etc/apt/sources.list.d/ppa_ondrej_php.list \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends \
-        php8.4-cli php8.4-fpm \
-        php8.4-pgsql php8.4-sqlite3 \
-        php8.4-gd php8.4-curl \
-        php8.4-imap php8.4-mbstring \
-        php8.4-xml php8.4-zip php8.4-bcmath \
-        php8.4-soap php8.4-intl php8.4-readline \
-        php8.4-ldap php8.4-msgpack php8.4-igbinary \
-        php8.4-redis \
-        php8.4-imagick php8.4-swoole \
-    && curl -sLS https://getcomposer.org/installer | php -- --install-dir=/usr/bin/ --filename=composer \
-    && apt-get -y autoremove && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+        sox \
+        sqlite \
+        su-exec \
+        supervisor \
+        tzdata \
+    && cp /usr/share/zoneinfo/$TZ /etc/localtime \
+    && echo $TZ > /etc/timezone \
+    && install-php-extensions \
+        bcmath gd igbinary imagick imap intl ldap msgpack opcache \
+        pdo_pgsql pgsql pdo_sqlite redis soap swoole zip \
+    && rm -rf /tmp/* /var/cache/apk/* /usr/local/lib/php/test \
+              /usr/local/lib/php/doc /usr/src
 
-# Ubuntu 24.04 ships a default `ubuntu` user at uid 1000; remove it so
-# we can claim 1000 for `sail` (matching the dev image's uid contract).
-RUN userdel -r ubuntu 2>/dev/null || true \
-    && groupadd --force -g $WWWGROUP sail \
-    && useradd -ms /bin/bash --no-user-group -g $WWWGROUP -u 1000 sail
+# Match the dev image's uid/gid contract so K8s securityContext
+# fsGroup=1000 lands on the same id space.
+RUN addgroup -g $WWWGROUP -S sail \
+    && adduser -S -D -H -u 1000 -G sail -s /sbin/nologin sail
+
+# Composer is needed only for `dump-autoload` after the source COPY.
+# Removed at the end of the stage so it doesn't ship in the image.
+COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
 
 # Shared php.ini overrides — same as dev. Applied to both CLI and FPM
 # SAPIs so the artisan-driven Horizon / Reverb pods share the runtime
 # the web pod's fpm workers see.
-COPY docker/8.4/php.ini /etc/php/8.4/cli/conf.d/99-orbital.ini
-COPY docker/8.4/php.ini /etc/php/8.4/fpm/conf.d/99-orbital.ini
+COPY docker/8.4/php.ini /usr/local/etc/php/conf.d/99-orbital.ini
 
-# Override the fpm pool: Unix socket, run as sail, keep K8s env vars.
+# fpm pool: Unix socket, run as sail, keep K8s env vars.
 RUN sed -i \
-        -e 's|^listen = .*|listen = /run/php/php8.4-fpm.sock|' \
+        -e 's|^listen = .*|listen = /run/php/php-fpm.sock|' \
         -e 's|^;\?listen.owner = .*|listen.owner = sail|' \
         -e 's|^;\?listen.group = .*|listen.group = sail|' \
         -e 's|^user = www-data|user = sail|' \
@@ -86,22 +103,19 @@ RUN sed -i \
         -e 's|^;\?clear_env = .*|clear_env = no|' \
         -e 's|^;\?catch_workers_output = .*|catch_workers_output = yes|' \
         -e 's|^;\?decorate_workers_output = .*|decorate_workers_output = no|' \
-        /etc/php/8.4/fpm/pool.d/www.conf
+        /usr/local/etc/php-fpm.d/www.conf
 
 # Run nginx workers as sail so they can talk to the fpm socket. Reduce
-# the default worker_processes from `auto` (= CPU count, often dozens
-# in K8s) to a fixed 4 — fpm is the bottleneck, not nginx.
+# worker_processes from auto (= CPU count, often dozens in K8s) to a
+# fixed 4 — fpm is the bottleneck, not nginx.
 RUN sed -i \
-        -e 's|^user www-data;|user sail;|' \
+        -e 's|^user nginx;|user sail;|' \
         -e 's|^worker_processes .*;|worker_processes 4;|' \
-        /etc/nginx/nginx.conf
+        /etc/nginx/nginx.conf \
+    && mkdir -p /run/nginx /run/php
 
-# Composer install first, before the source copy, so layer cache
-# survives code-only changes.
-COPY composer.json composer.lock ./
-RUN composer install \
-        --no-dev --no-scripts --no-autoloader \
-        --prefer-dist --no-interaction
+# Vendor tree from the composer-only builder stage.
+COPY --from=vendor /app/vendor ./vendor
 
 # Application source. .dockerignore strips out node_modules, vendor,
 # storage runtime state, .env, etc.
@@ -116,15 +130,18 @@ COPY --from=frontend /build/public/build ./public/build
 RUN composer dump-autoload --optimize --classmap-authoritative \
     && php artisan route:cache \
     && php artisan view:cache \
-    && php artisan event:cache
+    && php artisan event:cache \
+    && rm -f /usr/local/bin/composer
 
 # Storage / cache writable by the runtime user.
-RUN mkdir -p storage/framework/{cache/data,sessions,views} storage/logs bootstrap/cache \
+RUN mkdir -p storage/framework/cache/data storage/framework/sessions \
+             storage/framework/views storage/logs bootstrap/cache \
     && chown -R sail:sail storage bootstrap/cache \
     && chmod -R ug+rwX storage bootstrap/cache
 
 # Runtime config: nginx site, supervisor program list, entrypoint.
-COPY docker/laravel/nginx.conf /etc/nginx/sites-available/default
+# Alpine nginx includes /etc/nginx/http.d/*.conf (not sites-available).
+COPY docker/laravel/nginx.conf /etc/nginx/http.d/default.conf
 COPY docker/laravel/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY docker/laravel/entrypoint.sh /usr/local/bin/orbital-laravel-entrypoint
 RUN chmod +x /usr/local/bin/orbital-laravel-entrypoint

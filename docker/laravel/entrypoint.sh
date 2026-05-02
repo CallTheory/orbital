@@ -3,7 +3,7 @@ set -euo pipefail
 
 # fpm runs as `sail` against a Unix socket in /run/php — recreate on
 # each container start because /run is tmpfs.
-mkdir -p /run/php /var/log/php8.4-fpm
+mkdir -p /run/php /run/nginx
 chown sail:sail /run/php
 
 # storage/ + bootstrap/cache/ ownership and perms are already correct
@@ -13,7 +13,8 @@ chown sail:sail /run/php
 if [ "$#" -gt 0 ]; then
     # Horizon / Reverb pods pass `php artisan ...` via the K8s
     # `command:` override — bypass supervisord and run as `sail`.
-    exec gosu sail "$@"
+    # Alpine ships su-exec (BusyBox's gosu equivalent), not gosu.
+    exec su-exec sail "$@"
 fi
 
 exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf

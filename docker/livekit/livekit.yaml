@@ -20,7 +20,11 @@ room:
   departure_timeout: 20
 
 redis:
-  address: valkey:6379
+  # Valkey is fronted by HAProxy's redis VIP (haproxy:6379), which
+  # routes to the current primary in the 3-node Sentinel pool — the
+  # same endpoint rtpengine and the Laravel app (REDIS_HOST) use.
+  # There is no bare `valkey` host; the nodes are valkey-1/2/3.
+  address: haproxy:6379
   # Must match REDIS_PASSWORD in .env and the `--requirepass` value
   # on the valkey container. Regenerate via `openssl rand -hex 24`
   # and update all three in lockstep if you rotate it.

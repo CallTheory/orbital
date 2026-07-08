@@ -23,7 +23,7 @@ TELEPHONY     2× Kamailio (VRRP SIP VIP) · N× Asterisk · 2× LiveKit · 2× 
 APP           2× Laravel · 2× Reverb · 2× agent-worker · 2× Haraka · 2× Ollama
 OBSERVABILITY 2× Grafana · 2× Prometheus · 2× Loki · Promtail per host
 INTERNAL LB   2× HAProxy (VRRP internal VIP)
-DATA          3× Postgres (Patroni + etcd) · 1× pgBackRest · 3× Valkey + 3× Sentinel · 3+2+2 SeaweedFS
+DATA          3× Postgres (Patroni + etcd) · 1× Barman · 3× Valkey + 3× Sentinel · 3+2+2 SeaweedFS
 ```
 
 ---
@@ -362,30 +362,97 @@ All of these are restart-freely-safe.
 
 ## Backups & restore
 
-### pgBackRest (Postgres)
+### Barman (Postgres)
 
-A dedicated `pgbackrest-repo` container stores WAL archives + full
-backups. Each Patroni node pushes WAL via SSH. Repo lives on its own
-volume so a full Postgres-tier failure doesn't lose backups.
+A dedicated `barman` container stores WAL archives + full backups.
+Two parallel WAL pipelines feed it:
 
-**Schedule (default)**: WAL archiving continuous, full backup nightly,
-7-day retention. Adjust in `/etc/pgbackrest/pgbackrest.conf` on the
-repo host.
+- **Streaming** (primary): `pg_receivewal` against the permanent
+  `barman_streaming` replication slot. Patroni declares the slot
+  in DCS so it exists on every node and survives failover; libpq's
+  `target_session_attrs=read-write` in Barman's conninfo picks the
+  current writer automatically.
+- **archive_command** (fallback): each Patroni node pushes WAL via
+  `barman-wal-archive` over SSH. If the streaming pipeline ever
+  drops or falls behind, this catches it up.
 
-**Verify recent backup**:
+Full backups use `pg_basebackup` over libpq (no SSH back-channel
+needed). Barman's repo volume lives on its own host so a full
+Postgres-tier failure doesn't lose backups.
+
+**Schedule (default)**: WAL archiving continuous, retention 7 days
+(`RECOVERY WINDOW OF 7 DAYS`). Phase C wires schedule management to
+the admin UI under `System → Backups`.
+
+**Verify cluster health**:
 ```bash
-sail exec -u postgres patroni-2 pgbackrest --stanza=orbital info
+sail exec barman gosu barman barman check orbital
+```
+All lines should report OK once the cluster has bootstrapped and at
+least one full backup exists.
+
+**Take a backup on demand**:
+```bash
+sail exec barman gosu barman barman backup orbital
+sail exec barman gosu barman barman list-backups orbital
 ```
 
 **Point-in-time restore** — rare, but worth knowing the pattern:
-1. `patronictl pause` to stop auto-failover
-2. Stop Postgres on the target node
-3. `pgbackrest --stanza=orbital --type=time "--target=2026-04-19 08:00:00" restore`
-4. Start Postgres in recovery; apply WAL until target time
-5. `patronictl resume`
+1. `patronictl pause` to stop auto-failover.
+2. Stop Postgres on the target node.
+3. On the Barman host, recover into a target dir:
+   ```bash
+   barman recover orbital latest /tmp/restore \
+     --target-time "2026-04-19 08:00:00"
+   ```
+4. Move the recovered dir into PGDATA on the target node, start
+   Postgres in recovery; the `restore_command` in patroni.yml
+   (`barman-wal-restore`) replays WAL until the target time.
+5. `patronictl resume` once the new timeline is stable.
 
-Full procedure lives on the pgBackRest docs — this guide doesn't
-rehash it.
+**Replica clone**: Patroni's `create_replica_methods` lists
+`barman_recover` first and `basebackup_chmod` as fallback. The
+Barman path uses a remote staging dir on the Barman host — the new
+replica SSHes in, asks Barman to recover into staging, then rsyncs
+the staged tree back to PGDATA. Until the very first full backup
+exists, replicas automatically fall back to streaming
+`pg_basebackup` from the leader.
+
+**Cloud destinations**:
+
+- *Primary* (always on, defaults to in-cluster SeaweedFS): every
+  WAL Barman receives is mirrored to S3 by a `post_archive_script`
+  hook. Set per-deployment via `BARMAN_PRIMARY_S3_*` env vars on the
+  barman service (endpoint / bucket / key / secret / region).
+- *Offsite* (optional): a second S3 destination for DR. Activate
+  by setting `BARMAN_OFFSITE_S3_*`. The same WAL hook script
+  pushes a second copy when those vars are non-empty; it stays a
+  no-op until then.
+
+Full backups are NOT mirrored automatically — that would double
+Postgres load on every backup. The destination of a full backup is
+chosen per scheduled run from the admin UI (`System → Backups`).
+
+Implementation note: full cloud backups run from a **Patroni
+node**, not from the Barman container. `barman-cloud-backup` reads
+`pg_control` directly from the data directory, so it has to run
+where the data dir is. Each Patroni image ships
+`/etc/patroni/cloud-backup-runner.sh primary|offsite` (in the
+patroni entrypoint) which expects the AWS + Barman env vars passed
+in via SSH `-o SetEnv`. Phase C's schedule runner finds the leader
+through Patroni's REST API, SSHes in as `postgres`, and invokes
+the runner with the chosen destination's credentials. The Barman
+container only handles local backups (`barman backup orbital`) and
+the WAL mirror.
+
+Restore from a cloud backup uses `barman-cloud-restore`:
+```bash
+sail exec barman gosu barman barman-cloud-restore \
+    --endpoint-url "$PRIMARY_S3_ENDPOINT" \
+    "s3://$PRIMARY_S3_BUCKET" orbital <backup-id> <target-dir>
+```
+PITR with cloud WAL is the same plus `--target-time` and
+`barman-cloud-wal-restore` as the `restore_command`.
 
 ### SeaweedFS
 

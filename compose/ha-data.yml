@@ -1,7 +1,7 @@
 # Orbital HA data tier — Postgres portion (Phase B).
 #
 # Stands up a 3-node Patroni cluster with 3-node etcd and a
-# dedicated pgBackRest repository host. Runs ALONGSIDE the main
+# dedicated Barman repository host. Runs ALONGSIDE the main
 # docker-compose.yml on the same `sail` network but does not
 # replace the single-node `pgsql` service — the app keeps using
 # whatever DB_HOST points at in .env. This file exists so we can
@@ -11,22 +11,25 @@
 #
 # Usage:
 #   docker compose -f docker-compose.yml -f compose/ha-data.yml up -d \
-#       etcd-1 etcd-2 etcd-3 pgbackrest-repo \
+#       etcd-1 etcd-2 etcd-3 barman \
 #       patroni-1 patroni-2 patroni-3
 #
 #   # Inspect cluster state
 #   docker compose -f docker-compose.yml -f compose/ha-data.yml \
 #       exec patroni-1 patronictl -c /etc/patroni/patroni.yml list
 #
-#   # Create the pgbackrest stanza once the cluster is running
+#   # Verify Barman is healthy (must report all OK once Patroni has
+#   # bootstrapped and the streaming slot is live)
 #   docker compose -f docker-compose.yml -f compose/ha-data.yml \
-#       exec patroni-1 gosu postgres pgbackrest \
-#       --stanza=orbital --log-level-console=info stanza-create
+#       exec barman gosu barman barman check orbital
 #
 #   # Take a full backup
 #   docker compose -f docker-compose.yml -f compose/ha-data.yml \
-#       exec patroni-1 gosu postgres pgbackrest \
-#       --stanza=orbital --type=full --log-level-console=info backup
+#       exec barman gosu barman barman backup orbital
+#
+#   # List backups
+#   docker compose -f docker-compose.yml -f compose/ha-data.yml \
+#       exec barman gosu barman barman list-backups orbital
 #
 #   # Failover drill: kill the leader, watch a replica get promoted
 #   docker compose -f docker-compose.yml -f compose/ha-data.yml \
@@ -139,30 +142,62 @@ services:
             - ha-etcd-3:/var/lib/etcd
 
     # ------------------------------------------------------------
-    # pgBackRest repository — isolated backup host. Receives WAL
-    # and full/incremental backups from every Patroni node over
-    # SSH. Generates the shared SSH key pair on first boot into
-    # the `ha-pgbackrest-ssh` volume, which Patroni nodes mount
-    # read-only.
+    # Barman — isolated backup host. Pulls WAL via streaming
+    # replication (pg_receivewal against the permanent
+    # `barman_streaming` slot Patroni declares in its DCS config)
+    # and accepts WAL archive_command pushes from each Patroni
+    # node as a redundant fallback. Full backups via
+    # pg_basebackup over libpq. Generates the shared SSH key pair
+    # on first boot into the `ha-barman-ssh` volume, which Patroni
+    # nodes mount read-only for archive_command + replica
+    # recovery staging.
     # ------------------------------------------------------------
-    pgbackrest-repo:
+    barman:
         build:
-            context: ./docker/pgbackrest
+            context: ./docker/barman
         environment:
-            BACKUP_STANZA: orbital
+            BARMAN_SERVER_NAME: orbital
             PATRONI_NODE_1: patroni-1
             PATRONI_NODE_2: patroni-2
             PATRONI_NODE_3: patroni-3
-            PGDATA: /var/lib/postgresql/data/pgdata
+            BARMAN_DB_PASSWORD: ${BARMAN_DB_PASSWORD:-barman-dev}
+            BARMAN_STREAMING_PASSWORD: ${BARMAN_STREAMING_PASSWORD:-barman-streaming-dev}
+            # Phase B: primary cloud destination (SeaweedFS by
+            # default, S3-compatible). The post_archive_script
+            # inside the barman container mirrors every WAL here on
+            # arrival; the standalone cloud-backup.sh helper
+            # (invoked by Phase C's schedule runner) targets the
+            # same destination for full backups.
+            PRIMARY_S3_ENDPOINT: ${BARMAN_PRIMARY_S3_ENDPOINT:-http://seaweed-filer-1:8333}
+            PRIMARY_S3_BUCKET: ${BARMAN_PRIMARY_S3_BUCKET:-orbital-backups}
+            PRIMARY_S3_KEY: ${BARMAN_PRIMARY_S3_KEY:-${AWS_ACCESS_KEY_ID:-orbital}}
+            PRIMARY_S3_SECRET: ${BARMAN_PRIMARY_S3_SECRET:-${AWS_SECRET_ACCESS_KEY:-}}
+            PRIMARY_S3_REGION: ${BARMAN_PRIMARY_S3_REGION:-us-east-1}
+            # Phase B: optional offsite cloud destination. Stays
+            # cold until OFFSITE_S3_BUCKET (and friends) are set.
+            OFFSITE_S3_ENDPOINT: ${BARMAN_OFFSITE_S3_ENDPOINT:-}
+            OFFSITE_S3_BUCKET: ${BARMAN_OFFSITE_S3_BUCKET:-}
+            OFFSITE_S3_KEY: ${BARMAN_OFFSITE_S3_KEY:-}
+            OFFSITE_S3_SECRET: ${BARMAN_OFFSITE_S3_SECRET:-}
+            OFFSITE_S3_REGION: ${BARMAN_OFFSITE_S3_REGION:-us-east-1}
+        depends_on:
+            # Soft dep on the SeaweedFS filer: barman boots fine
+            # before SeaweedFS is up, and the post_archive_script
+            # tolerates 5xx by retrying via barman cron. We declare
+            # the dependency so the start order is consistent.
+            seaweed-filer-1: { condition: service_healthy }
         volumes:
-            - ha-pgbackrest-repo:/var/lib/pgbackrest
-            - ha-pgbackrest-ssh:/var/lib/pgbackrest-ssh
-            - ha-pgbackrest-sshd-keys:/etc/ssh/keys
+            - ha-barman-repo:/var/lib/barman
+            - ha-barman-ssh:/var/lib/barman-ssh
+            - ha-barman-sshd-keys:/etc/ssh/keys
         networks:
             - sail
         restart: unless-stopped
         healthcheck:
-            test: ["CMD", "pgrep", "sshd"]
+            # cron drives `barman cron` every minute (receive-wal
+            # supervisor + retention). sshd accepts archive_command
+            # and barman-recover.sh connections from Patroni nodes.
+            test: ["CMD-SHELL", "pgrep cron && pgrep sshd"]
             interval: 10s
             timeout: 3s
             retries: 5
@@ -186,7 +221,7 @@ services:
             etcd-1: { condition: service_healthy }
             etcd-2: { condition: service_healthy }
             etcd-3: { condition: service_healthy }
-            pgbackrest-repo: { condition: service_healthy }
+            barman: { condition: service_healthy }
         environment:
             PATRONI_NAME: patroni-1
             PATRONI_SCOPE: orbital
@@ -200,12 +235,14 @@ services:
             DB_DATABASE: ${DB_DATABASE:-orbital}
             PATRONI_TAGS_NOFAILOVER: "false"
             PATRONI_TAGS_NOSYNC: "false"
-            BACKUP_STANZA: orbital
-            BACKUP_REPO_HOST: pgbackrest-repo
-            BACKUP_REPO_USER: pgbackrest
+            BARMAN_HOST: barman
+            BARMAN_USER: barman
+            BARMAN_SERVER_NAME: orbital
+            BARMAN_DB_PASSWORD: ${BARMAN_DB_PASSWORD:-barman-dev}
+            BARMAN_STREAMING_PASSWORD: ${BARMAN_STREAMING_PASSWORD:-barman-streaming-dev}
         volumes:
             - ha-patroni-1:/var/lib/postgresql/data
-            - ha-pgbackrest-ssh:/var/lib/pgbackrest-ssh:ro
+            - ha-barman-ssh:/var/lib/barman-ssh:ro
         networks:
             - sail
         restart: unless-stopped
@@ -231,12 +268,14 @@ services:
             DB_DATABASE: ${DB_DATABASE:-orbital}
             PATRONI_TAGS_NOFAILOVER: "false"
             PATRONI_TAGS_NOSYNC: "false"
-            BACKUP_STANZA: orbital
-            BACKUP_REPO_HOST: pgbackrest-repo
-            BACKUP_REPO_USER: pgbackrest
+            BARMAN_HOST: barman
+            BARMAN_USER: barman
+            BARMAN_SERVER_NAME: orbital
+            BARMAN_DB_PASSWORD: ${BARMAN_DB_PASSWORD:-barman-dev}
+            BARMAN_STREAMING_PASSWORD: ${BARMAN_STREAMING_PASSWORD:-barman-streaming-dev}
         volumes:
             - ha-patroni-2:/var/lib/postgresql/data
-            - ha-pgbackrest-ssh:/var/lib/pgbackrest-ssh:ro
+            - ha-barman-ssh:/var/lib/barman-ssh:ro
 
     patroni-3:
         <<: *patroni-base
@@ -257,12 +296,14 @@ services:
             # pair.
             PATRONI_TAGS_NOFAILOVER: "true"
             PATRONI_TAGS_NOSYNC: "true"
-            BACKUP_STANZA: orbital
-            BACKUP_REPO_HOST: pgbackrest-repo
-            BACKUP_REPO_USER: pgbackrest
+            BARMAN_HOST: barman
+            BARMAN_USER: barman
+            BARMAN_SERVER_NAME: orbital
+            BARMAN_DB_PASSWORD: ${BARMAN_DB_PASSWORD:-barman-dev}
+            BARMAN_STREAMING_PASSWORD: ${BARMAN_STREAMING_PASSWORD:-barman-streaming-dev}
         volumes:
             - ha-patroni-3:/var/lib/postgresql/data
-            - ha-pgbackrest-ssh:/var/lib/pgbackrest-ssh:ro
+            - ha-barman-ssh:/var/lib/barman-ssh:ro
 
     # ------------------------------------------------------------
     # Valkey — 3-node replication set with Sentinel for HA.
@@ -285,6 +326,14 @@ services:
         networks:
             - sail
         restart: unless-stopped
+        # Valkey handles SIGTERM by flushing its AOF buffer and exiting
+        # cleanly. The compose default of 10s before SIGKILL is not
+        # enough to fsync a multi-tens-of-MB AOF, and a SIGKILL mid-write
+        # leaves a "Bad file format" tail that crash-loops the node on
+        # next boot — which takes down HAProxy:6379 and cascades to
+        # livekit, horizon, and the seaweed filer. 60s guarantees a clean
+        # flush. Inherited by valkey-2/3 via the *valkey-base anchor.
+        stop_grace_period: 60s
         healthcheck:
             test: ["CMD-SHELL", "valkey-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
             interval: 10s
@@ -555,11 +604,11 @@ volumes:
         driver: local
     ha-patroni-3:
         driver: local
-    ha-pgbackrest-repo:
+    ha-barman-repo:
         driver: local
-    ha-pgbackrest-ssh:
+    ha-barman-ssh:
         driver: local
-    ha-pgbackrest-sshd-keys:
+    ha-barman-sshd-keys:
         driver: local
     ha-valkey-1:
         driver: local

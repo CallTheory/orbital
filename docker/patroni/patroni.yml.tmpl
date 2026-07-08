@@ -41,11 +41,20 @@ bootstrap:
         retry_timeout: 10
         maximum_lag_on_failover: 1048576
         # Sync replication: one replica must be caught up or writes
-        # block. Matches the "3 nodes + pgBackRest" topology from the
+        # block. Matches the "3 nodes + barman" topology from the
         # HA plan: leader + sync replica + async reporting replica.
         synchronous_mode: true
         synchronous_mode_strict: false
         synchronous_node_count: 1
+        # Permanent physical replication slot for Barman's
+        # streaming pipeline. Patroni creates and maintains this
+        # slot on EVERY node so it survives failover — Barman's
+        # streaming_conninfo is multi-host and libpq's
+        # target_session_attrs=read-write picks the new leader on
+        # reconnect; the slot is already there waiting.
+        slots:
+            barman_streaming:
+                type: physical
         postgresql:
             use_pg_rewind: true
             use_slots: true
@@ -59,13 +68,20 @@ bootstrap:
                 # pgvector is part of the base image; load it on
                 # every node so vector ops keep working after failover.
                 shared_preload_libraries: 'vector'
-                # pgBackRest integration: every WAL segment is shipped
-                # to the pgbackrest-repo host. archive_mode=on is
-                # required even on replicas so a promotion doesn't
-                # leave a gap in the archive timeline.
+                # Barman integration: every WAL segment is shipped
+                # to the barman host via barman-wal-archive (SSH
+                # push). The streaming pipeline (pg_receivewal
+                # against barman_streaming slot) runs in parallel
+                # — this archive_command is the safety net.
+                # archive_mode=on is required even on replicas so a
+                # promotion doesn't leave a gap in the archive
+                # timeline.
                 archive_mode: 'on'
-                archive_command: 'pgbackrest --stanza=${BACKUP_STANZA} archive-push %p'
+                archive_command: 'barman-wal-archive ${BARMAN_HOST} ${BARMAN_SERVER_NAME} %p'
                 archive_timeout: 60
+                # Used during PITR and replica catch-up; no-op
+                # during normal streaming replication.
+                restore_command: 'barman-wal-restore ${BARMAN_HOST} ${BARMAN_SERVER_NAME} %f %p'
                 # Checksums catch silent disk corruption; enabled
                 # at initdb time (see initdb section below).
     initdb:
@@ -77,6 +93,14 @@ bootstrap:
         - host    all             all             127.0.0.1/32            md5
         - host    all             all             0.0.0.0/0               md5
         - host    replication     replicator      0.0.0.0/0               md5
+        # Barman's libpq connections come from the barman host on
+        # the docker network. The two roles are created in
+        # post-init.sh:
+        #   barman           — superuser for backup metadata reads
+        #   streaming_barman — REPLICATION for pg_basebackup +
+        #                      pg_receivewal
+        - host    all             barman           0.0.0.0/0              md5
+        - host    replication     streaming_barman 0.0.0.0/0              md5
     post_init: /etc/patroni/post-init.sh
     users:
         admin:
@@ -103,18 +127,17 @@ postgresql:
             password: ${POSTGRES_PASSWORD}
     parameters:
         unix_socket_directories: '/var/run/postgresql'
-    # Replica bootstrap: stream from current leader via a wrapper
-    # around pg_basebackup that force-chmods the data dir to 0700
-    # on completion. Direct `- basebackup` would work functionally
-    # but PostgreSQL rejects 0755 data dirs and Patroni's default
-    # mkdir umask is environment-dependent (seen 0755 in this
-    # image). The wrapper is deterministic.
-    #
-    # Once the pgbackrest stanza has its first full backup, add
-    # `pgbackrest` at the top of this list so it's tried first and
-    # offloads the leader during large-cluster clones.
+    # Replica bootstrap: try Barman recover first, fall back to
+    # `pg_basebackup` from the leader if Barman has no backup yet
+    # (e.g. very first cluster bootstrap, before any full backup
+    # has been taken). Patroni walks this list in order and the
+    # first method whose command exits 0 wins.
     create_replica_methods:
+        - barman_recover
         - basebackup_chmod
+    barman_recover:
+        command: /etc/patroni/barman-recover.sh
+        keep_data: false
     basebackup_chmod:
         command: /etc/patroni/basebackup-chmod.sh
         keep_data: false

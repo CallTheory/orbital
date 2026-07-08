@@ -3,7 +3,10 @@ api_key: APIorbitaldev4a85eae7
 api_secret: f4eca5232734d8d514da60b9a0f9c7c27b4b8473c550a442
 ws_url: ws://livekit:7880
 redis:
-  address: valkey:6379
+  # Valkey VIP via HAProxy (haproxy:6379) — shared call state with
+  # the livekit server. No bare `valkey` host exists; see
+  # docker/livekit/livekit.yaml.
+  address: haproxy:6379
   # Must match REDIS_PASSWORD in .env and the `--requirepass` value
   # on the valkey container. See docker/livekit/livekit.yaml for
   # the rotation pattern.

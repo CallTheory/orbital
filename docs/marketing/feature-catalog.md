@@ -192,8 +192,10 @@ third-party dependency in the failover path.
   control-plane output
 
 **DR story (in roadmap)**:
-- Continuous WAL archiving via pgBackRest to a dedicated repo host
-- Full nightly backups with 7-day retention (tunable)
+- Continuous WAL streaming + archive-command fallback via Barman
+  to a dedicated repo host
+- Scheduled full backups with configurable retention (tunable per
+  schedule from the admin UI)
 - SeaweedFS replication=001 keeps a second blob copy on every write
 - Cross-site replication + promotion is a future phase; single-site
   HA ships today

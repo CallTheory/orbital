@@ -1,0 +1,34 @@
+; Barman GLOBAL config (lives at /etc/barman/barman.conf on the
+; barman repo host). Per-server settings are split out into
+; /etc/barman.d/*.conf so adding a second cluster later is a drop-in
+; new file rather than an edit here.
+
+[barman]
+barman_user = barman
+configuration_files_directory = /etc/barman.d
+barman_home = /var/lib/barman
+log_file = /var/log/barman/barman.log
+log_level = INFO
+compression = gzip
+
+; Default retention; per-server blocks override.
+retention_policy = RECOVERY WINDOW OF 7 DAYS
+retention_policy_mode = auto
+wal_retention_policy = main
+
+; Run pg_basebackup against the streaming replication user; this
+; means Barman never needs an SSH connection back into the Postgres
+; host for full backups. Combined with `streaming_archiver = on` in
+; the per-server file, all WAL + base-backup traffic flows over
+; libpq from Patroni → Barman.
+backup_method = postgres
+
+; Pull WAL via pg_receivewal too. The archive_command fallback runs
+; in parallel; if either pipeline drops, the other catches up.
+streaming_archiver = on
+archiver = on
+
+; Reasonable defaults; per-server can override.
+streaming_archiver_name = barman_receive_wal
+streaming_backup_name = barman_streaming_backup
+parallel_jobs = 2

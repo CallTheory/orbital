@@ -1,0 +1,57 @@
+; Per-server config for the Orbital HA Postgres cluster.
+;
+; Leader discovery: we list ALL three Patroni hostnames in conninfo
+; and rely on libpq's `target_session_attrs=read-write` to pick the
+; current writer. On failover, the next reconnect lands on the new
+; leader automatically — no sidecar, no config rewrite.
+;
+; Replication slot: `barman_streaming` is declared as a PERMANENT
+; physical slot in Patroni's DCS config (see patroni.yml.tmpl), so
+; it exists on every node and survives failover. pg_receivewal
+; resumes against the new leader after a brief reconnect window.
+
+[orbital]
+description = "Orbital Postgres HA cluster"
+
+; Both conninfo strings target all three Patroni nodes; libpq picks
+; the writer.
+conninfo = host=${PATRONI_NODE_1},${PATRONI_NODE_2},${PATRONI_NODE_3} port=5432 user=barman dbname=postgres target_session_attrs=read-write
+streaming_conninfo = host=${PATRONI_NODE_1},${PATRONI_NODE_2},${PATRONI_NODE_3} port=5432 user=streaming_barman dbname=postgres target_session_attrs=read-write replication=true
+
+backup_method = postgres
+streaming_archiver = on
+archiver = on
+slot_name = barman_streaming
+create_slot = auto
+
+; Retention: 7 days of recovery window. Phase C admin UI can
+; override per-schedule.
+retention_policy = RECOVERY WINDOW OF 7 DAYS
+
+; Cloud WAL mirror (Phase B).
+;
+; Every WAL Barman is about to archive gets mirrored to S3 by the
+; pre_archive_retry_script. Using the *retry* variant means Barman
+; will keep the WAL in /var/lib/barman/orbital/incoming/ and re-run
+; the hook on the next cron tick if SeaweedFS is briefly unavailable
+; — no manual intervention needed.
+;
+; barman-cloud-wal-archive specifically requires being invoked as a
+; pre_archive_(retry_)script (it raises if BARMAN_HOOK is post_*),
+; which is also Barman's recommended pattern for cloud mirroring.
+;
+;   - Primary (always on): SeaweedFS S3 bucket. Defaults to the
+;     in-cluster SeaweedFS filer; settable via the PRIMARY_S3_*
+;     env vars on the barman service.
+;   - Offsite (optional): a real S3 bucket. Activated by setting
+;     OFFSITE_S3_BUCKET (and friends) on the barman service.
+;
+; Wrapper script no-ops gracefully when a destination's secret is
+; unset, so the offsite mirror stays cold by default.
+;
+; Full backup destination is NOT mirrored automatically. Phase C's
+; schedule UI picks the destination per run — local Barman repo OR
+; SeaweedFS S3 OR offsite S3 — and dispatches either `barman backup`
+; or the /etc/barman/cloud-backup.sh wrapper (also rendered by the
+; entrypoint).
+pre_archive_retry_script = /etc/barman/cloud-wal-archive.sh

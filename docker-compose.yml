@@ -345,6 +345,16 @@ services:
             - '127.0.0.1:${FORWARD_MAILPIT_DASHBOARD_PORT:-8025}:8025'
         networks:
             - sail
+        # The image's built-in healthcheck (`/mailpit readyz`) probes
+        # the bare `/readyz` path, but `--webroot /admin/mailpit` moves
+        # every route (readyz included) under that prefix, so the stock
+        # check 404s. Override it to hit the webroot-prefixed endpoint.
+        healthcheck:
+            test: ['CMD-SHELL', 'wget -q -O /dev/null http://localhost:8025/admin/mailpit/readyz || exit 1']
+            interval: 15s
+            timeout: 5s
+            retries: 3
+            start_period: 10s
 
     # Haraka SMTP → HTTP webhook shim. Accepts inbound SMTP at
     # the network edge and POSTs each message to Laravel's
@@ -595,7 +605,11 @@ services:
         volumes:
             - './docker/livekit/livekit.yaml:/etc/livekit.yaml:ro'
         networks:
+            # `telephony` for SIP/media peers (asterisk, livekit-sip,
+            # rtpengine); `sail` so it can reach the Valkey VIP at
+            # haproxy:6379 for room state (haproxy lives on `sail`).
             - telephony
+            - sail
         restart: unless-stopped
 
     livekit-sip:
@@ -607,7 +621,9 @@ services:
             # The livekit-sip binary expects its config at /sip/config.yaml.
             - './docker/livekit/sip-config.yaml:/sip/config.yaml:ro'
         networks:
+            # `sail` so it can reach the Valkey VIP at haproxy:6379.
             - telephony
+            - sail
         depends_on:
             - livekit
         restart: unless-stopped
@@ -733,104 +749,6 @@ services:
         restart: unless-stopped
 
     # ──────────────────────────────────────────────────────────────────
-    # SeaweedFS — S3-compatible object storage replacing MinIO.
-    # We moved off MinIO because minio/minio was archived in Feb 2026
-    # ("THIS REPOSITORY IS NO LONGER MAINTAINED"), Console features
-    # were progressively stripped in mid-2025 as MinIO Inc. pushed
-    # toward their commercial AIStor product, and the upgrade path
-    # dried up. SeaweedFS is Apache 2.0, actively maintained, and has
-    # a drop-in S3 gateway.
-    #
-    # Single-node setup uses `weed server` which runs master, volume,
-    # filer, and the S3 gateway in one process. For prod/HA we'd split
-    # master/volume into separate containers across nodes, but dev
-    # doesn't need that complexity.
-    #
-    # Laravel talks to SeaweedFS exclusively through its S3 API on
-    # port 8333, so the existing `s3` filesystem disk config works
-    # unchanged — only AWS_ENDPOINT needs to move from
-    # http://minio:9000 to http://seaweedfs:8333.
-    #
-    # `s3.json` defines a single identity with Admin/Read/Write/List/
-    # Tagging actions, matching the MinIO root credentials the app
-    # was already using so `.env` AWS_* vars don't need to rotate.
-    # ──────────────────────────────────────────────────────────────────
-    seaweedfs:
-        image: 'chrislusf/seaweedfs:latest'
-        # Entrypoint override: before starting `weed server`, write
-        # the S3 identities config to /tmp/s3.json using the
-        # AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY env vars. This
-        # makes rotation a one-line `.env` edit instead of requiring
-        # a file bind-mount that has to be kept in lockstep with
-        # Laravel's credentials. Secrets never touch the git tree.
-        #
-        # $$ is the docker-compose escape for a single $ so shell
-        # variable expansion runs inside the container, not at
-        # compose parse time.
-        entrypoint:
-            - /bin/sh
-            - -c
-            - |
-              cat > /tmp/s3.json <<EOF
-              {
-                  "identities": [
-                      {
-                          "name": "orbital",
-                          "credentials": [
-                              {
-                                  "accessKey": "$${AWS_ACCESS_KEY_ID}",
-                                  "secretKey": "$${AWS_SECRET_ACCESS_KEY}"
-                              }
-                          ],
-                          "actions": ["Admin","Read","Write","List","Tagging"]
-                      }
-                  ]
-              }
-              EOF
-              exec weed server \
-                  -dir=/data \
-                  -master.volumeSizeLimitMB=256 \
-                  -volume.max=0 \
-                  -filer=true \
-                  -s3=true \
-                  -s3.config=/tmp/s3.json \
-                  -metricsPort=9324
-        environment:
-            AWS_ACCESS_KEY_ID: '${AWS_ACCESS_KEY_ID}'
-            AWS_SECRET_ACCESS_KEY: '${AWS_SECRET_ACCESS_KEY}'
-        # IMPORTANT SECURITY NOTE on port bindings:
-        # SeaweedFS's filer web UI (8888) and master admin (9333)
-        # ship with NO AUTHENTICATION in the community build, and
-        # both accept write operations. Leaving them on 0.0.0.0
-        # means any LAN peer (including the browser in a private
-        # window on the same machine) can freely browse and modify
-        # bucket contents, bypassing the S3 API's key-based auth
-        # entirely. Both are bound to loopback only so only the
-        # host machine can reach them, and Laravel/mc access them
-        # inside the sail network via the `seaweedfs` service name
-        # which still works through docker's internal DNS.
-        #
-        # The S3 gateway on 8333 is also loopback-bound as a
-        # belt-and-suspenders measure — it's auth-gated by the
-        # s3.json identity file, but there's no reason any LAN
-        # peer should be probing it.
-        ports:
-            - '127.0.0.1:${FORWARD_S3_PORT:-9000}:8333'   # S3 API (auth'd via s3.json identities)
-            - '127.0.0.1:${FORWARD_S3_FILER_PORT:-9001}:8888'  # Filer web UI (NO auth — loopback only)
-            - '127.0.0.1:${FORWARD_S3_MASTER_PORT:-9333}:9333'  # Master admin (NO auth — loopback only)
-        volumes:
-            - 'sail-seaweedfs:/data'
-        networks:
-            - sail
-        healthcheck:
-            test: ['CMD-SHELL', 'wget -q -O - http://localhost:8333/status || exit 1']
-            interval: 10s
-            timeout: 5s
-            retries: 5
-            start_period: 15s
-        restart: unless-stopped
-
-    # ──────────────────────────────────────────────────────────────────
     # Ollama — local embedding / inference server. Used by
     # EmbeddingService when services.embeddings.provider = ollama, and
     # by any future local-model path. Models are downloaded lazily on
@@ -890,6 +808,14 @@ services:
             GF_SECURITY_ADMIN_PASSWORD: '${GRAFANA_ADMIN_PASSWORD:-admin}'
             GF_USERS_ALLOW_SIGN_UP: 'false'
             GF_ANALYTICS_REPORTING_ENABLED: 'false'
+            # Offline-first: never call out to grafana.com. Disable the
+            # default plugin preinstall (Drilldown/Explore/Assistant
+            # apps) and update checks so first boot works air-gapped.
+            # If specific plugins are wanted, bake them into a custom
+            # image instead of pulling them at runtime.
+            GF_PLUGINS_PREINSTALL_DISABLED: 'true'
+            GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'
+            GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: 'false'
             GF_AUTH_ANONYMOUS_ENABLED: 'false'
             # Auth-proxy mode — Grafana trusts the X-WEBAUTH-USER
             # header on every request when the request originates
@@ -963,8 +889,6 @@ volumes:
     sail-loki:
         driver: local
     sail-grafana:
-        driver: local
-    sail-seaweedfs:
         driver: local
     sail-ollama:
         driver: local

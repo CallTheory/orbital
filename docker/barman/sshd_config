@@ -1,6 +1,7 @@
-# SSHd config for the pgbackrest-repo host.
-# Only `pgbackrest` user may log in, only via key, no shell needed
-# beyond what pgbackrest spawns.
+# SSHd config for the barman repo host.
+# Only the `barman` user may log in, only via key. The shell is
+# allowed (rsync over SSH spawns rsync as a subprocess of the SSH
+# session for the replica-clone staging path).
 
 Port 22
 Protocol 2
@@ -14,7 +15,7 @@ ChallengeResponseAuthentication no
 PubkeyAuthentication yes
 AuthorizedKeysFile .ssh/authorized_keys
 
-AllowUsers pgbackrest
+AllowUsers barman
 
 UsePAM yes
 X11Forwarding no

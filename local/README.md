@@ -82,6 +82,6 @@ If you want both running simultaneously, override the k3d host ports in `k3d-con
 
 ## Caveats
 
-- **Single-node-style RWX**: K3s ships `local-path` (RWO-only). The chart's `asterisk-shared-config` PVC needs RWX. The `values-onprem-k3s.yaml` override sets `asterisk.replicas=1` to dodge this; multi-pod Asterisk on local-path will not schedule the second pod.
+- **Storage is all RWO now**: the Asterisk dialplan/prompt handoff goes through object storage (in-cluster SeaweedFS), not a shared ReadWriteMany PVC — so `local-path` (RWO-only) is sufficient and Asterisk scales to multiple pods on it. Each Asterisk pod pulls its own config copy via a `config-sync` sidecar. If the `config-sync` container is stuck, check `kubectl -n orbital logs <asterisk-pod> -c config-sync` (and `-c config-sync-init` for boot-time sync).
 - **No real ingress TLS**: cert-manager isn't installed. The Ingress points at the cert-manager `letsencrypt-prod` ClusterIssuer that doesn't exist locally — Traefik serves over plain HTTP at port 8080 anyway. Production needs cert-manager + a real DNS name.
 - **No real edge VMs**: the Kamailio + rtpengine edge lives outside the cluster (on real VMs). To test the SIP path locally, run the existing sail compose stack alongside k3d (different ports), or skip and test SIP on a real Vultr deployment.

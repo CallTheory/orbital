@@ -23,24 +23,23 @@ ingress:
     nginx.ingress.kubernetes.io/proxy-read-timeout: "300"   # WSS keepalive
     nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
 
-# Same single-replica Asterisk caveat — Vultr block storage is RWO.
-# VKE does NOT ship an RWX class out of the box; longhorn / Vultr's
-# NFS-style option, or scaling Asterisk with sharded per-pod state,
-# are paths forward when this becomes a real constraint.
+# Asterisk runs multi-replica on plain vultr-block-storage (RWO) now —
+# the dialplan/prompt handoff is via object storage, not a shared RWX
+# PVC. No longhorn / NFS class needed. Scaled to 2 for HA.
 asterisk:
-  replicas: 1
-
-laravel:
   replicas: 2
+
 horizon:
   replicas: 1
 agentWorker:
   replicas: 2
 
-# Tighter pod-level resource bounds for managed VKE — control plane
-# is "free" but worker nodes are billed; trim limits so we don't
-# over-provision per-pod.
+# Single laravel block (merged): 2 replicas for HA, plus tighter
+# pod-level resource bounds for managed VKE — the control plane is
+# "free" but worker nodes are billed, so trim limits to avoid
+# over-provisioning per-pod.
 laravel:
+  replicas: 2
   resources:
     requests: {cpu: "200m", memory: "384Mi"}
     limits: {cpu: "1000m", memory: "1Gi"}

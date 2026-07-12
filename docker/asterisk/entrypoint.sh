@@ -62,6 +62,16 @@ if [ -f /etc/odbc.ini.tmpl ]; then
     echo "[orbital-asterisk] ODBC DSN materialized for ${DB_HOST}:${DB_PORT}/${DB_DATABASE}"
 fi
 
+# ── AMI secret ─────────────────────────────────────────────────
+# manager.conf ships a placeholder secret; the real one comes from
+# ASTERISK_AMI_SECRET, shared with Laravel and the config-sync sidecar,
+# which log in to AMI to trigger `dialplan reload`. Without this, AMI
+# auth fails and generated config never gets applied automatically.
+if [ -n "${ASTERISK_AMI_SECRET:-}" ]; then
+    sed -i "s|^secret = .*|secret = ${ASTERISK_AMI_SECRET}|" /etc/asterisk/manager.conf
+    echo "[orbital-asterisk] AMI secret set from ASTERISK_AMI_SECRET"
+fi
+
 # ── systemname ─────────────────────────────────────────────────
 # Asterisk writes ps_contacts.reg_server from this value on every
 # dynamic registration. With two Asterisks sharing the ARA tables,

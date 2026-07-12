@@ -51,11 +51,11 @@ class RenderDisclosuresCommand extends Command
                 continue;
             }
 
-            if ($this->option('force') && is_file($path)) {
-                @unlink($path);
+            if ($this->option('force')) {
+                $renderer->forget($message);
             }
 
-            $already = is_file($path);
+            $already = $renderer->exists($message);
             $result = $renderer->ensureRendered($message);
 
             if ($result === null) {

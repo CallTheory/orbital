@@ -7,6 +7,7 @@ namespace App\Services\Telephony;
 use App\Models\Team;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Renders per-client voicemail-greeting TTS WAVs for Asterisk to play
@@ -55,9 +56,6 @@ class VoicemailGreetingRenderer
         }
 
         $path = $this->pathFor($team);
-        if (! is_dir(self::BASE_DIR)) {
-            @mkdir(self::BASE_DIR, 0775, true);
-        }
 
         $provider = (string) ($team->voicemail_greeting_voice_provider ?? 'openai');
         $voiceId = (string) ($team->voicemail_greeting_voice_id ?? '');
@@ -71,8 +69,7 @@ class VoicemailGreetingRenderer
             return null;
         }
 
-        file_put_contents($path, $audio);
-        @chmod($path, 0644);
+        Storage::disk('asterisk-prompts')->put($this->keyFor($team), $audio);
 
         return $path;
     }
@@ -98,13 +95,22 @@ class VoicemailGreetingRenderer
     }
 
     /**
+     * Disk-relative key for the `asterisk-prompts` disk, matching
+     * the last path segment of pathFor()'s absolute BASE_DIR path.
+     */
+    protected function keyFor(Team $team): string
+    {
+        return "voicemail-greetings/{$team->id}.".self::RENDER_FORMAT;
+    }
+
+    /**
      * True when there's an on-disk WAV for this client — used by
      * the dialplan generator to decide whether to emit the custom
      * Playback() branch or the stock VoiceMail() fallback.
      */
     public function hasGreeting(Team $team): bool
     {
-        return is_file($this->pathFor($team));
+        return Storage::disk('asterisk-prompts')->exists($this->keyFor($team));
     }
 
     /**
@@ -114,9 +120,11 @@ class VoicemailGreetingRenderer
      */
     public function deleteFor(Team $team): void
     {
-        $path = $this->pathFor($team);
-        if (is_file($path)) {
-            @unlink($path);
+        $disk = Storage::disk('asterisk-prompts');
+        $key = $this->keyFor($team);
+
+        if ($disk->exists($key)) {
+            $disk->delete($key);
         }
     }
 

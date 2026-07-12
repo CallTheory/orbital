@@ -48,8 +48,9 @@ laravel:
     requests: {cpu: "250m", memory: "512Mi"}
     limits: {cpu: "1500m", memory: "2Gi"}
   service:
-    port: 80
-    targetPort: 80
+    port: 80            # cluster Service port (ingress + intra-cluster callers)
+    targetPort: 8080    # container port — nginx listens unprivileged so the
+                        # pod runs fully non-root (no NET_BIND_SERVICE needed)
   env: {}               # extra env vars merged with chart-defined defaults
 
 horizon:
@@ -63,6 +64,16 @@ horizon:
 reverb:
   enabled: true
   replicas: 1
+  # Reverb (Pusher-protocol) app credentials. Shared by the Reverb
+  # server and the Laravel/Horizon broadcasters — they must match.
+  # appKey is public (browsers use it); appSecret authenticates the
+  # server-side broadcaster. These defaults make a fresh install work
+  # out of the box; for production, override appSecret by setting
+  # REVERB_APP_SECRET in the app-secrets Secret (envFrom order makes
+  # the Secret win over this ConfigMap default).
+  appId: orbital
+  appKey: "orbital-local-key"
+  appSecret: "orbital-local-secret"
   resources:
     requests: {cpu: "100m", memory: "256Mi"}
     limits: {cpu: "500m", memory: "512Mi"}
@@ -83,15 +94,33 @@ asterisk:
     requests: {cpu: "500m", memory: "1Gi"}
     limits: {cpu: "2000m", memory: "2Gi"}
   persistence:
-    # Spool dir for voicemail + recordings + sounds rendered by
-    # Laravel's DisclosureRenderer. PVC is per-pod; cluster default
+    # Spool dir for voicemail + recordings. PVC is per-pod (RWO — works
+    # on any block-storage class, no RWX needed); cluster default
     # storage class unless `global.storageClass` is set.
     enabled: true
     size: 10Gi
+  # Sidecar that syncs generated dialplan + TTS prompts from object
+  # storage into each Asterisk pod, and reloads Asterisk when the
+  # dialplan version marker changes. Replaces the old ReadWriteMany
+  # shared PVC — so `asterisk.replicas` can now scale freely on plain
+  # block storage (no RWX provisioner required).
+  configSync:
+    image:
+      name: asterisk-config-sync   # {registry}/{repository}/asterisk-config-sync:{tag}
+      tag: ""                       # blank = inherit global.image.tag
+    syncIntervalSeconds: 10
+    resources:
+      requests: {cpu: "25m", memory: "32Mi"}
+      limits: {cpu: "100m", memory: "128Mi"}
 
 livekit:
   enabled: true
   replicas: 1
+  # Public API-key half. MUST match LIVEKIT_API_KEY in the app-secrets
+  # Secret. Used for webhook signature verification against the Laravel
+  # app. This is a public identifier (not sensitive); the secret half
+  # never leaves the Secret and reaches the pod via LIVEKIT_KEYS env.
+  apiKey: "APIorbitaldev"
   # Third-party image. Defaults to docker.io; override if mirrored.
   image:
     registry: docker.io
@@ -148,10 +177,14 @@ postgres:
   # opt-in (Patroni operator) or external managed.
   inCluster:
     image:
+      # pgvector-enabled Postgres (official postgres:16 + the `vector`
+      # extension). The knowledge-store / RAG migrations run
+      # `CREATE EXTENSION vector`, which stock postgres:16 lacks — so a
+      # plain postgres image fails `migrate` on any install, local or cloud.
       registry: docker.io
-      repository: library
-      name: postgres
-      tag: "16-alpine"
+      repository: pgvector
+      name: pgvector
+      tag: "pg16"
     persistence:
       size: 20Gi
     resources:

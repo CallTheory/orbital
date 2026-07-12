@@ -72,23 +72,11 @@ spec:
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 3
-          volumeMounts:
-            - name: asterisk-shared-config
-              mountPath: /var/www/html/docker/asterisk/config
-            - name: asterisk-shared-prompts
-              mountPath: /var/spool/asterisk/prompts
-      volumes:
-        # Shared with the Asterisk StatefulSet — Laravel writes the
-        # generated dialplan; Asterisk reads it on `module reload`.
-        # ReadWriteMany PVC required (NFS, longhorn, EFS, etc.); on
-        # K3s with local-path this works only for single-node clusters,
-        # which is fine for dev / small installs.
-        - name: asterisk-shared-config
-          persistentVolumeClaim:
-            claimName: {{ include "orbital.componentName" (list . "asterisk-config") }}
-        - name: asterisk-shared-prompts
-          persistentVolumeClaim:
-            claimName: {{ include "orbital.componentName" (list . "asterisk-prompts") }}
+          # No asterisk-shared volume: generated dialplan + prompts are
+          # written to object storage via the `asterisk-config` /
+          # `asterisk-prompts` disks (ASTERISK_STORAGE_DRIVER=s3) and
+          # pulled by each Asterisk pod's config-sync sidecar. This
+          # removes the old ReadWriteMany dependency entirely.
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

@@ -35,6 +35,25 @@ spec:
         {{- include "orbital.componentLabels" (list . "asterisk") | nindent 8 }}
     spec:
       {{- include "orbital.imagePullSecrets" . | nindent 6 }}
+      initContainers:
+        # Pull the current dialplan + prompts from object storage into
+        # the local emptyDirs BEFORE Asterisk boots, so it starts with
+        # valid config. Exits 0 even if object storage is briefly
+        # unreachable — the sidecar catches up once it's available.
+        - name: config-sync-init
+          image: {{ include "orbital.image" (dict "ctx" . "name" .Values.asterisk.configSync.image.name "tag" .Values.asterisk.configSync.image.tag) }}
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          args: ["once"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "orbital.componentName" (list . "app-env") }}
+            - secretRef:
+                name: {{ include "orbital.componentName" (list . "app-secrets") }}
+          volumeMounts:
+            - name: orbital-config
+              mountPath: /etc/asterisk/generated
+            - name: prompts
+              mountPath: /var/spool/asterisk/prompts
       containers:
         - name: asterisk
           image: {{ include "orbital.image" (dict "ctx" . "name" .Values.asterisk.image.name "tag" .Values.asterisk.image.tag) }}
@@ -65,7 +84,7 @@ spec:
             {{- toYaml .Values.asterisk.resources | nindent 12 }}
           volumeMounts:
             - name: orbital-config
-              mountPath: /etc/asterisk/orbital
+              mountPath: /etc/asterisk/generated
             - name: prompts
               mountPath: /var/spool/asterisk/prompts
             - name: spool
@@ -85,13 +104,44 @@ spec:
             periodSeconds: 30
             timeoutSeconds: 10
             failureThreshold: 3
+        # Keeps this pod's dialplan + prompts in sync with object storage
+        # and fires an AMI `dialplan reload` when the version marker
+        # changes. Reloads THIS pod (127.0.0.1), not the headless VIP.
+        - name: config-sync
+          image: {{ include "orbital.image" (dict "ctx" . "name" .Values.asterisk.configSync.image.name "tag" .Values.asterisk.configSync.image.tag) }}
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          args: ["loop"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "orbital.componentName" (list . "app-env") }}
+            - secretRef:
+                name: {{ include "orbital.componentName" (list . "app-secrets") }}
+          env:
+            # Override the app-env AMI host (the headless service, used by
+            # Laravel) so reloads hit the local Asterisk sharing this pod's
+            # emptyDir — not a random pod behind the VIP.
+            - name: ASTERISK_AMI_HOST
+              value: "127.0.0.1"
+            - name: SYNC_INTERVAL_SECONDS
+              value: {{ .Values.asterisk.configSync.syncIntervalSeconds | quote }}
+          resources:
+            {{- toYaml .Values.asterisk.configSync.resources | nindent 12 }}
+          volumeMounts:
+            - name: orbital-config
+              mountPath: /etc/asterisk/generated
+            - name: prompts
+              mountPath: /var/spool/asterisk/prompts
       volumes:
+        # Per-pod local copies of the generated dialplan + TTS prompts.
+        # Populated by the config-sync initContainer before Asterisk
+        # starts and kept fresh by the config-sync sidecar. No shared
+        # RWX volume — the source of truth is object storage, and every
+        # pod pulls its own copy. Ephemeral by design: rebuilt from
+        # object storage on every (re)start.
         - name: orbital-config
-          persistentVolumeClaim:
-            claimName: {{ include "orbital.componentName" (list . "asterisk-config") }}
+          emptyDir: {}
         - name: prompts
-          persistentVolumeClaim:
-            claimName: {{ include "orbital.componentName" (list . "asterisk-prompts") }}
+          emptyDir: {}
   {{- if .Values.asterisk.persistence.enabled }}
   volumeClaimTemplates:
     # Per-pod spool — voicemail recordings, journaling. Each

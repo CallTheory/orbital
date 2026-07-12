@@ -13,10 +13,18 @@ FROM node:22-alpine AS frontend
 
 WORKDIR /build
 
+# Pin pnpm to the version the project is developed + locked against.
+# `pnpm@latest` drifted onto 11.11+, which aborts on esbuild's ignored
+# build script; 11.5.0 honors the pnpm-workspace.yaml allowlist. Keep
+# this in lockstep with the `packageManager` field in package.json.
 RUN corepack enable \
-    && corepack prepare pnpm@latest --activate
+    && corepack prepare pnpm@11.5.0 --activate
 
-COPY package.json pnpm-lock.yaml ./
+# pnpm-workspace.yaml carries `onlyBuiltDependencies` (esbuild's build
+# is required for `vite build` below) and .npmrc carries the supply-chain
+# policy. Both must be present BEFORE install or pnpm 10's strict-dep-
+# builds aborts on the ignored esbuild build script.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 RUN pnpm install --frozen-lockfile
 
 COPY . .
@@ -75,7 +83,7 @@ RUN apk add --no-cache \
     && echo $TZ > /etc/timezone \
     && install-php-extensions \
         bcmath gd igbinary imagick imap intl ldap msgpack opcache \
-        pdo_pgsql pgsql pdo_sqlite redis soap swoole zip \
+        pcntl pdo_pgsql pgsql pdo_sqlite posix redis soap swoole zip \
     && rm -rf /tmp/* /var/cache/apk/* /usr/local/lib/php/test \
               /usr/local/lib/php/doc /usr/src
 
@@ -95,9 +103,9 @@ COPY docker/8.4/php.ini /usr/local/etc/php/conf.d/99-orbital.ini
 
 # fpm pool: Unix socket, run as sail, keep K8s env vars.
 RUN sed -i \
-        -e 's|^listen = .*|listen = /run/php/php-fpm.sock|' \
-        -e 's|^;\?listen.owner = .*|listen.owner = sail|' \
-        -e 's|^;\?listen.group = .*|listen.group = sail|' \
+        -e 's|^;*listen = .*|listen = /run/php/php-fpm.sock|' \
+        -e 's|^;*listen.owner = .*|listen.owner = sail|' \
+        -e 's|^;*listen.group = .*|listen.group = sail|' \
         -e 's|^user = www-data|user = sail|' \
         -e 's|^group = www-data|group = sail|' \
         -e 's|^;\?clear_env = .*|clear_env = no|' \
@@ -112,7 +120,9 @@ RUN sed -i \
         -e 's|^user nginx;|user sail;|' \
         -e 's|^worker_processes .*;|worker_processes 4;|' \
         /etc/nginx/nginx.conf \
-    && mkdir -p /run/nginx /run/php
+    && mkdir -p /run/nginx /run/php \
+                /var/lib/nginx/tmp /var/lib/nginx/logs /var/log/nginx \
+    && chown -R sail:sail /run/nginx /run/php /var/lib/nginx /var/log/nginx
 
 # Vendor tree from the composer-only builder stage.
 COPY --from=vendor /app/vendor ./vendor
@@ -146,5 +156,5 @@ COPY docker/laravel/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY docker/laravel/entrypoint.sh /usr/local/bin/orbital-laravel-entrypoint
 RUN chmod +x /usr/local/bin/orbital-laravel-entrypoint
 
-EXPOSE 80
+EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/orbital-laravel-entrypoint"]

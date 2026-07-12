@@ -30,7 +30,11 @@ data:
     # Webhook target = the Laravel app's LivekitWebhookController.
     # Catches `egress_ended` events and creates CallRecording rows.
     webhook:
-      api_key: ${LIVEKIT_API_KEY}
+      # Public API-key half; must match LIVEKIT_API_KEY in app-secrets.
+      # LiveKit does NOT expand ${VAR} in this file, so the literal
+      # value is rendered from values at template time. The secret half
+      # reaches the pod via the LIVEKIT_KEYS env (see livekit-deployment).
+      api_key: {{ .Values.livekit.apiKey | quote }}
       urls:
         - http://{{ include "orbital.componentName" (list . "laravel") }}:{{ .Values.laravel.service.port }}/api/livekit/webhook
 {{- end }}
@@ -44,8 +48,10 @@ metadata:
     {{- include "orbital.componentLabels" (list . "livekit-sip") | nindent 4 }}
 data:
   sip-config.yaml: |
-    api_key: ${LIVEKIT_API_KEY}
-    api_secret: ${LIVEKIT_API_SECRET}
+    # api_key / api_secret intentionally omitted — livekit-sip reads
+    # them from the LIVEKIT_API_KEY / LIVEKIT_API_SECRET env vars
+    # (injected via the app-secrets Secret in livekit-sip-deployment).
+    # A literal ${VAR} here is NOT expanded and would shadow the env.
     ws_url: ws://{{ include "orbital.componentName" (list . "livekit") }}:{{ .Values.livekit.service.port }}
     redis:
       address: {{ if .Values.valkey.external.enabled }}{{ .Values.valkey.external.host }}:{{ .Values.valkey.external.port }}{{ else }}{{ include "orbital.componentName" (list . "valkey") }}:6379{{ end }}

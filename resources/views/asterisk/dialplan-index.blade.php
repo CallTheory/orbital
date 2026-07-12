@@ -19,9 +19,12 @@
 ; DO NOT EDIT — regenerated when clients are created/deleted
 ;===============================================================================
 
-#include "from-trunk.conf"
-#include "extensions_generated.conf"
+{{-- Asterisk resolves #include relative to astetcdir (/etc/asterisk),
+     NOT to this file's directory — so every include is prefixed with the
+     generated/ subdir where the config-sync sidecar lands these files. --}}
+#include "generated/from-trunk.conf"
+#include "generated/extensions_generated.conf"
 
 @foreach($teamIds as $teamId)
-#include "clients/{{ $teamId }}-dialplan.conf"
+#include "generated/clients/{{ $teamId }}-dialplan.conf"
 @endforeach

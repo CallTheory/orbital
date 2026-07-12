@@ -33,19 +33,37 @@ spec:
               containerPort: {{ .Values.livekitSip.service.sipPort }}
               protocol: UDP
           env:
-            - name: SIP_CONFIG_FILE
-              value: /etc/livekit-sip/sip-config.yaml
-          envFrom:
-            - secretRef:
-                name: {{ include "orbital.componentName" (list . "app-secrets") }}
+            # Inject the whole SIP config via SIP_CONFIG_BODY. The config
+            # format does NOT expand ${VARS}, so secrets (LiveKit API
+            # key/secret + the Valkey password) are pulled from the Secret
+            # as explicit env vars and spliced in via K8s dependent-var
+            # expansion — $(...) resolves against earlier entries in THIS
+            # env list. Nothing sensitive lands in a ConfigMap, and there's
+            # no config file to mount.
+            - name: LIVEKIT_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "orbital.componentName" (list . "app-secrets") }}
+                  key: LIVEKIT_API_KEY
+            - name: LIVEKIT_API_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "orbital.componentName" (list . "app-secrets") }}
+                  key: LIVEKIT_API_SECRET
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "orbital.componentName" (list . "app-secrets") }}
+                  key: REDIS_PASSWORD
+            - name: SIP_CONFIG_BODY
+              value: |
+                api_key: $(LIVEKIT_API_KEY)
+                api_secret: $(LIVEKIT_API_SECRET)
+                ws_url: ws://{{ include "orbital.componentName" (list . "livekit") }}:{{ .Values.livekit.service.port }}
+                redis:
+                  address: {{ if .Values.valkey.external.enabled }}{{ .Values.valkey.external.host }}:{{ .Values.valkey.external.port }}{{ else }}{{ include "orbital.componentName" (list . "valkey") }}:6379{{ end }}
+                  password: $(REDIS_PASSWORD)
+                sip_port: {{ .Values.livekitSip.service.sipPort }}
           resources:
             {{- toYaml .Values.livekitSip.resources | nindent 12 }}
-          volumeMounts:
-            - name: sip-config
-              mountPath: /etc/livekit-sip
-              readOnly: true
-      volumes:
-        - name: sip-config
-          configMap:
-            name: {{ include "orbital.componentName" (list . "livekit-sip-config") }}
 {{- end }}

@@ -36,11 +36,26 @@ spec:
               containerPort: 7880
               protocol: TCP
           env:
-            # LiveKit reads its config from /etc/livekit/livekit.yaml.
-            # The chart writes the rendered yaml as a configmap
-            # mounted at that path — keeps secrets in
-            # `app-secrets` (api_key / api_secret) and routine knobs
-            # in the configmap.
+            # LiveKit's `keys:` map cannot be populated from a secret via
+            # the config file (no ${VAR} expansion), so the API key/secret
+            # are injected as the LIVEKIT_KEYS env var in "<key>: <secret>"
+            # form. Both halves are pulled from the app-secrets Secret and
+            # composed via K8s dependent-var expansion — which only sees
+            # vars defined earlier in THIS env list, hence the explicit
+            # secretKeyRefs (envFrom vars aren't visible to $(...)).
+            - name: LIVEKIT_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "orbital.componentName" (list . "app-secrets") }}
+                  key: LIVEKIT_API_KEY
+            - name: LIVEKIT_API_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "orbital.componentName" (list . "app-secrets") }}
+                  key: LIVEKIT_API_SECRET
+            - name: LIVEKIT_KEYS
+              value: "$(LIVEKIT_API_KEY): $(LIVEKIT_API_SECRET)"
+            # LiveKit reads the rest of its config from this mounted file.
             - name: LIVEKIT_CONFIG_FILE
               value: /etc/livekit/livekit.yaml
           envFrom:

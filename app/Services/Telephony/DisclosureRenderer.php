@@ -6,6 +6,7 @@ namespace App\Services\Telephony;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Renders recording-disclosure TTS audio files that Asterisk can play
@@ -79,6 +80,59 @@ class DisclosureRenderer
     }
 
     /**
+     * Disk-relative key for the `asterisk-prompts` disk, matching
+     * the last path segment of pathFor()'s absolute BASE_DIR path.
+     * Returns null under the same conditions as pathFor().
+     */
+    protected function keyFor(string $message): ?string
+    {
+        $normalized = $this->normalize($message);
+        if ($normalized === '') {
+            return null;
+        }
+
+        $hash = hash('sha256', $normalized);
+
+        return "disclosures/{$hash}.".self::RENDER_FORMAT;
+    }
+
+    /**
+     * True when this message already has a rendered file on the
+     * `asterisk-prompts` disk. Used by callers (e.g. the
+     * `orbital:render-disclosures` command) that need an existence
+     * check without triggering rendering — they used to `is_file()`
+     * the absolute path directly, which stopped working once prompt
+     * storage could be backed by S3.
+     */
+    public function exists(string $message): bool
+    {
+        $key = $this->keyFor($message);
+        if ($key === null) {
+            return false;
+        }
+
+        return Storage::disk('asterisk-prompts')->exists($key);
+    }
+
+    /**
+     * Remove a previously rendered file so the next ensureRendered()
+     * call re-renders it. Used by the `--force` flag on the
+     * `orbital:render-disclosures` command.
+     */
+    public function forget(string $message): void
+    {
+        $key = $this->keyFor($message);
+        if ($key === null) {
+            return;
+        }
+
+        $disk = Storage::disk('asterisk-prompts');
+        if ($disk->exists($key)) {
+            $disk->delete($key);
+        }
+    }
+
+    /**
      * Render the message to the shared prompts volume if it isn't
      * there already. Returns the absolute path on success, null if
      * the message is empty or TTS is unavailable (missing API key).
@@ -88,11 +142,14 @@ class DisclosureRenderer
     public function ensureRendered(string $message): ?string
     {
         $path = $this->pathFor($message);
-        if ($path === null) {
+        $key = $this->keyFor($message);
+        if ($path === null || $key === null) {
             return null;
         }
 
-        if (is_file($path)) {
+        $disk = Storage::disk('asterisk-prompts');
+
+        if ($disk->exists($key)) {
             return $path;
         }
 
@@ -103,10 +160,6 @@ class DisclosureRenderer
             ]);
 
             return null;
-        }
-
-        if (! is_dir(self::BASE_DIR)) {
-            @mkdir(self::BASE_DIR, 0775, true);
         }
 
         try {
@@ -128,8 +181,7 @@ class DisclosureRenderer
                 return null;
             }
 
-            file_put_contents($path, $response->body());
-            @chmod($path, 0644);
+            $disk->put($key, $response->body());
         } catch (\Throwable $e) {
             Log::warning('disclosure renderer: TTS request threw', [
                 'error' => $e->getMessage(),

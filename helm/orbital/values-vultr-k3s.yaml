@@ -20,11 +20,11 @@ ingress:
     service.beta.kubernetes.io/vultr-loadbalancer-protocol: "https"
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
 
-# Vultr block storage is RWO-only too. Same caveat as on-prem K3s —
-# multi-pod RWX needs longhorn or similar. Asterisk single-replica
-# is the safe default for the standard Vultr K3s install.
+# Asterisk runs multi-replica on vultr-block-storage (RWO) — the
+# dialplan/prompt handoff is object-storage based, so no RWX class is
+# needed. Scaled to 2 for HA.
 asterisk:
-  replicas: 1
+  replicas: 2
 
 # Vultr instance sizes — slightly bumped from defaults so a
 # 2-vCPU/4GB-RAM node can host the full default stack comfortably.

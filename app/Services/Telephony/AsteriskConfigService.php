@@ -9,9 +9,10 @@ use App\Models\CallQueue;
 use App\Models\Extension;
 use App\Models\RoutingRule;
 use App\Models\Team;
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\View;
+use Illuminate\Support\Str;
 
 /**
  * Generates Asterisk's static config files from Eloquent state.
@@ -32,13 +33,6 @@ use Illuminate\Support\Facades\View;
  */
 class AsteriskConfigService
 {
-    protected string $configPath;
-
-    public function __construct()
-    {
-        $this->configPath = config('telephony.asterisk.config_path');
-    }
-
     // ── Per-client dialplan generators ──────────────────────────────
 
     /**
@@ -167,18 +161,19 @@ class AsteriskConfigService
      */
     public function writeDialplanForTenant(int $teamId): void
     {
-        $tenantDir = $this->configPath.'/clients';
-        File::ensureDirectoryExists($tenantDir);
+        $disk = Storage::disk('asterisk-config');
 
-        File::put(
-            $tenantDir."/{$teamId}-dialplan.conf",
+        $disk->put(
+            "clients/{$teamId}-dialplan.conf",
             $this->generateDialplanForTenant($teamId),
         );
 
-        File::put(
-            $this->configPath.'/from-trunk.conf',
+        $disk->put(
+            'from-trunk.conf',
             $this->generateFromTrunkDispatcher(),
         );
+
+        $this->bumpVersion();
     }
 
     /**
@@ -189,12 +184,12 @@ class AsteriskConfigService
      */
     public function writeDialplanIndex(): void
     {
-        File::ensureDirectoryExists($this->configPath);
-
-        File::put(
-            $this->configPath.'/dialplan_index.conf',
+        Storage::disk('asterisk-config')->put(
+            'dialplan_index.conf',
             $this->generateDialplanIndex(),
         );
+
+        $this->bumpVersion();
     }
 
     /**
@@ -204,10 +199,14 @@ class AsteriskConfigService
      */
     public function deleteDialplanForTenant(int $teamId): void
     {
-        $path = $this->configPath."/clients/{$teamId}-dialplan.conf";
-        if (File::exists($path)) {
-            File::delete($path);
+        $disk = Storage::disk('asterisk-config');
+        $key = "clients/{$teamId}-dialplan.conf";
+
+        if ($disk->exists($key)) {
+            $disk->delete($key);
         }
+
+        $this->bumpVersion();
     }
 
     /**
@@ -218,8 +217,7 @@ class AsteriskConfigService
      */
     public function writeAllDialplans(): void
     {
-        $tenantDir = $this->configPath.'/clients';
-        File::ensureDirectoryExists($tenantDir);
+        $disk = Storage::disk('asterisk-config');
 
         $teamIds = Team::query()
             ->where('personal_team', false)
@@ -227,31 +225,33 @@ class AsteriskConfigService
             ->all();
 
         foreach ($teamIds as $teamId) {
-            File::put(
-                $tenantDir."/{$teamId}-dialplan.conf",
+            $disk->put(
+                "clients/{$teamId}-dialplan.conf",
                 $this->generateDialplanForTenant($teamId),
             );
         }
 
-        File::put(
-            $this->configPath.'/from-trunk.conf',
+        $disk->put(
+            'from-trunk.conf',
             $this->generateFromTrunkDispatcher(),
         );
 
-        File::put(
-            $this->configPath.'/extensions_generated.conf',
+        $disk->put(
+            'extensions_generated.conf',
             $this->generateInternalContext(),
         );
 
-        File::put(
-            $this->configPath.'/dialplan_index.conf',
+        $disk->put(
+            'dialplan_index.conf',
             $this->generateDialplanIndex(),
         );
 
-        File::put(
-            $this->configPath.'/voicemail.conf',
+        $disk->put(
+            'voicemail.conf',
             $this->generateVoicemail(),
         );
+
+        $this->bumpVersion();
     }
 
     /**
@@ -373,6 +373,20 @@ class AsteriskConfigService
         }
 
         return $allOk;
+    }
+
+    /**
+     * Write a fresh version token to the asterisk-config disk so the
+     * Asterisk-side sync sidecar (which polls/watches the S3 bucket
+     * in Kubernetes deployments) knows a reload is due. No-op in
+     * spirit on Sail, where the bind mount is already shared, but
+     * kept unconditional so the two environments behave the same
+     * way and the token stays meaningful if something starts
+     * consuming it locally too.
+     */
+    private function bumpVersion(): void
+    {
+        Storage::disk('asterisk-config')->put('version.txt', (string) Str::uuid());
     }
 
     public function pushConfig(?int $teamId = null): bool

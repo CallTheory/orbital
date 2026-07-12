@@ -60,6 +60,58 @@ return [
             'report' => false,
         ],
 
+        // Asterisk dialplan config files (extensions_generated.conf,
+        // per-client includes, voicemail.conf, ...). Defaults to the
+        // `local` driver pointing at the same bind-mounted path Sail
+        // has always used; flip ASTERISK_STORAGE_DRIVER=s3 in
+        // Kubernetes so the Horizon pod hands config off to the
+        // Asterisk pod through SeaweedFS instead of a shared RWX
+        // volume that doesn't exist there.
+        'asterisk-config' => env('ASTERISK_STORAGE_DRIVER', 'local') === 's3'
+            ? [
+                'driver' => 's3',
+                'key' => env('AWS_ACCESS_KEY_ID'),
+                'secret' => env('AWS_SECRET_ACCESS_KEY'),
+                'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
+                'bucket' => env('AWS_BUCKET'),
+                'endpoint' => env('AWS_ENDPOINT'),
+                'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', true),
+                'root' => env('ASTERISK_CONFIG_PREFIX', 'asterisk/config'),
+                'throw' => true,
+                'report' => false,
+            ]
+            : [
+                'driver' => 'local',
+                'root' => env('ASTERISK_CONFIG_PATH', base_path('docker/asterisk/config')),
+                'throw' => true,
+                'report' => false,
+            ],
+
+        // Rendered TTS prompt WAVs (disclosures, voicemail greetings)
+        // that Asterisk plays back at call time via absolute
+        // /var/spool/asterisk/prompts/... paths. Same driver flip as
+        // `asterisk-config` above — local bind mount on Sail, S3 in
+        // Kubernetes.
+        'asterisk-prompts' => env('ASTERISK_STORAGE_DRIVER', 'local') === 's3'
+            ? [
+                'driver' => 's3',
+                'key' => env('AWS_ACCESS_KEY_ID'),
+                'secret' => env('AWS_SECRET_ACCESS_KEY'),
+                'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
+                'bucket' => env('AWS_BUCKET'),
+                'endpoint' => env('AWS_ENDPOINT'),
+                'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', true),
+                'root' => env('ASTERISK_PROMPTS_PREFIX', 'asterisk/prompts'),
+                'throw' => true,
+                'report' => false,
+            ]
+            : [
+                'driver' => 'local',
+                'root' => env('ASTERISK_PROMPTS_PATH', '/var/spool/asterisk/prompts'),
+                'throw' => true,
+                'report' => false,
+            ],
+
     ],
 
     /*

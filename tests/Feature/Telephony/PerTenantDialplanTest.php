@@ -14,7 +14,7 @@ use App\Models\User;
 use App\Services\Telephony\AsteriskConfigService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
-use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 /**
@@ -30,7 +30,7 @@ use Tests\TestCase;
  *   - `generateDialplanIndex()` lists every non-personal team's
  *     dialplan file as an `#include` directive.
  *   - `writeDialplanForTenant()` produces files at the expected
- *     paths under the configured config_path.
+ *     keys on the `asterisk-config` disk.
  *   - Two clients with the same queue name don't collide in the
  *     generated output (the prefix from Phase 1 is doing its job
  *     end-to-end).
@@ -39,31 +39,19 @@ class PerTenantDialplanTest extends TestCase
 {
     use RefreshDatabase;
 
-    protected string $tmpConfigPath;
-
     protected function setUp(): void
     {
         parent::setUp();
 
-        // The job + service write to the on-disk config path; in
-        // tests we redirect to a temp dir so we can introspect the
-        // results without touching the real Asterisk volume.
-        $this->tmpConfigPath = sys_get_temp_dir().'/orbital-asterisk-test-'.uniqid();
-        File::ensureDirectoryExists($this->tmpConfigPath);
-        config()->set('telephony.asterisk.config_path', $this->tmpConfigPath);
+        // The job + service write through the asterisk-config disk;
+        // fake it so we can introspect the results without touching
+        // the real Asterisk volume.
+        Storage::fake('asterisk-config');
 
         // The model observer for CallQueue / Extension / RoutingRule
         // dispatches RegenerateTelephonyConfig synchronously on
         // create — we'd rather control when the job runs in each test.
         Bus::fake([RegenerateTelephonyConfig::class]);
-    }
-
-    protected function tearDown(): void
-    {
-        if (is_dir($this->tmpConfigPath)) {
-            File::deleteDirectory($this->tmpConfigPath);
-        }
-        parent::tearDown();
     }
 
     public function test_per_tenant_generator_emits_namespaced_context(): void
@@ -166,12 +154,12 @@ class PerTenantDialplanTest extends TestCase
 
         app(AsteriskConfigService::class)->writeDialplanForTenant($team->id);
 
-        $tenantFile = $this->tmpConfigPath."/clients/{$team->id}-dialplan.conf";
-        $dispatcherFile = $this->tmpConfigPath.'/from-trunk.conf';
+        $disk = Storage::disk('asterisk-config');
+        $tenantKey = "clients/{$team->id}-dialplan.conf";
 
-        $this->assertFileExists($tenantFile);
-        $this->assertFileExists($dispatcherFile);
-        $this->assertStringContainsString("[tenant_{$team->id}]", file_get_contents($tenantFile));
+        $disk->assertExists($tenantKey);
+        $disk->assertExists('from-trunk.conf');
+        $this->assertStringContainsString("[tenant_{$team->id}]", $disk->get($tenantKey));
     }
 
     public function test_delete_dialplan_for_tenant_removes_the_file(): void
@@ -180,11 +168,12 @@ class PerTenantDialplanTest extends TestCase
         $svc = app(AsteriskConfigService::class);
 
         $svc->writeDialplanForTenant($team->id);
-        $tenantFile = $this->tmpConfigPath."/clients/{$team->id}-dialplan.conf";
-        $this->assertFileExists($tenantFile);
+        $disk = Storage::disk('asterisk-config');
+        $tenantKey = "clients/{$team->id}-dialplan.conf";
+        $disk->assertExists($tenantKey);
 
         $svc->deleteDialplanForTenant($team->id);
-        $this->assertFileDoesNotExist($tenantFile);
+        $disk->assertMissing($tenantKey);
     }
 
     public function test_scoped_job_only_writes_one_tenant_file(): void

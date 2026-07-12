@@ -50,7 +50,12 @@ data:
   SESSION_DRIVER: redis
 
   # Reverb
-  REVERB_APP_ID: orbital
+  REVERB_APP_ID: {{ .Values.reverb.appId | quote }}
+  REVERB_APP_KEY: {{ .Values.reverb.appKey | quote }}
+  # Default app secret for turnkey installs; production should override
+  # this via REVERB_APP_SECRET in the app-secrets Secret (secretRef is
+  # listed after this configMapRef in the pod specs, so it wins).
+  REVERB_APP_SECRET: {{ .Values.reverb.appSecret | quote }}
   REVERB_HOST: {{ include "orbital.componentName" (list . "reverb") }}
   REVERB_PORT: {{ .Values.reverb.service.port | quote }}
   REVERB_SCHEME: http     # ingress terminates TLS; intra-cluster is plain
@@ -68,9 +73,20 @@ data:
   {{- end }}
   AWS_USE_PATH_STYLE_ENDPOINT: "true"
 
+  # Asterisk config/prompt handoff. In-cluster there is no shared RWX
+  # volume: Laravel/Horizon write generated dialplan + TTS prompts to
+  # object storage under these prefixes, and each Asterisk pod's
+  # config-sync sidecar pulls them into a local emptyDir. Flipping the
+  # driver to s3 is what routes the app's `asterisk-config` /
+  # `asterisk-prompts` disks at object storage instead of local files.
+  ASTERISK_STORAGE_DRIVER: s3
+  ASTERISK_CONFIG_PREFIX: asterisk/config
+  ASTERISK_PROMPTS_PREFIX: asterisk/prompts
+
   # Telephony — internal hostnames the Filament admin reaches
   ASTERISK_AMI_HOST: {{ include "orbital.componentName" (list . "asterisk-headless") }}
   ASTERISK_AMI_PORT: "5038"
+  ASTERISK_AMI_USERNAME: orbital
   LIVEKIT_URL: "ws://{{ include "orbital.componentName" (list . "livekit") }}:{{ .Values.livekit.service.port }}"
   LIVEKIT_SIP_HOST: {{ include "orbital.componentName" (list . "livekit-sip") }}
   LIVEKIT_SIP_PORT: {{ .Values.livekitSip.service.sipPort | quote }}

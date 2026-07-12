@@ -8,11 +8,13 @@
 # Assumes:
 # - K3s installed via the standard `curl | sh` install script (Traefik
 #   ingress + ServiceLB + local-path storage all default-on).
-# - At least one ReadWriteMany-capable storage class for the
-#   asterisk-shared PVCs. local-path is RWO-only — fine for a
-#   single-node K3s; multi-node needs longhorn / NFS / etc.
 # - `kubectl create secret docker-registry orbital-registry-creds`
 #   created beforehand with the customer's Harbor robot creds.
+#
+# No ReadWriteMany storage class is required: Asterisk config + prompts
+# are handed off through object storage (in-cluster SeaweedFS by
+# default), not a shared RWX PVC. Every PVC in the chart is per-pod RWO,
+# which local-path serves fine — including multi-node.
 
 global:
   storageClass: "local-path"
@@ -26,16 +28,11 @@ ingress:
     traefik.ingress.kubernetes.io/router.entrypoints: "websecure"
     traefik.ingress.kubernetes.io/router.tls: "true"
 
-# Single-node K3s caveat: ReadWriteMany doesn't work with local-path.
-# The Asterisk shared-config PVC (which both Laravel and Asterisk
-# mount) needs RWX. Workarounds:
-# 1. Single-node K3s: set asterisk.replicas=1 — the StatefulSet's own
-#    PVC works; the cross-pod RWX requirement isn't relevant when
-#    only one Laravel + one Asterisk pod ever exist.
-# 2. Multi-node K3s: install longhorn or rancher's local-path-rwx
-#    provisioner, then override `global.storageClass: longhorn`.
-asterisk:
-  replicas: 1   # safe default for single-node onprem K3s
+# Asterisk scales freely on local-path now — the config/prompt handoff
+# goes through object storage, so there's no cross-pod RWX requirement.
+# Each pod pulls its own dialplan copy via the config-sync sidecar and
+# owns a per-pod RWO spool PVC. Left at the chart default (2) for HA;
+# drop to 1 for a minimal single-node install if you want.
 
 # K3s default Traefik LoadBalancer is klipper-lb (host-port mapping).
 # That's fine — the public IP of the K3s node is the LB IP.

@@ -38,16 +38,22 @@ spec:
         - name: seaweedfs
           image: {{ include "orbital.thirdPartyImage" .Values.objectStorage.inCluster.image }}
           imagePullPolicy: IfNotPresent
+          # The mounted s3.json is a ConfigMap, which does NOT expand the
+          # ${AWS_ACCESS_KEY_ID}/${AWS_SECRET_ACCESS_KEY} placeholders — so
+          # substitute them from env (app-secrets) into a writable copy
+          # before starting weed. Without this SeaweedFS's S3 identity is
+          # the literal "${AWS_ACCESS_KEY_ID}" and every authenticated
+          # request fails with InvalidAccessKeyId.
           command:
-            - weed
-            - server
-            - -dir=/data
-            - -master.volumeSizeLimitMB=1024
-            - -volume.max=20
-            - -filer
-            - -filer.maxMB=4
-            - -s3
-            - -s3.config=/etc/seaweedfs/s3.json
+            - sh
+            - -c
+            - |
+              set -e
+              sed -e "s|\${AWS_ACCESS_KEY_ID}|${AWS_ACCESS_KEY_ID}|g" \
+                  -e "s|\${AWS_SECRET_ACCESS_KEY}|${AWS_SECRET_ACCESS_KEY}|g" \
+                  /etc/seaweedfs/s3.json > /tmp/s3.json
+              exec weed server -dir=/data -master.volumeSizeLimitMB=1024 \
+                -volume.max=20 -filer -filer.maxMB=4 -s3 -s3.config=/tmp/s3.json
           ports:
             - name: master
               containerPort: 9333

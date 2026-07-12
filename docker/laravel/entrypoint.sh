@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# fpm runs as `sail` against a Unix socket in /run/php — recreate on
-# each container start because /run is tmpfs.
+# fpm runs as `sail` against a Unix socket in /run/php. The dirs are
+# created and chowned to sail at build time; recreate defensively in
+# case /run is a tmpfs mount. Only chown when we're root — under the
+# K8s pod securityContext this runs as non-root (uid 1000), where the
+# build-time ownership already applies and a chown would (fatally) fail.
 mkdir -p /run/php /run/nginx
-chown sail:sail /run/php
+if [ "$(id -u)" = "0" ]; then
+    chown sail:sail /run/php /run/nginx
+fi
 
 # storage/ + bootstrap/cache/ ownership and perms are already correct
 # in the image. K8s pod securityContext fsGroup=1000 handles PVC

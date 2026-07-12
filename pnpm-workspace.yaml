@@ -1,2 +1,6 @@
-onlyBuiltDependencies:
-  - esbuild
+# pnpm 11 replaced `onlyBuiltDependencies` (a list) with `allowBuilds`
+# (a map of package matcher -> bool), and defaults `strictDepBuilds` to
+# true — so any dependency with an un-reviewed build script fails the
+# install. esbuild needs its build script; allow it explicitly.
+allowBuilds:
+  esbuild: true

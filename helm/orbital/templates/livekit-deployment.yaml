@@ -36,13 +36,12 @@ spec:
               containerPort: 7880
               protocol: TCP
           env:
-            # LiveKit's `keys:` map cannot be populated from a secret via
-            # the config file (no ${VAR} expansion), so the API key/secret
-            # are injected as the LIVEKIT_KEYS env var in "<key>: <secret>"
-            # form. Both halves are pulled from the app-secrets Secret and
-            # composed via K8s dependent-var expansion — which only sees
-            # vars defined earlier in THIS env list, hence the explicit
-            # secretKeyRefs (envFrom vars aren't visible to $(...)).
+            # LiveKit config is injected wholesale via LIVEKIT_CONFIG (not a
+            # mounted file) so secrets — the API key/secret AND the Valkey
+            # password — reach it through env. The config format does not
+            # expand ${VARS}, so these come from the Secret as explicit env
+            # vars and are spliced in with K8s dependent-var expansion
+            # ($(...) sees only earlier entries in THIS list).
             - name: LIVEKIT_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -53,20 +52,36 @@ spec:
                 secretKeyRef:
                   name: {{ include "orbital.componentName" (list . "app-secrets") }}
                   key: LIVEKIT_API_SECRET
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "orbital.componentName" (list . "app-secrets") }}
+                  key: REDIS_PASSWORD
             - name: LIVEKIT_KEYS
               value: "$(LIVEKIT_API_KEY): $(LIVEKIT_API_SECRET)"
-            # LiveKit reads the rest of its config from this mounted file.
-            - name: LIVEKIT_CONFIG_FILE
-              value: /etc/livekit/livekit.yaml
-          envFrom:
-            - secretRef:
-                name: {{ include "orbital.componentName" (list . "app-secrets") }}
+            - name: LIVEKIT_CONFIG
+              value: |
+                port: 7880
+                rtc:
+                  port_range_start: 50000
+                  port_range_end: 50100
+                  tcp_port: 7881
+                  use_ice_lite: true
+                redis:
+                  address: {{ if .Values.valkey.external.enabled }}{{ .Values.valkey.external.host }}:{{ .Values.valkey.external.port }}{{ else }}{{ include "orbital.componentName" (list . "valkey") }}:6379{{ end }}
+                  password: $(REDIS_PASSWORD)
+                logging:
+                  level: info
+                room:
+                  max_participants: 50
+                  empty_timeout: 300
+                  departure_timeout: 20
+                webhook:
+                  api_key: {{ .Values.livekit.apiKey | quote }}
+                  urls:
+                    - http://{{ include "orbital.componentName" (list . "laravel") }}:{{ .Values.laravel.service.port }}/api/livekit/webhook
           resources:
             {{- toYaml .Values.livekit.resources | nindent 12 }}
-          volumeMounts:
-            - name: livekit-config
-              mountPath: /etc/livekit
-              readOnly: true
           readinessProbe:
             httpGet:
               path: /
@@ -79,8 +94,4 @@ spec:
               port: api
             initialDelaySeconds: 30
             periodSeconds: 15
-      volumes:
-        - name: livekit-config
-          configMap:
-            name: {{ include "orbital.componentName" (list . "livekit-config") }}
 {{- end }}

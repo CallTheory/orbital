@@ -1,22 +1,32 @@
 {{- if .Values.ingress.enabled -}}
 {{/*
-Public ingress for Orbital. Routes HTTPS to the Laravel admin panel
-and WSS for the Reverb broadcast server. Per-host TLS via
-cert-manager (or a manually-provisioned secret named in
-`tls[].secretName`).
+Public ingress for Orbital. Routes HTTPS to the Laravel admin panel and
+WSS to the Reverb broadcast server. The host is always global.domain
+(same value APP_URL is built from). Per-host TLS via cert-manager (when
+a cluster-issuer annotation is set in ingress.annotations) or a manually
+provisioned secret; toggle with ingress.tls.enabled.
 
 The provider-specific ingressClassName comes from values:
   values-vultr-k3s.yaml → traefik
   values-vultr-vke.yaml → nginx (VKE default)
   values-onprem-k3s.yaml → traefik
 */}}
+{{- $host := .Values.global.domain -}}
+{{- $tlsSecret := .Values.ingress.tls.secretName | default (printf "%s-tls" (include "orbital.fullname" .)) -}}
+{{/* Always-on annotations + TLS-only annotations (cert-manager issuer,
+     traefik websecure/tls, etc.) merged in ONLY when TLS is enabled — so
+     an http/dev install isn't pinned to the https entrypoint. */}}
+{{- $annotations := deepCopy (.Values.ingress.annotations | default dict) -}}
+{{- if .Values.ingress.tls.enabled -}}
+{{- $annotations = merge $annotations (deepCopy (.Values.ingress.tlsAnnotations | default dict)) -}}
+{{- end -}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {{ include "orbital.componentName" (list . "ingress") }}
   labels:
     {{- include "orbital.componentLabels" (list . "ingress") | nindent 4 }}
-  {{- with .Values.ingress.annotations }}
+  {{- with $annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
@@ -24,16 +34,17 @@ spec:
   {{- with .Values.ingress.className }}
   ingressClassName: {{ . }}
   {{- end }}
-  {{- with .Values.ingress.tls }}
+  {{- if .Values.ingress.tls.enabled }}
   tls:
-    {{- toYaml . | nindent 4 }}
+    - hosts:
+        - {{ $host | quote }}
+      secretName: {{ $tlsSecret | quote }}
   {{- end }}
   rules:
-    {{- range .Values.ingress.hosts }}
-    - host: {{ .host | quote }}
+    - host: {{ $host | quote }}
       http:
         paths:
-          {{- range .paths }}
+          {{- range .Values.ingress.paths }}
           - path: {{ .path }}
             pathType: {{ .pathType }}
             backend:
@@ -42,5 +53,4 @@ spec:
                 port:
                   number: {{ if eq .service "reverb" }}{{ $.Values.reverb.service.port }}{{ else }}{{ $.Values.laravel.service.port }}{{ end }}
           {{- end }}
-    {{- end }}
 {{- end }}

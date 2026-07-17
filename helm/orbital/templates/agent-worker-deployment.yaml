@@ -25,6 +25,9 @@ spec:
     metadata:
       labels:
         {{- include "orbital.componentLabels" (list . "agent-worker") | nindent 8 }}
+      annotations:
+        # Roll on app-env change — env vars are only read at container start.
+        checksum/app-env: {{ include (print $.Template.BasePath "/configmap-app-env.yaml") . | sha256sum }}
     spec:
       {{- include "orbital.imagePullSecrets" . | nindent 6 }}
       securityContext:
@@ -43,13 +46,29 @@ spec:
           env:
             - name: ORBITAL_API_URL
               value: "http://{{ include "orbital.componentName" (list . "laravel") }}:{{ .Values.laravel.service.port }}"
+            - name: ORBITAL_API_TOKEN
+              value: {{ .Values.agentWorker.token | quote }}
             - name: LIVEKIT_URL
               value: "ws://{{ include "orbital.componentName" (list . "livekit") }}:{{ .Values.livekit.service.port }}"
           resources:
             {{- toYaml .Values.agentWorker.resources | nindent 12 }}
-          # No HTTP / TCP healthcheck — the worker is a long-running
-          # job consumer. A liveness probe based on the worker's
-          # last-heartbeat write to the Orbital API would be ideal;
-          # for now the container's exit-on-error semantics + K8s
-          # restartPolicy are good enough.
+          # k8s ignores the image's Docker HEALTHCHECK, so the worker's
+          # liveness heartbeat is posted from a readiness probe instead.
+          # This pod fronts no Service, so readiness has no traffic
+          # consequence — the probe exists purely to write the heartbeat
+          # that keeps the dashboard's Agent Worker card green. Tolerant
+          # thresholds so a brief Laravel blip doesn't flap it.
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - >-
+                  curl -fsS -m 5 -X POST
+                  -H "Authorization: Bearer $ORBITAL_API_TOKEN"
+                  "$ORBITAL_API_URL/api/agent-worker/heartbeat" >/dev/null
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            timeoutSeconds: 8
+            failureThreshold: 6
 {{- end }}

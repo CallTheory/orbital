@@ -1,0 +1,59 @@
+# local/edge/docker-compose.yml — OFF-cluster Kamailio + rtpengine edge
+# for the k3d local call test. Joins the k3d cluster's Docker network so
+# it can reach the Asterisk NodePort, and publishes the SIP/WSS/RTP ports
+# to the host so a softphone can register. NOT for production — there the
+# edge runs on VMs. Driven by ../edge-up.sh (generates dispatcher.list +
+# certs and exports RTPENGINE_INTERFACE).
+name: orbital-edge
+
+networks:
+  k3d:
+    external: true
+    name: ${K3D_NETWORK:-k3d-orbital-dev}
+
+services:
+  # Media relay. Aliased as both rtpengine-1 and rtpengine-2 so the
+  # shared kamailio.cfg's two-socket rtpengine_sock line both resolve to
+  # this one daemon. RTP range published to the host for host softphones.
+  rtpengine-1:
+    image: drachtio/rtpengine:latest
+    networks:
+      k3d:
+        aliases: [rtpengine-1, rtpengine-2]
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        exec rtpengine --foreground --log-stderr
+        --interface=${RTPENGINE_INTERFACE:-eth0}
+        --listen-ng=0.0.0.0:22222
+        --port-min=23000 --port-max=23099
+        --log-level=6
+    ports:
+      - "22222:22222/udp"
+      - "23000-23099:23000-23099/udp"
+    restart: unless-stopped
+
+  # SIP front door. Reuses the repo's kamailio.cfg + tls.cfg verbatim;
+  # only dispatcher.list (points at the cluster) and the certs are
+  # edge-specific and bind-mounted from ../edge-up.sh's output.
+  kamailio:
+    build:
+      context: ../../docker/kamailio
+    networks:
+      k3d:
+        aliases: [kamailio]
+    volumes:
+      - ./dispatcher.list:/etc/kamailio/dispatcher.list
+      - ../../docker/kamailio/kamailio.cfg:/etc/kamailio/kamailio.cfg
+      - ../../docker/kamailio/tls.cfg:/etc/kamailio/tls.cfg
+      - ./tls:/etc/tls:ro
+    ports:
+      - "5060:5060/udp"
+      - "5060:5060/tcp"
+      - "5061:5061/tcp"
+      - "7443:7443/tcp"
+      - "8090:8090/tcp"        # JSON-RPC — cluster reaches via host.k3d.internal
+    depends_on:
+      - rtpengine-1
+    restart: unless-stopped

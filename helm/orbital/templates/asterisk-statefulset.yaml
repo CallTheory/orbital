@@ -33,6 +33,10 @@ spec:
     metadata:
       labels:
         {{- include "orbital.componentLabels" (list . "asterisk") | nindent 8 }}
+      annotations:
+        # Roll on app-env change — the config-sync sidecar + main container
+        # read AMI creds / S3 prefixes from env only at container start.
+        checksum/app-env: {{ include (print $.Template.BasePath "/configmap-app-env.yaml") . | sha256sum }}
     spec:
       {{- include "orbital.imagePullSecrets" . | nindent 6 }}
       initContainers:
@@ -80,6 +84,16 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name   # asterisk-0 / asterisk-1 / ...
+            {{- if .Values.asterisk.edgeExpose.enabled }}
+            # Local-edge test: advertise a reachable address + pin the
+            # RTP window so an off-cluster rtpengine can relay media in.
+            - name: ASTERISK_EXTERNAL_ADDRESS
+              value: {{ .Values.asterisk.edgeExpose.externalAddress | quote }}
+            - name: ASTERISK_RTP_START
+              value: {{ .Values.asterisk.edgeExpose.rtpStart | quote }}
+            - name: ASTERISK_RTP_END
+              value: {{ .Values.asterisk.edgeExpose.rtpEnd | quote }}
+            {{- end }}
           resources:
             {{- toYaml .Values.asterisk.resources | nindent 12 }}
           volumeMounts:

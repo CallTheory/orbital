@@ -1,0 +1,42 @@
+{{- if and .Values.asterisk.enabled .Values.asterisk.edgeExpose.enabled -}}
+{{/*
+LOCAL-EDGE TEST ONLY — do not ship enabled.
+
+Exposes one Asterisk pod's SIP signaling and a bounded RTP window on the
+k3d node IPs (NodePort) so an OFF-cluster rtpengine (local/edge/) can
+reach both the signaling port and the media ports. The RTP ports are
+mapped 1:1 (nodePort == port == targetPort) so the address Asterisk
+advertises (external_media_address = a node IP, set via env) resolves to
+the same port on the pod. Keep asterisk.replicas at 1 while this is on —
+NodePort load-balances, and RTP for a call must land on the one pod that
+owns it.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "orbital.componentName" (list . "asterisk-edge") }}
+  labels:
+    {{- include "orbital.componentLabels" (list . "asterisk") | nindent 4 }}
+spec:
+  type: NodePort
+  selector:
+    {{- include "orbital.selectorLabels" (list . "asterisk") | nindent 4 }}
+  ports:
+    - name: sip-udp
+      protocol: UDP
+      port: 5060
+      targetPort: 5060
+      nodePort: {{ .Values.asterisk.edgeExpose.sipNodePort }}
+    - name: sip-tcp
+      protocol: TCP
+      port: 5060
+      targetPort: 5060
+      nodePort: {{ .Values.asterisk.edgeExpose.sipNodePort }}
+    {{- range $p := untilStep (int .Values.asterisk.edgeExpose.rtpStart) (int (add1 .Values.asterisk.edgeExpose.rtpEnd)) 1 }}
+    - name: rtp-{{ $p }}
+      protocol: UDP
+      port: {{ $p }}
+      targetPort: {{ $p }}
+      nodePort: {{ $p }}
+    {{- end }}
+{{- end }}

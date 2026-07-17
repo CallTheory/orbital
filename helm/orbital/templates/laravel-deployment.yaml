@@ -28,6 +28,7 @@ spec:
         {{/* Roll pods when the failover-tier ConfigMap changes — env
              vars only re-read on pod start. */}}
         checksum/failover-tiers: {{ include (print $.Template.BasePath "/configmap-failover-tiers.yaml") . | sha256sum }}
+        checksum/app-env: {{ include (print $.Template.BasePath "/configmap-app-env.yaml") . | sha256sum }}
     spec:
       {{- include "orbital.imagePullSecrets" . | nindent 6 }}
       securityContext:

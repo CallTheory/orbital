@@ -1,45 +1,41 @@
-{{- if .Values.horizon.enabled -}}
+{{- if .Values.scheduler.enabled -}}
 {{/*
-Horizon — Laravel queue worker. Same image as the laravel pod, just
-runs `php artisan horizon` instead of php-fpm. Singleton replica is
-fine for most installs; scale up if queue depth grows.
-
-Reads the same env / secrets as the Laravel pod so jobs that touch
-DB / Valkey / S3 see identical config.
+Scheduler — runs `php artisan schedule:work` (the Laravel cron loop).
+Without it NOTHING scheduled fires: the scheduler heartbeat, recording
+prune, queue-metric rollups, cert-renewal checks, etc. Same image as
+laravel, different command. Singleton by default; every scheduled task
+carries onOneServer() so replicas are safe, but 1 is plenty here.
 */}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "orbital.componentName" (list . "horizon") }}
+  name: {{ include "orbital.componentName" (list . "scheduler") }}
   labels:
-    {{- include "orbital.componentLabels" (list . "horizon") | nindent 4 }}
+    {{- include "orbital.componentLabels" (list . "scheduler") | nindent 4 }}
 spec:
-  replicas: {{ .Values.horizon.replicas }}
+  replicas: {{ .Values.scheduler.replicas }}
   selector:
     matchLabels:
-      {{- include "orbital.selectorLabels" (list . "horizon") | nindent 6 }}
-  # Horizon must wind down jobs cleanly on rollout — no parallel
-  # workers fighting over the same queue keys mid-deploy.
+      {{- include "orbital.selectorLabels" (list . "scheduler") | nindent 6 }}
   strategy:
     type: Recreate
   template:
     metadata:
       labels:
-        {{- include "orbital.componentLabels" (list . "horizon") | nindent 8 }}
+        {{- include "orbital.componentLabels" (list . "scheduler") | nindent 8 }}
       annotations:
-        checksum/failover-tiers: {{ include (print $.Template.BasePath "/configmap-failover-tiers.yaml") . | sha256sum }}
         checksum/app-env: {{ include (print $.Template.BasePath "/configmap-app-env.yaml") . | sha256sum }}
     spec:
       {{- include "orbital.imagePullSecrets" . | nindent 6 }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
-        - name: horizon
+        - name: scheduler
           image: {{ include "orbital.image" (dict "ctx" . "name" .Values.laravel.image.name "tag" .Values.laravel.image.tag) }}
           imagePullPolicy: {{ .Values.global.image.pullPolicy }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
-          command: ["php", "artisan", "horizon"]
+          command: ["php", "artisan", "schedule:work"]
           envFrom:
             - configMapRef:
                 name: {{ include "orbital.componentName" (list . "failover-tiers") }}
@@ -48,13 +44,11 @@ spec:
             - secretRef:
                 name: {{ include "orbital.componentName" (list . "app-secrets") }}
           resources:
-            {{- toYaml .Values.horizon.resources | nindent 12 }}
-          # Horizon's `horizon:status` exits 0 when the supervisor is
-          # running. Wraps it in a tiny shell so the probe doesn't
-          # depend on the artisan binary path.
+            {{- toYaml .Values.scheduler.resources | nindent 12 }}
+          # schedule:work exits non-zero if the loop dies; k8s restarts it.
           livenessProbe:
             exec:
-              command: ["sh", "-c", "php artisan horizon:status | grep -q running"]
+              command: ["sh", "-c", "pgrep -f 'schedule:work' >/dev/null"]
             initialDelaySeconds: 30
             periodSeconds: 30
             timeoutSeconds: 10

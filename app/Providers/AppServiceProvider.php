@@ -21,6 +21,8 @@ use App\Services\Bootstrap\Bootstrappers\S3BucketBootstrapper;
 use App\Services\Bootstrap\Bootstrappers\SsoSecretsBootstrapper;
 use App\Services\Bootstrap\BootstrapRegistry;
 use App\Services\Clients\ClientPermissionGatekeeper;
+use Filament\Support\Facades\FilamentView;
+use Filament\View\PanelsRenderHook;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -42,6 +44,19 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->registerBootstrappers();
+
+        // Reverb connection details (app key, browser-facing host/port
+        // derived from APP_URL) must be injected at request time, not
+        // baked in at Vite build time — Orbital ships as a single
+        // distributable image to many customers, each with a different
+        // host and Reverb key. Registered once, globally, for all three
+        // Filament panels (admin/operator/portal) rather than per-panel.
+        // HEAD_START so the runtime global is set before each panel's
+        // HEAD_END app.js (a deferred module) executes.
+        FilamentView::registerRenderHook(
+            PanelsRenderHook::HEAD_START,
+            fn (): string => view('partials.echo-config')->render(),
+        );
 
         // Telephony config regeneration on model changes
         SipTrunk::observe(TelephonyObserver::class);

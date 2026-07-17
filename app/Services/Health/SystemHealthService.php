@@ -46,11 +46,11 @@ class SystemHealthService
         // Run all the slow network probes concurrently. Returns a map of
         // probe key → ['ok' => bool, 'error' => string|null, 'elapsed_ms' => int].
         //
-        // Asterisk lands as four separate probes rather than one. A single
-        // AMI check used to hide the case where the process was up but SIP
-        // transports had failed to bind (TLS cert mismatch, port conflict,
-        // misconfigured http.conf). Probing AMI + SIP/TCP + TLS + WSS lets
-        // the dashboard call out partial failure.
+        // Asterisk lands as two separate probes rather than one. A single
+        // AMI check used to hide the case where the process was up but the
+        // SIP transport had failed to bind (port conflict, misconfigured
+        // pjsip.conf). Probing AMI + SIP/TCP lets the dashboard call out
+        // partial failure.
         $asteriskHost = config('telephony.asterisk.ami.host') ?: 'asterisk';
         $probes = $this->runParallelProbes([
             'asterisk_ami' => ['host' => $asteriskHost, 'port' => (int) (config('telephony.asterisk.ami.port') ?: 5038)],
@@ -62,27 +62,36 @@ class SystemHealthService
             // the Asterisk log. Niche transport (most installs use
             // UDP/TCP 5060 internally and only expose TLS to external
             // trunks); the TCP probe at 5060 already signals whether
-            // chan_pjsip is alive, and `asterisk_wss` exercises the
-            // TLS cert loading via a clean HTTP-over-TLS handshake.
+            // chan_pjsip is alive.
             // 'asterisk_sip_tls' => ['host' => $asteriskHost, 'port' => 5061, 'tls' => true],
-            // tls:true makes the probe do a real TLS handshake
-            // (openssl s_client) instead of a raw TCP connect. Without
-            // it, Asterisk's SSL_accept fails on our half-open socket
-            // and logs an SSL_shutdown error for every poll cycle.
-            'asterisk_wss' => ['host' => $asteriskHost, 'port' => 8089, 'tls' => true],
+            // asterisk_wss (8089) intentionally NOT probed: operator
+            // WSS moved to Kamailio in Phase 1b, so Asterisk no
+            // longer binds 8089. Probing it here would permanently
+            // read down and drag the card to WARN for a transport
+            // that's supposed to be closed.
             'livekit' => $this->parseHostPort(config('telephony.livekit.local.url') ?: env('LIVEKIT_URL', 'http://livekit:7880'), 7880),
-            'livekit_sip' => ['host' => env('LIVEKIT_SIP_HOST', 'livekit-sip'), 'port' => (int) env('LIVEKIT_SIP_PORT', 5060)],
+            // TCP probe against what is actually a UDP SIP port — it
+            // can never succeed as a real connectivity check. Kept
+            // as `optional` so it reads WARN instead of a permanent
+            // false-DOWN outage on every install.
+            // livekit_sip is intentionally NOT probed here — it has no TCP
+            // listener (SIP is UDP-only; it makes outbound connections to
+            // LiveKit + Valkey). Its health is derived from LiveKit in
+            // checkLivekitSip().
             'icecast' => ['host' => env('ICECAST_HOST', 'icecast'), 'port' => (int) env('ICECAST_PORT', 8000)],
             'prometheus' => ['host' => 'prometheus', 'port' => 9090],
             'loki' => ['host' => 'loki', 'port' => 3100],
             'grafana' => ['host' => 'grafana', 'port' => 3000],
-            // SeaweedFS S3 API is fronted by the HAProxy pair which
-            // round-robins across filer-1 and filer-2. Probing the
-            // frontend exercises the whole data-plane path rather
-            // than a single filer, so the card goes red only when
-            // the bucket itself is unreachable (not when one filer
-            // is restarting).
-            'seaweedfs' => ['host' => 'haproxy', 'port' => 8333],
+            // Probe the actual S3 endpoint the app is configured to
+            // use (filesystems.disks.s3.endpoint / AWS_ENDPOINT) —
+            // on docker-compose that's the HAProxy frontend fronting
+            // the SeaweedFS filer pair, on k8s it's whatever Service
+            // the chart wires up. Falls back to the compose default
+            // only when nothing is configured.
+            'seaweedfs' => $this->parseHostPort(
+                (string) (config('filesystems.disks.s3.endpoint') ?: env('AWS_ENDPOINT') ?: 'http://seaweedfs:8333'),
+                8333,
+            ),
             // Ollama is opt-in (docker-compose `local-ai` profile) —
             // reported as a degraded/warn state when unreachable rather
             // than down, same pattern as Icecast.
@@ -106,17 +115,21 @@ class SystemHealthService
             // back to the 15s polling path — degraded but not dead —
             // so we surface it but not as an outage.
             'reverb' => [
-                'host' => (string) (config('reverb.servers.reverb.host') === '0.0.0.0'
-                    ? 'reverb'
-                    : (config('reverb.servers.reverb.host') ?: 'reverb')),
-                'port' => (int) (config('reverb.servers.reverb.port') ?: 8080),
+                'host' => (string) (env('REVERB_HOST') ?: 'reverb'),
+                'port' => (int) (env('REVERB_PORT') ?: 8080),
             ],
             // Kamailio SIP proxy — TCP probe on the JSON-RPC
             // management port (8090) rather than the SIP port
-            // (5060/UDP can't be TCP-probed). Marked optional when
+            // (5060/UDP can't be TCP-probed). Host/port are derived
+            // from the JSON-RPC URL the app actually talks to
+            // (telephony.kamailio.jsonrpc_url) rather than a
+            // hardcoded compose hostname. Marked optional when
             // kamailio.enabled is false so installs without the
             // container don't get a red card.
-            'kamailio' => ['host' => 'kamailio', 'port' => 8090],
+            'kamailio' => $this->parseHostPort(
+                preg_replace('#/jsonrpc/?$#', '', (string) config('telephony.kamailio.jsonrpc_url')) ?: 'http://kamailio:8090',
+                8090,
+            ),
             // HAProxy internal stats frontend. Not the dataplane
             // probe (the tier-specific probes like `seaweedfs` already
             // hit the LB for their path) — this probes the stats
@@ -147,7 +160,7 @@ class SystemHealthService
             $this->checkAppDisk(),
             $this->checkAsterisk($probes, $asteriskHost),
             $this->probeResultToCheck($probes['livekit'], 'livekit', 'LiveKit', 'Media', 'LiveKit WebRTC server', 'heroicon-o-signal'),
-            $this->probeResultToCheck($probes['livekit_sip'], 'livekit_sip', 'LiveKit SIP', 'Telephony', 'LiveKit SIP bridge', 'heroicon-o-arrows-right-left'),
+            $this->checkLivekitSip($probes),
             $this->checkAgentWorker(),
             $this->probeResultToCheck($probes['icecast'], 'icecast', 'Icecast', 'Media', 'Streaming hold music server', 'heroicon-o-musical-note', optional: true),
             $this->checkSipTrunks(),
@@ -172,6 +185,13 @@ class SystemHealthService
             $this->checkScheduler(),
         ];
 
+        // Swap out checks for components this deployment topology
+        // doesn't run at all (config('health.disabled'), set via
+        // HEALTH_DISABLED_COMPONENTS) before layering acks on top —
+        // a disabled component can't meaningfully be "acknowledged",
+        // it's just not part of the install.
+        $checks = $this->applyDisabled($checks);
+
         // Layer active acknowledgments onto the raw results.
         // Cards keep their true status for display; effectiveStatus()
         // is what aggregate rollup reads, so acked cards count as
@@ -189,6 +209,33 @@ class SystemHealthService
         SystemHealthUpdated::dispatch($checks);
 
         return $checks;
+    }
+
+    /**
+     * Replace the raw result for any check whose key is listed in
+     * config('health.disabled') with a NOT_DEPLOYED card. Keeps the
+     * probe code itself topology-agnostic — a single config list
+     * (driven by HEALTH_DISABLED_COMPONENTS, set per deployment by
+     * the Helm chart / compose env) is the one place that knows
+     * "this install doesn't run Grafana" etc.
+     *
+     * @param  array<int, HealthCheck>  $checks
+     * @return array<int, HealthCheck>
+     */
+    private function applyDisabled(array $checks): array
+    {
+        $disabled = array_flip(config('health.disabled', []));
+
+        if ($disabled === []) {
+            return $checks;
+        }
+
+        return array_map(
+            fn (HealthCheck $check): HealthCheck => isset($disabled[$check->key])
+                ? HealthCheck::notDeployed($check->key, $check->name, $check->category, $check->icon)
+                : $check,
+            $checks,
+        );
     }
 
     /**
@@ -533,11 +580,11 @@ class SystemHealthService
     }
 
     /**
-     * Aggregate the four Asterisk port probes into a single dashboard card.
+     * Aggregate the Asterisk AMI + SIP/TCP probes into a single dashboard card.
      *
      * Status roll-up:
      *   - AMI down → DOWN (process likely dead; nothing else works)
-     *   - AMI up but any SIP transport down → WARN (partial outage)
+     *   - AMI up but SIP/TCP down → WARN (partial outage)
      *   - Everything up → OK
      *
      * UDP 5060 isn't TCP-probe'able; we treat the SIP/TCP result as a proxy
@@ -545,13 +592,17 @@ class SystemHealthService
      * if TCP is listening, UDP almost certainly is too. The dashboard
      * surfaces the assumption as "UDP 5060 via TCP sibling" in the metric.
      *
+     * WSS 8089 is intentionally not part of this roll-up — operator WSS
+     * moved to Kamailio in Phase 1b and Asterisk no longer binds that
+     * port, so factoring it in would permanently drag a healthy install
+     * to WARN.
+     *
      * @param  array<string, array{ok: bool, host: string, port: int, error: ?string}>  $probes
      */
     private function checkAsterisk(array $probes, string $host): HealthCheck
     {
         $ami = $probes['asterisk_ami'] ?? ['ok' => false];
         $sipTcp = $probes['asterisk_sip_tcp'] ?? ['ok' => false];
-        $wss = $probes['asterisk_wss'] ?? ['ok' => false];
 
         $mark = fn (bool $ok): string => $ok ? 'ok' : 'down';
 
@@ -561,7 +612,6 @@ class SystemHealthService
             'AMI 5038' => $mark($ami['ok']),
             'SIP 5060 TCP' => $mark($sipTcp['ok']),
             'SIP 5060 UDP' => $sipTcp['ok'] ? 'ok (inferred)' : 'down',
-            'WSS 8089' => $mark($wss['ok']),
         ];
 
         if (! $ami['ok']) {
@@ -576,8 +626,7 @@ class SystemHealthService
             );
         }
 
-        $transportsUp = $sipTcp['ok'] && $wss['ok'];
-        if ($transportsUp) {
+        if ($sipTcp['ok']) {
             return new HealthCheck(
                 key: 'asterisk',
                 name: 'Asterisk',
@@ -589,20 +638,12 @@ class SystemHealthService
             );
         }
 
-        $down = [];
-        if (! $sipTcp['ok']) {
-            $down[] = 'SIP 5060';
-        }
-        if (! $wss['ok']) {
-            $down[] = 'WSS 8089';
-        }
-
         return new HealthCheck(
             key: 'asterisk',
             name: 'Asterisk',
             category: 'Telephony',
             status: HealthCheck::WARN,
-            message: 'Process up (AMI reachable) but some transports are not bound: '.implode(', ', $down),
+            message: 'Process up (AMI reachable) but SIP 5060 is not bound',
             metrics: $metrics,
             icon: 'heroicon-o-phone-arrow-up-right',
         );
@@ -643,6 +684,31 @@ class SystemHealthService
                 : "Last heartbeat {$age}s ago",
             metrics: ['Last seen' => "{$age}s ago"],
             icon: 'heroicon-o-cpu-chip',
+        );
+    }
+
+    /**
+     * LiveKit-SIP has no probeable listener — its only inbound port is UDP
+     * 5069 (SIP); it makes outbound TCP to LiveKit + Valkey. So instead of
+     * a meaningless TCP probe we derive its health from LiveKit, the media
+     * server it bridges into: if LiveKit is reachable the bridge is
+     * functional, and if LiveKit is down the bridge can't do anything.
+     *
+     * @param  array<string, array{ok: bool, host: string, port: int, error: ?string}>  $probes
+     */
+    private function checkLivekitSip(array $probes): HealthCheck
+    {
+        $livekitUp = (bool) ($probes['livekit']['ok'] ?? false);
+
+        return new HealthCheck(
+            key: 'livekit_sip',
+            name: 'LiveKit SIP',
+            category: 'Telephony',
+            status: $livekitUp ? HealthCheck::OK : HealthCheck::DOWN,
+            message: $livekitUp
+                ? 'SIP ↔ LiveKit bridge (verified via LiveKit — SIP is UDP-only, no direct probe)'
+                : 'Cannot verify — LiveKit (its control plane) is unreachable',
+            icon: 'heroicon-o-arrows-right-left',
         );
     }
 

@@ -15,7 +15,8 @@ global:
 
 ingress:
   className: "traefik"
-  annotations:
+  # TLS-only — applied only when ingress.tls.enabled.
+  tlsAnnotations:
     # Tells the Vultr cloud controller to provision a managed LB.
     service.beta.kubernetes.io/vultr-loadbalancer-protocol: "https"
     cert-manager.io/cluster-issuer: "letsencrypt-prod"

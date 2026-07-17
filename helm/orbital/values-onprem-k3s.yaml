@@ -21,9 +21,11 @@ global:
 
 ingress:
   className: "traefik"
-  annotations:
-    # K3s ships Traefik as default; the cert-manager annotation is
-    # optional and only kicks in if cert-manager is installed.
+  # TLS-only annotations — applied only when ingress.tls.enabled. With
+  # TLS off (local http dev) these are omitted, so Traefik doesn't pin
+  # the router to the https-only `websecure` entrypoint (which 404s
+  # plain-http requests on :8080).
+  tlsAnnotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
     traefik.ingress.kubernetes.io/router.entrypoints: "websecure"
     traefik.ingress.kubernetes.io/router.tls: "true"

@@ -317,6 +317,9 @@ jobs:
           - name: agent-worker
             dockerfile: Dockerfile
             context: agent-worker
+          - name: asterisk-config-sync
+            dockerfile: Dockerfile
+            context: docker/asterisk-config-sync
     uses: actions/.forgejo-workflows/.forgejo/workflows/orbital-cosign.yml@main
     with:
       image-name: ${{ matrix.name }}

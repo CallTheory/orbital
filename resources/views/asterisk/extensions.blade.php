@@ -80,38 +80,10 @@ exten => queue-{{ $queue->id }},1,NoOp(Queue: {{ $queue->name }} -> {{ $queue->a
 @endforeach
 
 ;───────────────────────────────────────────────────────────────────────────────
-; INBOUND FROM TRUNKS
+; NOTE: [from-trunk] and [from-livekit] are intentionally NOT defined here.
+; They live in the dedicated from-trunk.conf (generateFromTrunkDispatcher),
+; which dialplan_index.conf also #includes. Defining them here too would
+; double-register their `_X.` extensions ("already in use") and, worse,
+; route inbound calls to `internal` instead of the correct per-client
+; context. This file owns [globals] + [internal] only.
 ;───────────────────────────────────────────────────────────────────────────────
-[from-trunk]
-
-@foreach($rules as $rule)
-; Rule: {{ $rule->name }}
-@if($rule->did_pattern)
-exten => {{ $rule->did_pattern }},1,NoOp(Routing: {{ $rule->name }})
-@else
-exten => _X.,1,NoOp(Routing: {{ $rule->name }})
-@endif
-@switch($rule->destination_type)
-@case('extension')
- same => n,Goto(internal,{{ $rule->destination_id }},1)
-@break
-@case('queue')
- same => n,Goto(internal,queue-{{ $rule->destination_id }},1)
-@break
-@case('voicemail')
- same => n,Answer()
- same => n,VoiceMail({{ $rule->destination_id }}@@default)
-@break
-@default
- same => n,Goto(internal,{{ $rule->destination_id }},1)
-@endswitch
- same => n,Hangup()
-@endforeach
-
-;───────────────────────────────────────────────────────────────────────────────
-; INBOUND FROM LIVEKIT (call transfers back from AI agents)
-;───────────────────────────────────────────────────────────────────────────────
-[from-livekit]
-
-exten => _X.,1,NoOp(From LiveKit: ${EXTEN})
- same => n,Goto(internal,${EXTEN},1)

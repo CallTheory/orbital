@@ -1,0 +1,36 @@
+# values-local-edge.yaml — LOCAL EDGE TEST ONLY. Never use in production.
+#
+# Layers on top of values-onprem-k3s.yaml to let an OFF-cluster
+# Kamailio + rtpengine edge (see local/edge/) place real calls against
+# the k3d cluster. It:
+#   - runs a single Asterisk pod (so the RTP NodePorts map to one pod),
+#   - exposes Asterisk SIP + a bounded RTP window on the node IPs,
+#   - makes pjsip advertise a reachable address (a k3d node IP),
+#   - points the in-cluster app at the host-published Kamailio JSON-RPC.
+#
+# Apply (externalAddress = a k3d node IP; local/edge-up.sh discovers it):
+#   helm upgrade orbital ./helm/orbital -n orbital \
+#     -f ./helm/orbital/values-onprem-k3s.yaml \
+#     -f ./helm/orbital/values-local-edge.yaml \
+#     --set global.image.registry=orbital-registry:5001 --set global.image.tag=dev \
+#     --set global.domain=orbital.localhost --set global.appUrl=http://orbital.localhost:8080 \
+#     --set ingress.tls.enabled=false \
+#     --set asterisk.edgeExpose.externalAddress=<NODE_IP>
+
+asterisk:
+  # One pod: NodePort load-balances, and a call's RTP must land on the
+  # single pod that owns the dialog. Multi-pod edge is a VM concern.
+  replicas: 1
+  edgeExpose:
+    enabled: true
+    sipNodePort: 31060
+    rtpStart: 31000
+    rtpEnd: 31049
+    # externalAddress is set at apply time (a k3d node IP) via --set.
+
+telephony:
+  kamailio:
+    enabled: true
+    # The edge Kamailio publishes JSON-RPC 8090; the cluster reaches the
+    # host via host.k3d.internal. local/edge-up.sh confirms the address.
+    jsonrpcUrl: "http://host.k3d.internal:8090/jsonrpc"

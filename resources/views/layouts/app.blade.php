@@ -12,6 +12,8 @@
              this Jetstream layout falls back to the browser sans-serif
              stack applied via Tailwind's `font-sans` on <body>. --}}
 
+        @include('partials.echo-config')
+
         <!-- Scripts -->
         @vite(['resources/css/app.css', 'resources/js/app.js'])
 

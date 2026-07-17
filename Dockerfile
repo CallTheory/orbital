@@ -138,10 +138,15 @@ COPY --from=frontend /build/public/build ./public/build
 # intentionally NOT run — it freezes env at build time and breaks
 # K8s ConfigMap-driven config.
 RUN composer dump-autoload --optimize --classmap-authoritative \
-    && php artisan route:cache \
     && php artisan view:cache \
     && php artisan event:cache \
     && rm -f /usr/local/bin/composer
+# NOTE: `route:cache` is intentionally NOT run here. Livewire 4 serves its
+# JS from a hashed path (/livewire-<hash>/livewire.min.js) whose hash is
+# computed from runtime config; caching routes at build time freezes an
+# hash that never matches the one the running app generates, so the asset
+# 404s and Livewire/Filament stops working. Same reason config:cache is
+# skipped. Routes register per-request at runtime instead.
 
 # Storage / cache writable by the runtime user.
 RUN mkdir -p storage/framework/cache/data storage/framework/sessions \

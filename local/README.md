@@ -1,6 +1,11 @@
-# Local k3d cluster — Helm chart iteration
+# Local k3d cluster — the staging environment
 
 This directory spins up a 3-node K3s cluster inside Docker (via [k3d](https://k3d.io/)) so you can test the Helm chart's rendered manifests against a real Kubernetes API. Same topology as the on-prem K3s install (1 server + 2 agents, Traefik ingress, local-path storage), so chart bugs that only show up under multi-node scheduling get caught locally.
+
+This is **Orbital's staging environment** — the production-shaped deployment you validate changes against before pushing to Vultr. See the root [`README.md`](../README.md#environments) for how the three environments (dev / staging / production) relate. The two commands you'll use most:
+
+- **First bring-up:** `./k3d-up.sh`
+- **Redeploy your code changes:** `./k3d-build.sh` (or `EDGE=1 ./k3d-build.sh` when the SIP edge is running)
 
 This is **not** the everyday Laravel dev path — that's still `./vendor/bin/sail up -d` from the repo root. Reach for k3d when:
 
@@ -53,21 +58,33 @@ open http://localhost:8000
 
 Removes the cluster + registry container + all PVCs. Nothing persists.
 
-## Push a local image to the cluster's registry
+## Redeploy your code changes — `k3d-build.sh`
 
-The k3d cluster pulls images from `orbital-registry:5001` (resolvable inside the cluster). To test a local Laravel image build:
+After the cluster is up, this is the single command that pulls your working tree into staging. It builds the four first-party images (laravel, agent-worker, asterisk, asterisk-config-sync) under a **unique tag**, pushes them to the cluster registry, and rolls the release onto that tag:
 
 ```bash
-docker build -t orbital-registry:5001/orbital/laravel:dev -f docker/8.4/Dockerfile .
-docker push orbital-registry:5001/orbital/laravel:dev
-helm upgrade orbital ./helm/orbital \
-    -n orbital \
-    -f ./helm/orbital/values-onprem-k3s.yaml \
-    --set global.image.registry=orbital-registry:5001 \
-    --set global.image.tag=dev
+./k3d-build.sh                 # rebuild + redeploy everything
+./k3d-build.sh laravel         # only rebuild laravel (others keep their current tag)
+./k3d-build.sh laravel asterisk
 ```
 
-The `k3d-up.sh` script already sets the registry/tag overrides on first install — `helm upgrade` later just rolls the new image.
+Why a unique tag per build instead of `:dev`: reusing a fixed tag makes `helm upgrade` see no spec change, so it keeps the **old** pods running — you get "green but running old code," and even a `rollout restart` won't re-pull under `imagePullPolicy: IfNotPresent`. A fresh `dev-<timestamp>` tag every build forces a real rollout with zero of that ambiguity.
+
+Watch it roll:
+
+```bash
+kubectl -n orbital get pods -w
+```
+
+### With the SIP edge running
+
+If you've brought up the local edge (below), redeploy with `EDGE=1` so the Kamailio/rtpengine wiring survives the upgrade:
+
+```bash
+EDGE=1 ./k3d-build.sh
+```
+
+`EDGE=1` layers `values-local-edge.yaml` on top and re-pins the k3d node IP that Asterisk advertises in SDP. A plain `./k3d-build.sh` would reset Asterisk to the non-edge defaults and drop the NodePort exposure mid-session.
 
 ## Common port collisions
 
@@ -84,4 +101,19 @@ If you want both running simultaneously, override the k3d host ports in `k3d-con
 
 - **Storage is all RWO now**: the Asterisk dialplan/prompt handoff goes through object storage (in-cluster SeaweedFS), not a shared ReadWriteMany PVC — so `local-path` (RWO-only) is sufficient and Asterisk scales to multiple pods on it. Each Asterisk pod pulls its own config copy via a `config-sync` sidecar. If the `config-sync` container is stuck, check `kubectl -n orbital logs <asterisk-pod> -c config-sync` (and `-c config-sync-init` for boot-time sync).
 - **No real ingress TLS**: cert-manager isn't installed. The Ingress points at the cert-manager `letsencrypt-prod` ClusterIssuer that doesn't exist locally — Traefik serves over plain HTTP at port 8080 anyway. Production needs cert-manager + a real DNS name.
-- **No real edge VMs**: the Kamailio + rtpengine edge lives outside the cluster (on real VMs). To test the SIP path locally, run the existing sail compose stack alongside k3d (different ports), or skip and test SIP on a real Vultr deployment.
+- **The SIP edge is off-cluster**: in production the Kamailio + rtpengine edge runs on real VMs (provisioned by orbital-setup). Locally you can stand up an equivalent edge on the k3d docker network — see the next section.
+
+## Optional: local SIP edge (real call path)
+
+To place actual calls against the cluster, bring up an off-cluster Kamailio + rtpengine edge that joins the k3d docker network and dispatches to Asterisk's NodePort. This mirrors the prod shape (edge outside, app tier inside) without host networking.
+
+```bash
+./edge-up.sh          # Kamailio + rtpengine on the k3d docker network
+./edge-register.sh    # seed the rtpengine + Asterisk-backend rows so the app's
+                      #   health cards + dispatcher reload work
+EDGE=1 ./k3d-build.sh # (re)deploy the cluster side with the edge overlay
+```
+
+`edge-up.sh` discovers a k3d node IP, points Kamailio's dispatcher at the cluster's `asterisk-edge` NodePort, and self-signs a cert for the TLS/WSS listeners. If your softphone runs on Windows or another host (not inside WSL / the docker network), set `EDGE_RTP_ADVERTISE_IP` to a host-reachable address so rtpengine advertises the right media IP.
+
+Tear the edge down with `./edge-down.sh`. It's independent of the cluster — you can cycle the edge without touching the k3d deployment.

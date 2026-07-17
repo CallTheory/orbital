@@ -27,6 +27,17 @@ final class HealthCheck
     public const DOWN = 'down';
 
     /**
+     * Component isn't present in this deployment topology (e.g. a
+     * docker-compose-only service that the k8s chart doesn't run).
+     * Rolls up as a non-problem everywhere: effectiveStatus() treats
+     * it like OK, isOk() still reports false (it isn't literally
+     * "up"), and the card renders gray rather than red/yellow so
+     * operators aren't paged for infrastructure that was never
+     * installed.
+     */
+    public const NOT_DEPLOYED = 'not_deployed';
+
+    /**
      * @param  array<string, string>  $metrics
      * @param  array{user_name: string, acknowledged_at: string, reason: ?string, id: int}|null  $ack
      */
@@ -40,6 +51,25 @@ final class HealthCheck
         public readonly string $icon = 'heroicon-o-server',
         public readonly ?array $ack = null,
     ) {}
+
+    /**
+     * Build a check for a component that isn't part of this
+     * deployment's topology at all (as opposed to one that's
+     * deployed but unreachable). Used by
+     * SystemHealthService::applyDisabled() to replace the raw probe
+     * result for components listed in config('health.disabled').
+     */
+    public static function notDeployed(string $key, string $name, string $category, string $icon): self
+    {
+        return new self(
+            key: $key,
+            name: $name,
+            category: $category,
+            status: self::NOT_DEPLOYED,
+            message: 'Not part of this deployment',
+            icon: $icon,
+        );
+    }
 
     public function isOk(): bool
     {
@@ -67,10 +97,17 @@ final class HealthCheck
      * so planned maintenance doesn't trip alarms, but the
      * card itself still renders the raw state so the
      * operator knows the component is actually down.
+     *
+     * NOT_DEPLOYED rolls up as OK too — it's never a problem to
+     * flag, just a component this topology doesn't run.
      */
     public function effectiveStatus(): string
     {
-        return $this->isAcknowledged() ? self::OK : $this->status;
+        if ($this->isAcknowledged() || $this->status === self::NOT_DEPLOYED) {
+            return self::OK;
+        }
+
+        return $this->status;
     }
 
     public function color(): string
@@ -79,13 +116,14 @@ final class HealthCheck
             self::OK => 'success',
             self::WARN => 'warning',
             self::DOWN => 'danger',
+            self::NOT_DEPLOYED => 'gray',
             default => 'gray',
         };
     }
 
     public function statusLabel(): string
     {
-        // Keep these three labels in lockstep with the nav badge
+        // Keep these labels in lockstep with the nav badge
         // (Dashboard::getNavigationBadge), the status bar
         // dispatch (SystemStatusBar::load), and the roll-up
         // summary in SystemHealthService::summarize. One
@@ -95,6 +133,7 @@ final class HealthCheck
             self::OK => 'OK',
             self::WARN => 'Degraded',
             self::DOWN => 'Problem',
+            self::NOT_DEPLOYED => 'Not Deployed',
             default => 'Unknown',
         };
     }

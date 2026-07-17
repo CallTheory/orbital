@@ -15,13 +15,22 @@ import Pusher from 'pusher-js';
 
 window.Pusher = Pusher;
 
+// Reverb connection details are baked into `window.__ORBITAL_ECHO__` by the
+// server at request time (see resources/views/partials/echo-config.blade.php),
+// derived from APP_URL + the configured Reverb app key. Orbital ships as one
+// distributable image to many customers, each with a different host/key, so
+// these can't be baked in at Vite build time. import.meta.env.VITE_REVERB_*
+// remains as a fallback for local `sail`/`vite dev` usage where the runtime
+// partial isn't rendered (e.g. plain asset serving outside a Blade page).
+const echoConfig = window.__ORBITAL_ECHO__ ?? {};
+
 window.Echo = new Echo({
     broadcaster: 'reverb',
-    key: import.meta.env.VITE_REVERB_APP_KEY,
-    wsHost: import.meta.env.VITE_REVERB_HOST,
-    wsPort: import.meta.env.VITE_REVERB_PORT ?? 80,
-    wssPort: import.meta.env.VITE_REVERB_PORT ?? 443,
-    forceTLS: (import.meta.env.VITE_REVERB_SCHEME ?? 'https') === 'https',
+    key: echoConfig.key ?? import.meta.env.VITE_REVERB_APP_KEY,
+    wsHost: echoConfig.wsHost ?? import.meta.env.VITE_REVERB_HOST,
+    wsPort: echoConfig.wsPort ?? (import.meta.env.VITE_REVERB_PORT ?? 80),
+    wssPort: echoConfig.wsPort ?? (import.meta.env.VITE_REVERB_PORT ?? 443),
+    forceTLS: echoConfig.forceTLS ?? ((import.meta.env.VITE_REVERB_SCHEME ?? 'https') === 'https'),
     enabledTransports: ['ws', 'wss'],
 });
 

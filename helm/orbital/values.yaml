@@ -27,8 +27,13 @@ global:
     - name: orbital-registry-creds
 
   # Customer-facing domain. Sub-resources derive from it (admin, sip,
-  # webhook, etc.) unless explicitly overridden in `ingress.hosts`.
+  # webhook, etc.). The ingress host is always this value.
   domain: orbital.example.com
+
+  # Public application URL (APP_URL). Defaults to https://<domain>.
+  # Override for local/dev http access, e.g. http://orbital.localhost:8080,
+  # so Filament asset URLs match the origin you actually browse.
+  appUrl: ""
 
   # Storage class for PVCs. Empty = use cluster default. Provider
   # overrides set this explicitly (vultr-block-storage, gp3, etc.).
@@ -61,19 +66,26 @@ horizon:
     requests: {cpu: "200m", memory: "512Mi"}
     limits: {cpu: "1000m", memory: "1Gi"}
 
+scheduler:
+  enabled: true
+  replicas: 1
+  # Shares the laravel image; runs `php artisan schedule:work` so cron
+  # tasks (heartbeat, prunes, rollups, cert checks) actually fire.
+  resources:
+    requests: {cpu: "50m", memory: "192Mi"}
+    limits: {cpu: "500m", memory: "512Mi"}
+
 reverb:
   enabled: true
   replicas: 1
-  # Reverb (Pusher-protocol) app credentials. Shared by the Reverb
-  # server and the Laravel/Horizon broadcasters — they must match.
-  # appKey is public (browsers use it); appSecret authenticates the
-  # server-side broadcaster. These defaults make a fresh install work
-  # out of the box; for production, override appSecret by setting
-  # REVERB_APP_SECRET in the app-secrets Secret (envFrom order makes
-  # the Secret win over this ConfigMap default).
+  # Reverb (Pusher-protocol) app identity. appId + appKey are public
+  # (browsers use the key) and rendered into app-env. The matching
+  # secret is NOT here — it's REVERB_APP_SECRET in the app-secrets
+  # Secret (see secrets.example.yaml), so it never lands in a ConfigMap
+  # or in `helm get values`. All three must agree across the Reverb
+  # server and the Laravel/Horizon broadcasters.
   appId: orbital
   appKey: "orbital-local-key"
-  appSecret: "orbital-local-secret"
   resources:
     requests: {cpu: "100m", memory: "256Mi"}
     limits: {cpu: "500m", memory: "512Mi"}
@@ -112,6 +124,18 @@ asterisk:
     resources:
       requests: {cpu: "25m", memory: "32Mi"}
       limits: {cpu: "100m", memory: "128Mi"}
+  # LOCAL-EDGE TEST ONLY. Exposes Asterisk SIP + a bounded RTP range via
+  # NodePort so an OFF-cluster rtpengine (local/edge/) can relay media
+  # into the pod, and makes pjsip advertise a reachable address. NEVER
+  # enable in production — there the media edge lives on VMs. Enabled by
+  # values-local-edge.yaml; keep replicas at 1 when using it so the RTP
+  # NodePorts map to a single pod (no media round-robin).
+  edgeExpose:
+    enabled: false
+    externalAddress: ""   # reachable IP Asterisk advertises in SDP (a k3d node IP)
+    sipNodePort: 31060    # NodePort for SIP 5060 (must be in 30000-32767)
+    rtpStart: 31000       # RTP window, NodePort-exposed 1:1 (node:P -> pod:P)
+    rtpEnd: 31049
 
 livekit:
   enabled: true
@@ -154,9 +178,31 @@ agentWorker:
   image:
     name: agent-worker
     tag: ""
+  # Shared bearer token for the worker's heartbeat POST to the Laravel
+  # API (which gates it on the same value). k8s ignores the image's
+  # Docker HEALTHCHECK, so a readiness-probe exec posts it instead.
+  token: "orbital-dev-agent-token"
   resources:
     requests: {cpu: "250m", memory: "512Mi"}
     limits: {cpu: "1000m", memory: "1Gi"}
+
+# Telephony edge (Kamailio) reachability from the in-cluster app. In a
+# real deploy the edge is on VMs; point jsonrpcUrl at them. For the local
+# edge test (values-local-edge.yaml) it's the host-published Kamailio.
+telephony:
+  kamailio:
+    enabled: false
+    jsonrpcUrl: ""   # e.g. http://host.k3d.internal:8090/jsonrpc
+
+# System-status dashboard. The health probes were written for the
+# all-in-one docker-compose stack; components NOT present in this
+# in-cluster topology (observability, the compose-only LB, optional
+# AI/media, dev tools) render as "not deployed" instead of red. In-
+# cluster + edge services are probed at their real addresses. Override
+# per deploy — e.g. drop grafana/prometheus from the list once the
+# observability stack is installed alongside.
+health:
+  disabledComponents: "prometheus,loki,grafana,promtail,icecast,ollama,whisper_local,haproxy,mail,haraka,pgadmin,redis_commander,tls"
 
 # ============================================================================
 # Stateful dependencies — in-cluster by default, external opt-in
@@ -244,20 +290,28 @@ objectStorage:
 ingress:
   enabled: true
   className: ""           # provider-specific; e.g. "traefik", "nginx", "alb"
+  # Always-applied annotations (e.g. nginx proxy-body-size).
   annotations: {}
-  hosts:
-    - host: orbital.example.com
-      paths:
-        - path: /
-          pathType: Prefix
-          service: laravel
-        - path: /app
-          pathType: Prefix
-          service: reverb   # WSS endpoint for the Filament real-time panel
+  # Applied ONLY when tls.enabled — cert-manager issuer, traefik
+  # websecure/tls, etc. Kept separate so a TLS-off dev install isn't
+  # pinned to the https entrypoint (which 404s plain-http requests).
+  tlsAnnotations: {}
+  # The public host is always global.domain (kept in lockstep with
+  # APP_URL). Paths route to in-cluster services.
+  paths:
+    - path: /
+      pathType: Prefix
+      service: laravel
+    - path: /app
+      pathType: Prefix
+      service: reverb       # WSS endpoint for the Filament real-time panel
   tls:
-    - secretName: orbital-tls
-      hosts:
-        - orbital.example.com
+    # When enabled, TLS is served for global.domain from `secretName`
+    # (populated by cert-manager when a cluster-issuer annotation is set,
+    # or provisioned manually). Disable on local/dev clusters that have
+    # no cert-manager.
+    enabled: true
+    secretName: ""          # blank = {release}-orbital-tls
 
 # ============================================================================
 # Failover / status-page tier modes

@@ -74,10 +74,11 @@ if ! kubectl --namespace "${NAMESPACE}" get secret "${RELEASE}-orbital-app-secre
         --from-literal=APP_KEY="base64:$(openssl rand -base64 32)" \
         --from-literal=DB_PASSWORD="orbital-dev-db" \
         --from-literal=REDIS_PASSWORD="orbital-dev-cache" \
+        --from-literal=REVERB_APP_SECRET="orbital-local-secret" \
         --from-literal=AWS_ACCESS_KEY_ID="orbital-dev-key" \
         --from-literal=AWS_SECRET_ACCESS_KEY="orbital-dev-secret" \
         --from-literal=LIVEKIT_API_KEY="APIorbitaldev" \
-        --from-literal=LIVEKIT_API_SECRET="orbital-dev-livekit" \
+        --from-literal=LIVEKIT_API_SECRET="orbital-dev-livekit-secret-min-32-characters" \
         --from-literal=ASTERISK_AMI_SECRET="orbital-dev-ami" \
         --from-literal=ANTHROPIC_API_KEY="placeholder" \
         --from-literal=OPENAI_API_KEY="placeholder" \
@@ -105,6 +106,8 @@ helm upgrade --install "${RELEASE}" "${CHART_DIR}" \
     --set global.image.registry="orbital-registry:5001" \
     --set global.image.tag="dev" \
     --set global.domain="orbital.localhost" \
+    --set global.appUrl="http://orbital.localhost:8080" \
+    --set ingress.tls.enabled=false \
     --wait \
     --timeout 5m
 

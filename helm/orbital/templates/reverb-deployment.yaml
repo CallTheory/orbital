@@ -24,6 +24,9 @@ spec:
     metadata:
       labels:
         {{- include "orbital.componentLabels" (list . "reverb") | nindent 8 }}
+      annotations:
+        # Roll on app-env change — env vars are only read at container start.
+        checksum/app-env: {{ include (print $.Template.BasePath "/configmap-app-env.yaml") . | sha256sum }}
     spec:
       {{- include "orbital.imagePullSecrets" . | nindent 6 }}
       securityContext:

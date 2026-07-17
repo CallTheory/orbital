@@ -86,6 +86,26 @@ if grep -q '^;systemname = my_system_name' /etc/asterisk/asterisk.conf 2>/dev/nu
     echo "[orbital-asterisk] systemname = ${NODE_NAME}"
 fi
 
+# ── Edge / NAT media + signaling address ───────────────────────
+# When Asterisk sits behind a NodePort/LoadBalancer (e.g. the local
+# k3d edge test where an off-cluster rtpengine relays RTP in), the
+# pod IP it would otherwise advertise in SDP/Contact is unreachable
+# from the edge. ASTERISK_EXTERNAL_ADDRESS makes pjsip advertise a
+# reachable address instead, and ASTERISK_RTP_START/END pin the RTP
+# window to the range that's NodePort-exposed. All optional — unset
+# in a normal in-cluster deploy where rtpengine lives at the VM edge.
+if [ -n "${ASTERISK_EXTERNAL_ADDRESS:-}" ]; then
+    sed -i "/^\[transport-\(udp\|tcp\)\]/a external_media_address = ${ASTERISK_EXTERNAL_ADDRESS}\nexternal_signaling_address = ${ASTERISK_EXTERNAL_ADDRESS}" \
+        /etc/asterisk/pjsip.conf
+    echo "[orbital-asterisk] external address = ${ASTERISK_EXTERNAL_ADDRESS}"
+fi
+if [ -n "${ASTERISK_RTP_START:-}" ] && [ -n "${ASTERISK_RTP_END:-}" ]; then
+    sed -i -e "s/^rtpstart = .*/rtpstart = ${ASTERISK_RTP_START}/" \
+           -e "s/^rtpend = .*/rtpend = ${ASTERISK_RTP_END}/" \
+        /etc/asterisk/rtp.conf
+    echo "[orbital-asterisk] rtp range = ${ASTERISK_RTP_START}-${ASTERISK_RTP_END}"
+fi
+
 # ── msmtp config for voicemail-by-email ────────────────────────
 # Asterisk's voicemail app invokes /usr/sbin/sendmail (msmtp-mta
 # symlink) when a voicemail arrives for a mailbox with email= set.

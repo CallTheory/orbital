@@ -136,9 +136,12 @@ class PerTenantDialplanTest extends TestCase
 
         $output = app(AsteriskConfigService::class)->generateDialplanIndex();
 
-        $this->assertStringContainsString('#include "from-trunk.conf"', $output);
-        $this->assertStringContainsString("#include \"clients/{$a->id}-dialplan.conf\"", $output);
-        $this->assertStringContainsString("#include \"clients/{$b->id}-dialplan.conf\"", $output);
+        // Includes are astetcdir-relative, so they carry the generated/
+        // prefix (Asterisk resolves #include from /etc/asterisk, not the
+        // including file's dir — see dialplan-index.blade.php).
+        $this->assertStringContainsString('#include "generated/from-trunk.conf"', $output);
+        $this->assertStringContainsString("#include \"generated/clients/{$a->id}-dialplan.conf\"", $output);
+        $this->assertStringContainsString("#include \"generated/clients/{$b->id}-dialplan.conf\"", $output);
     }
 
     public function test_write_dialplan_for_tenant_produces_expected_files(): void

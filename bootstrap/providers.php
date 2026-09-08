@@ -7,6 +7,7 @@ use App\Providers\Filament\PortalPanelProvider;
 use App\Providers\FortifyServiceProvider;
 use App\Providers\HorizonServiceProvider;
 use App\Providers\JetstreamServiceProvider;
+use App\Providers\ObservabilityServiceProvider;
 use App\Providers\PgvectorProvider;
 use App\Providers\RuntimeConfigOverrideProvider;
 use App\Providers\TelescopeServiceProvider;
@@ -20,6 +21,11 @@ return [
     // color, etc.) — otherwise panel() reads the .env defaults, bakes
     // them in, and the admin-UI edits appear to not take effect.
     RuntimeConfigOverrideProvider::class,
+    // MUST come after RuntimeConfigOverrideProvider: it maps
+    // observability.* onto the vendor SDKs from a booting() callback,
+    // and those callbacks fire in registration order. Registered first
+    // it would read .env and never see an operator's admin-UI setting.
+    ObservabilityServiceProvider::class,
     AppServiceProvider::class,
     AdminPanelProvider::class,
     OperatorPanelProvider::class,

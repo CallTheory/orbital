@@ -78,6 +78,8 @@ spec:
           # `asterisk-prompts` disks (ASTERISK_STORAGE_DRIVER=s3) and
           # pulled by each Asterisk pod's config-sync sidecar. This
           # removes the old ReadWriteMany dependency entirely.
+      {{/* Keep replicas on separate nodes — see the helper. */}}
+      {{- include "orbital.topologySpread" (list . "laravel") | nindent 6 }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

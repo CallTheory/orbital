@@ -15,6 +15,7 @@ from livekit.agents import (
 from livekit.agents.beta.tools import EndCallTool
 from livekit.plugins import silero
 
+import observability
 from config import Config
 from personality_loader import PersonalityLoader
 from tools.compiled_flow import build_dynamic_tools
@@ -268,6 +269,15 @@ def _create_stt(provider: str):
 
 
 if __name__ == "__main__":
+    # Optional telemetry, before anything else so a crash during worker
+    # startup is itself reportable. Both calls are no-ops without their
+    # environment variables, and neither can prevent the worker from
+    # starting — a voice agent that will not answer calls because its
+    # monitoring is misconfigured is far worse than one with no
+    # monitoring. See agent-worker/observability.py.
+    observability.init_error_reporting()
+    observability.init_tracing()
+
     cli.run_app(WorkerOptions(
         entrypoint_fnc=entrypoint,
         prewarm_fnc=prewarm,

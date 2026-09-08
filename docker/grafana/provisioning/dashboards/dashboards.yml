@@ -1,0 +1,26 @@
+#
+# Dashboard provisioning — Grafana loads every .json under
+# options.path on startup and re-scans on updateIntervalSeconds.
+# Both grafana nodes mount this directory, and dashboard state
+# lives in the shared Postgres, so provisioned dashboards appear
+# identically on either node.
+#
+# Dashboards are file-managed: edit the JSON in the repo, not in
+# the UI (allowUiUpdates: false makes provisioned dashboards
+# read-only in Grafana so nobody edits a copy that the next
+# restart clobbers).
+#
+
+apiVersion: 1
+
+providers:
+  - name: orbital
+    orgId: 1
+    folder: Orbital
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/provisioning/dashboards/orbital
+      foldersFromFilesStructure: false

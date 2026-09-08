@@ -25,8 +25,9 @@ RUN chmod +x /usr/local/bin/haproxy-entrypoint \
 
 # 5432 = pgsql-rw, 5433 = pgsql-ro, 6379 = valkey, 8333 = seaweed-s3
 # 3000 = grafana, 9090 = prometheus, 3100 = loki, 8089 = asterisk-wss,
+# 9093 = alertmanager, 3200 = tempo query, 4318 = tempo OTLP ingest,
 # 8404 = HAProxy stats UI
-EXPOSE 5432 5433 6379 8333 3000 9090 3100 8089 8404
+EXPOSE 5432 5433 6379 8333 3000 9090 3100 8089 9093 3200 4318 8404
 
 USER haproxy
 

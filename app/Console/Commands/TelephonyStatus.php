@@ -12,6 +12,7 @@ use App\Models\SipTrunk;
 use App\Services\Telephony\AsteriskAmiService;
 use App\Services\Telephony\LiveKitConfigService;
 use App\Services\Telephony\RtpengineService;
+use App\Support\DefaultCredentials;
 use Illuminate\Console\Command;
 
 class TelephonyStatus extends Command
@@ -72,6 +73,35 @@ class TelephonyStatus extends Command
         $this->line('    AI Agents:  '.AgentPersona::withoutGlobalScopes()->where('is_active', true)->count());
         $this->line('    Queues:     '.CallQueue::withoutGlobalScopes()->count());
 
+        $this->reportUnrotatedDefaults();
+
         return self::SUCCESS;
+    }
+
+    /**
+     * Warn about credentials still sitting at their shipped development
+     * defaults. SECURITY.md points operators here before go-live, so it
+     * has to actually check. The list lives in
+     * {@see DefaultCredentials}.
+     */
+    private function reportUnrotatedDefaults(): void
+    {
+        $unrotated = DefaultCredentials::unrotated();
+
+        $this->newLine();
+
+        if ($unrotated === []) {
+            $this->info('  Credentials: no shipped defaults still in use.');
+
+            return;
+        }
+
+        $this->warn('  Credentials: '.count($unrotated).' still at their shipped default:');
+
+        foreach ($unrotated as $label) {
+            $this->line('    ! '.$label);
+        }
+
+        $this->line('    Rotate these before this installation takes real calls. See SECURITY.md.');
     }
 }

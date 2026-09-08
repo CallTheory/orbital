@@ -19,6 +19,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && curl -sS 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x14aa40ec0831756756d7f66c4f4ea0aae5267a6c' | gpg --dearmor -o /etc/apt/keyrings/ppa_ondrej_php.gpg \
     && echo "deb [signed-by=/etc/apt/keyrings/ppa_ondrej_php.gpg] https://ppa.launchpadcontent.net/ondrej/php/ubuntu noble main" > /etc/apt/sources.list.d/ppa_ondrej_php.list \
     && apt-get update \
+    # postgresql-client below is pg_dump / pg_restore for
+    # `orbital:backup` and `orbital:restore` — parity with the
+    # production image, so a backup taken in dev restores the same way.
     && apt-get install -y --no-install-recommends \
     php8.4-cli php8.4-dev \
     php8.4-pgsql php8.4-sqlite3 \
@@ -29,6 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     php8.4-ldap php8.4-msgpack php8.4-igbinary \
     php8.4-redis php8.4-pcov php8.4-xdebug \
     php8.4-imagick php8.4-swoole \
+    postgresql-client \
     && curl -sLS https://getcomposer.org/installer | php -- --install-dir=/usr/bin/ --filename=composer \
     && curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \

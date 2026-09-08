@@ -1,9 +1,16 @@
 #
 # Orbital Prometheus config.
 #
-# Single-node setup: Prometheus scrapes itself and anything we add here.
-# When we add exporters (postgres_exporter, node_exporter, etc.) they get
-# added to scrape_configs below.
+# Shared verbatim by both prometheus nodes (base + ha-obs overlay);
+# each scrapes every target independently into its own TSDB, so
+# minor query-time drift between the two is expected and fine.
+#
+# Most targets are native /metrics endpoints; only Postgres DB-level
+# stats and Valkey need exporter sidecars (see compose/ha-obs.yml).
+# Second-instance targets (loki-2, grafana-2, livekit-2, ...) only
+# exist when the HA overlays are loaded — with a base-only stack
+# they just show as down. Dev loads all overlays via COMPOSE_FILE,
+# so every target below should be up.
 #
 
 global:
@@ -13,6 +20,23 @@ global:
     environment: local
     stack: orbital
 
+# Alerting rules. Both Prometheus nodes evaluate the same file and both
+# fire independently — Alertmanager deduplicates, which is one of the
+# reasons it exists rather than Prometheus notifying directly.
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        # Both members of the Alertmanager pair are listed, not load
+        # balanced. Alertmanager gossips over its cluster port so each
+        # node knows what the other has already sent; sending to both
+        # is how that stays correct if one is unreachable. Putting an LB
+        # in front instead would hide a dead node and silently halve
+        # the redundancy.
+        - targets: ['alertmanager:9093', 'alertmanager-2:9093']
+
 scrape_configs:
   - job_name: prometheus
     static_configs:
@@ -21,9 +45,152 @@ scrape_configs:
   # Loki exposes Prometheus-format metrics on its own /metrics endpoint.
   - job_name: loki
     static_configs:
-      - targets: ['loki:3100']
+      - targets: ['loki:3100', 'loki-2:3100']
 
   # Grafana also exposes /metrics once the feature is enabled.
   - job_name: grafana
     static_configs:
-      - targets: ['grafana:3000']
+      - targets: ['grafana:3000', 'grafana-2:3000']
+
+  # ────────────────────────────────────────────────────────────────
+  # Data tier
+  # ────────────────────────────────────────────────────────────────
+
+  # Patroni REST API /metrics — per-node cluster state: who is
+  # leader (patroni_master), postgres up (patroni_postgres_running),
+  # WAL positions for lag math. GET endpoints are unauthenticated
+  # by design (REST auth only guards the unsafe POST/PATCH verbs).
+  - job_name: patroni
+    static_configs:
+      - targets: ['patroni-1:8008', 'patroni-2:8008', 'patroni-3:8008']
+
+  # DB-level Postgres stats via postgres_exporter, which follows
+  # the Patroni leader through the HAProxy rw frontend. One target:
+  # the leader's view (connections, TPS, DB sizes). Per-node state
+  # lives in the patroni job above.
+  - job_name: postgres
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+
+  # Valkey replica set via redis_exporter in multi-target mode: one
+  # exporter, one scrape per node, so role/replication is visible
+  # per instance instead of only the master view behind HAProxy.
+  - job_name: valkey
+    metrics_path: /scrape
+    static_configs:
+      - targets:
+          - 'redis://valkey-1:6379'
+          - 'redis://valkey-2:6379'
+          - 'redis://valkey-3:6379'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: 'redis-exporter:9121'
+
+  # etcd serves /metrics on the client port. Watch
+  # etcd_server_has_leader — Patroni leader election dies with
+  # etcd quorum.
+  - job_name: etcd
+    static_configs:
+      - targets: ['etcd-1:2379', 'etcd-2:2379', 'etcd-3:2379']
+
+  # SeaweedFS components all serve /metrics on -metricsPort=9324
+  # (set in compose/ha-data.yml). Component label distinguishes
+  # the tiers on the dashboard.
+  - job_name: seaweedfs
+    static_configs:
+      - targets: ['seaweed-master-1:9324', 'seaweed-master-2:9324', 'seaweed-master-3:9324']
+        labels:
+          component: master
+      - targets: ['seaweed-volume-1:9324', 'seaweed-volume-2:9324']
+        labels:
+          component: volume
+      - targets: ['seaweed-filer-1:9324', 'seaweed-filer-2:9324']
+        labels:
+          component: filer
+
+  # ────────────────────────────────────────────────────────────────
+  # Load balancing
+  # ────────────────────────────────────────────────────────────────
+
+  # HAProxy built-in prometheus-exporter, mounted at /metrics on
+  # the stats frontend (docker/haproxy/haproxy.cfg.tmpl). Scraped
+  # per node — each VRRP peer makes independent LB decisions, so
+  # per-node backend state matters.
+  - job_name: haproxy
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['haproxy-1:8404', 'haproxy-2:8404']
+
+  # ────────────────────────────────────────────────────────────────
+  # Telephony / AI
+  # ────────────────────────────────────────────────────────────────
+
+  # LiveKit built-in metrics (prometheus.port in livekit.yaml):
+  # rooms, participants, packet loss, egress. Phase D builds the
+  # LiveKit/AI dashboard on these.
+  - job_name: livekit
+    static_configs:
+      - targets: ['livekit:6789', 'livekit-2:6789']
+
+  # ────────────────────────────────────────────────────────────────
+  # Orbital application
+  # ────────────────────────────────────────────────────────────────
+
+  # Per-instance app metrics: HTTP request rate + duration histogram,
+  # build identity. Each replica accumulates its OWN counters (keyed by
+  # METRICS_INSTANCE, defaulting to the container hostname), so these
+  # two targets are genuinely independent series rather than two views
+  # of the same total.
+  #
+  # Deployment-wide numbers deliberately DO NOT live here — see the
+  # pushgateway job below.
+  #
+  # `laravel` / `laravel-2` are NETWORK ALIASES on the compose services
+  # `orbital.test` / `orbital.test-2` (see docker-compose.yml and
+  # compose/ha-app.yml). The alias exists so one scrape config works
+  # under both compose and Helm, where the Service is named
+  # `<release>-laravel`. Removing the alias silently breaks this job:
+  # Prometheus reports the target as down and the app dashboard goes
+  # blank, with nothing wrong in the app itself.
+  - job_name: orbital-app
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['laravel:80', 'laravel-2:80']
+    # Uncomment when METRICS_TOKEN is set (i.e. the app port is
+    # reachable from outside the compose network).
+    # authorization:
+    #   type: Bearer
+    #   credentials: <METRICS_TOKEN>
+
+  # Tempo's own health, when the optional tracing tier is deployed
+  # (compose/obs-tracing.yml). Absent otherwise, and a down target here
+  # means "tracing not installed" rather than a fault — same as the
+  # other optional components.
+  - job_name: tempo
+    static_configs:
+      - targets: ['tempo:3200']
+
+  # Alertmanager's own health. A silent Alertmanager and a healthy
+  # system look identical from the inbox, so this target being down is
+  # itself worth knowing about.
+  - job_name: alertmanager
+    static_configs:
+      - targets: ['alertmanager:9093', 'alertmanager-2:9093']
+
+  # Platform + telephony metrics, pushed once a minute by the
+  # `orbital:collect-metrics` scheduled command: per-client call /
+  # message / email volume, queue depth, Asterisk channel state, SIP
+  # registrations, failed jobs.
+  #
+  # honor_labels is required. Without it Prometheus overwrites the
+  # pushed `job`/`instance` labels with the scrape target's own, which
+  # would relabel every Orbital platform metric as belonging to the
+  # pushgateway itself.
+  - job_name: pushgateway
+    honor_labels: true
+    static_configs:
+      - targets: ['pushgateway:9091']

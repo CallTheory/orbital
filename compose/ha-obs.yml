@@ -73,6 +73,7 @@ services:
             - --web.enable-lifecycle
         volumes:
             - './docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro'
+            - './docker/prometheus/rules:/etc/prometheus/rules:ro'
             - 'sail-prometheus-2:/prometheus'
         networks:
             - sail
@@ -92,7 +93,105 @@ services:
             - sail
         restart: unless-stopped
 
+    # ------------------------------------------------------------
+    # Metric exporters — sidecars that translate services without
+    # native Prometheus endpoints into scrapeable /metrics.
+    #
+    # Everything else is scraped directly: Patroni REST (:8008),
+    # etcd (:2379), HAProxy stats (:8404/metrics), SeaweedFS
+    # (-metricsPort=9324), LiveKit (prometheus.port 6789), Loki,
+    # Grafana. See docker/prometheus/prometheus.yml for the job
+    # list. These live in the obs overlay (not ha-data) because
+    # they're monitoring plumbing, not part of the data tier's
+    # failover story — but they do probe ha-data services, so
+    # they're only useful with the full COMPOSE_FILE stack loaded.
+    # ------------------------------------------------------------
+
+    # DB-level Postgres stats (connections, TPS, table/index IO).
+    # Points at the HAProxy rw frontend so it always follows the
+    # Patroni leader. Node-level cluster state (who is leader,
+    # replica lag) comes from the patroni job's /metrics instead.
+    # Uses the postgres superuser for now — swap to a dedicated
+    # pg_monitor role when we harden credentials.
+    # Second Alertmanager. The pair GOSSIPS over port 9094 rather than
+    # sharing storage: each node tells the other what it has already
+    # sent, which is what stops a duplicate notification when both
+    # Prometheus nodes fire the same alert at the same instant.
+    #
+    # --cluster.peer points at the other node by service name. Docker's
+    # embedded DNS resolves it once the peer exists; before that
+    # Alertmanager retries rather than failing to start, so boot order
+    # does not matter.
+    alertmanager-2:
+        build:
+            context: ./docker/alertmanager
+        environment:
+            ALERT_SMTP_SMARTHOST: '${ALERT_SMTP_SMARTHOST:-mailpit:1025}'
+            ALERT_SMTP_FROM: '${ALERT_SMTP_FROM:-alerts@orbital.test}'
+            ALERT_SMTP_USERNAME: '${ALERT_SMTP_USERNAME:-}'
+            ALERT_SMTP_PASSWORD: '${ALERT_SMTP_PASSWORD:-}'
+            ALERT_SMTP_REQUIRE_TLS: '${ALERT_SMTP_REQUIRE_TLS:-false}'
+            ALERT_EMAIL_TO: '${ALERT_EMAIL_TO:-}'
+            ALERT_WEBHOOK_URL: '${ALERT_WEBHOOK_URL:-}'
+            ALERT_EXTERNAL_URL: '${ALERT_EXTERNAL_URL:-http://localhost:9093}'
+        command:
+            - '--cluster.listen-address=0.0.0.0:9094'
+            - '--cluster.peer=alertmanager:9094'
+        volumes:
+            - 'sail-alertmanager-2:/alertmanager'
+        networks:
+            - sail
+        restart: unless-stopped
+
+    # Second Tempo, for installs that also load compose/obs-tracing.yml.
+    # Harmless without it — the container starts, finds the same
+    # `tempo-traces` bucket, and serves queries against blocks the other
+    # node wrote. Sharing the bucket is what makes either node able to
+    # answer any query, exactly as Loki does with `loki-chunks`.
+    #
+    # Defined here rather than in obs-tracing.yml so the HA overlay stays
+    # the single place that says "make the observability tier redundant".
+    tempo-2:
+        image: 'grafana/tempo:latest'
+        user: '0'
+        command: '-config.file=/etc/tempo/tempo.yaml -config.expand-env=true'
+        environment:
+            AWS_ACCESS_KEY_ID: 'orbital'
+            AWS_SECRET_ACCESS_KEY: '${AWS_SECRET_ACCESS_KEY}'
+        volumes:
+            - './docker/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro'
+            - 'sail-tempo-2:/tempo-data'
+        networks:
+            - sail
+        restart: unless-stopped
+
+    postgres-exporter:
+        image: 'prometheuscommunity/postgres-exporter:latest'
+        environment:
+            DATA_SOURCE_NAME: 'postgresql://postgres:${POSTGRES_PASSWORD:-postgres-dev}@haproxy:5432/postgres?sslmode=disable'
+        networks:
+            - sail
+        restart: unless-stopped
+
+    # Valkey stats via the redis protocol. Runs in multi-target
+    # mode: prometheus hits /scrape?target=redis://valkey-N:6379
+    # once per node (see the `valkey` job's relabel config), so a
+    # single exporter covers the whole replica set and we can see
+    # per-node role/replication state — not just the master view
+    # through HAProxy.
+    redis-exporter:
+        image: 'oliver006/redis_exporter:latest'
+        environment:
+            REDIS_PASSWORD: '${REDIS_PASSWORD}'
+        networks:
+            - sail
+        restart: unless-stopped
+
 volumes:
+    sail-alertmanager-2:
+        driver: local
+    sail-tempo-2:
+        driver: local
     sail-grafana-2:
         driver: local
     sail-prometheus-2:

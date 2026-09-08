@@ -82,6 +82,23 @@ class SystemHealthService
             'prometheus' => ['host' => 'prometheus', 'port' => 9090],
             'loki' => ['host' => 'loki', 'port' => 3100],
             'grafana' => ['host' => 'grafana', 'port' => 3000],
+            // Tracing backend. Optional in every topology: the compose
+            // stack only runs it when compose/obs-tracing.yml is loaded,
+            // and a Kubernetes install is expected to point at whatever
+            // the cluster already runs. Probes the query port rather than
+            // the OTLP receiver — 3200 answers /ready, 4318 only speaks
+            // OTLP and a TCP connect there proves less.
+            //
+            // Probed at the configured export endpoint when there is
+            // one, so an install pointing at Grafana Cloud gets a card
+            // about the thing it actually uses rather than about a
+            // container it never deployed.
+            'tempo' => $this->tempoProbeTarget(),
+            // Alertmanager. Not optional in the way Tempo is: alerting
+            // is how anyone finds out about the rest of this list
+            // without watching a dashboard, so a down Alertmanager is a
+            // real gap even though nothing customer-facing has broken.
+            'alertmanager' => ['host' => 'alertmanager', 'port' => 9093],
             // Probe the actual S3 endpoint the app is configured to
             // use (filesystems.disks.s3.endpoint / AWS_ENDPOINT) —
             // on docker-compose that's the HAProxy frontend fronting
@@ -181,6 +198,8 @@ class SystemHealthService
             $this->probeResultToCheck($probes['pgadmin'], 'pgadmin', 'pgAdmin', 'Control Panels', 'Postgres admin web UI', 'heroicon-o-circle-stack', optional: true),
             $this->probeResultToCheck($probes['redis_commander'], 'redis_commander', 'Redis Commander', 'Control Panels', 'Valkey / Redis web browser', 'heroicon-o-bolt', optional: true),
             $this->probeResultToCheck($probes['promtail'], 'promtail', 'Promtail', 'Observability', 'Log shipper feeding Loki', 'heroicon-o-paper-airplane', optional: true),
+            $this->probeResultToCheck($probes['tempo'], 'tempo', 'Tempo', 'Observability', 'Distributed tracing backend', 'heroicon-o-map', optional: true),
+            $this->probeResultToCheck($probes['alertmanager'], 'alertmanager', 'Alertmanager', 'Observability', 'Routes firing alerts to email and webhooks', 'heroicon-o-bell-alert'),
             $this->checkHorizon(),
             $this->checkScheduler(),
         ];
@@ -1093,5 +1112,41 @@ class SystemHealthService
             ],
             icon: 'heroicon-o-lock-closed',
         );
+    }
+
+    /**
+     * Where to look for the tracing backend.
+     *
+     * Derived from the configured OTLP endpoint rather than hardcoded,
+     * because "is Tempo up" is the wrong question on an install that
+     * exports to Grafana Cloud or to a collector in another namespace.
+     * Falls back to the compose service so the card still means
+     * something before anything has been configured.
+     *
+     * @return array{host: string, port: int}
+     */
+    private function tempoProbeTarget(): array
+    {
+        $endpoint = (string) config('observability.tracing.endpoint', '');
+
+        if ($endpoint === '') {
+            return ['host' => 'tempo', 'port' => 3200];
+        }
+
+        $host = parse_url($endpoint, PHP_URL_HOST);
+
+        if (! is_string($host) || $host === '') {
+            return ['host' => 'tempo', 'port' => 3200];
+        }
+
+        // The query API, not the OTLP receiver — see the note at the
+        // probe definition. Only assumed for the container we ship;
+        // a foreign endpoint is probed on its own port, which is the
+        // only one we can claim to know about.
+        $port = $host === 'tempo'
+            ? 3200
+            : (int) (parse_url($endpoint, PHP_URL_PORT) ?: 443);
+
+        return ['host' => $host, 'port' => $port];
     }
 }

@@ -1,0 +1,46 @@
+{{- if .Values.podDisruptionBudgets.enabled -}}
+{{/*
+PodDisruptionBudgets for every tier running more than one replica.
+
+The failure these prevent is not a crash — it is routine maintenance.
+`kubectl drain`, a VKE node upgrade, or a cluster autoscaler scale-down
+evicts pods with no regard for how many of a tier survive, unless a PDB
+tells it otherwise. Without these, a rolling node upgrade across a
+3-node cluster can evict both Laravel replicas in the same minute and
+take the panel down during planned work.
+
+Rendered ONLY for tiers with replicas > 1. A PDB with maxUnavailable: 1
+over a single-replica Deployment permits zero voluntary evictions, which
+protects nothing and blocks drains forever — turning a ten-minute node
+upgrade into an afternoon.
+
+Asterisk is included and is the interesting one: draining an Asterisk
+pod drops the calls pinned to it either way, but the budget keeps the
+other node up to take the NEW ones. Availability for new calls is the
+stated goal; mid-call portability is explicitly out of scope.
+*/}}
+{{- $root := . -}}
+{{- $components := list
+      (dict "name" "laravel"      "replicas" .Values.laravel.replicas     "enabled" .Values.laravel.enabled)
+      (dict "name" "asterisk"     "replicas" .Values.asterisk.replicas    "enabled" .Values.asterisk.enabled)
+      (dict "name" "agent-worker" "replicas" .Values.agentWorker.replicas "enabled" .Values.agentWorker.enabled)
+      (dict "name" "reverb"       "replicas" .Values.reverb.replicas      "enabled" .Values.reverb.enabled)
+      (dict "name" "livekit"      "replicas" .Values.livekit.replicas     "enabled" .Values.livekit.enabled)
+-}}
+{{- range $c := $components }}
+{{- if and $c.enabled (gt (int $c.replicas) 1) }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "orbital.componentName" (list $root $c.name) }}
+  labels:
+    {{- include "orbital.componentLabels" (list $root $c.name) | nindent 4 }}
+spec:
+  maxUnavailable: {{ $root.Values.podDisruptionBudgets.maxUnavailable }}
+  selector:
+    matchLabels:
+      {{- include "orbital.selectorLabels" (list $root $c.name) | nindent 6 }}
+{{- end }}
+{{- end }}
+{{- end }}

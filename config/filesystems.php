@@ -87,6 +87,41 @@ return [
                 'report' => false,
             ],
 
+        // Where `orbital:backup` writes encrypted database archives.
+        //
+        // Its OWN credentials, deliberately — BACKUP_AWS_* rather than
+        // the AWS_* the application uses all day. Backups kept under the
+        // key that the app writes recordings with are destroyed by the
+        // same compromised credential or buggy delete that destroys the
+        // recordings, which is the one failure a backup exists to
+        // survive. Give this key write + list on its own bucket and
+        // nothing else.
+        //
+        // Falls back to a local directory when BACKUP_AWS_BUCKET is
+        // unset, so `orbital:backup --path=...` works on a dev box with
+        // no object storage at all.
+        'backups' => env('BACKUP_AWS_BUCKET')
+            ? [
+                'driver' => 's3',
+                'key' => env('BACKUP_AWS_ACCESS_KEY_ID'),
+                'secret' => env('BACKUP_AWS_SECRET_ACCESS_KEY'),
+                'region' => env('BACKUP_AWS_DEFAULT_REGION', 'us-east-1'),
+                'bucket' => env('BACKUP_AWS_BUCKET'),
+                'endpoint' => env('BACKUP_AWS_ENDPOINT'),
+                'use_path_style_endpoint' => env('BACKUP_AWS_USE_PATH_STYLE_ENDPOINT', true),
+                // Backups fail LOUDLY. A silently swallowed upload error
+                // is the difference between "we have backups" and
+                // finding out during a restore that we never did.
+                'throw' => true,
+                'report' => false,
+            ]
+            : [
+                'driver' => 'local',
+                'root' => env('BACKUP_LOCAL_PATH', storage_path('app/backups')),
+                'throw' => true,
+                'report' => false,
+            ],
+
         // Rendered TTS prompt WAVs (disclosures, voicemail greetings)
         // that Asterisk plays back at call time via absolute
         // /var/spool/asterisk/prompts/... paths. Same driver flip as

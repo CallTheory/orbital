@@ -8,7 +8,8 @@ use App\Http\Controllers\Controller;
 use App\Models\AgentPersona;
 use App\Models\CallSessionState;
 use App\Models\Extension;
-use App\Models\Message;
+use App\Services\Messages\PartialMessagePolicy;
+use App\Services\Messages\SessionMessageWriter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -99,6 +100,40 @@ class CallSessionController extends Controller
     }
 
     /**
+     * The call is over. The worker calls this when the caller hangs up
+     * or the room closes.
+     *
+     * This is what makes partial-message retention possible: until the
+     * session is known to have ENDED, an incomplete capture is just a
+     * conversation still in progress. Without an explicit end signal the
+     * only options are to write partials prematurely (creating
+     * duplicates when the caller then finishes) or never at all.
+     *
+     * Belt and braces: the LiveKit room_finished webhook calls the same
+     * path, so a worker that dies without cleaning up still gets its
+     * session finalised. markEnded() is idempotent, so whichever arrives
+     * first wins and the second is a no-op.
+     */
+    public function end(Request $request, string $sessionKey): JsonResponse
+    {
+        if (! $this->isWorker($request)) {
+            abort(401);
+        }
+
+        $data = $request->validate([
+            'reason' => 'nullable|string|max:64',
+            'extension' => 'nullable|string|max:32',
+        ]);
+
+        $state = $this->upsert($sessionKey, $data['extension'] ?? null);
+        $state->markEnded($data['reason'] ?? PartialMessagePolicy::REASON_CALLER_HUNG_UP);
+
+        $this->maybePersistMessage($state->fresh());
+
+        return response()->json(['data' => $this->serialize($state->fresh())]);
+    }
+
+    /**
      * Create the row on first touch, backfilling team_id + agent_persona_id
      * from the extension the worker hands us. Subsequent writes are
      * no-op on those columns.
@@ -138,64 +173,13 @@ class CallSessionController extends Controller
     }
 
     /**
-     * If the session has caller_name, caller_phone, and reason captured,
-     * persist them as a Message record linked to the client. Idempotent —
-     * checks for an existing message with this session key in metadata
-     * to prevent duplicates on retry.
+     * Delegates to the session message writer. See
+     * App\Services\Messages\SessionMessageWriter for when a complete
+     * vs. partial message gets written, and why.
      */
     protected function maybePersistMessage(CallSessionState $state): void
     {
-        $fields = $state->fields ?? [];
-
-        // The LLM may use different key names than our intake goal
-        // defines. Try the canonical keys first, then common variants.
-        $name = $fields['caller_name']
-            ?? $fields['name']
-            ?? $fields['recipient']
-            ?? $fields['customer_name']
-            ?? $fields['caller']
-            ?? null;
-
-        $phone = $fields['caller_phone']
-            ?? $fields['phone']
-            ?? $fields['callback_number']
-            ?? $fields['phone_number']
-            ?? $fields['number']
-            ?? null;
-
-        $reason = $fields['reason']
-            ?? $fields['message']
-            ?? $fields['reason_for_call']
-            ?? $fields['notes']
-            ?? $fields['details']
-            ?? null;
-
-        if (! $name || ! $reason || ! $state->team_id) {
-            return;
-        }
-
-        // Idempotent: don't create duplicate messages for the same
-        // caller_name + reason combo in this session.
-        $exists = Message::where('team_id', $state->team_id)
-            ->where('caller_name', $name)
-            ->where('reason', $reason)
-            ->where('notes', 'like', "%{$state->session_key}%")
-            ->exists();
-
-        if ($exists) {
-            return;
-        }
-
-        Message::create([
-            'team_id' => $state->team_id,
-            'agent_persona_id' => $state->agent_persona_id,
-            'caller_name' => $name,
-            'caller_phone' => $phone,
-            'reason' => $reason,
-            'status' => Message::STATUS_NEW,
-            'urgency' => Message::URGENCY_NORMAL,
-            'notes' => "Auto-captured from AI call session: {$state->session_key}",
-        ]);
+        app(SessionMessageWriter::class)->write($state);
     }
 
     protected function isWorker(Request $request): bool
@@ -218,6 +202,8 @@ class CallSessionController extends Controller
             'active_step' => $state->active_step,
             'operator_owned' => $state->operator_owned,
             'last_field_at' => $state->last_field_at?->toIso8601String(),
+            'ended_at' => $state->ended_at?->toIso8601String(),
+            'end_reason' => $state->end_reason,
         ];
     }
 }

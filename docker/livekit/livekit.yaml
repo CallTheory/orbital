@@ -14,6 +14,14 @@ keys:
 logging:
   level: info
 
+# Built-in Prometheus metrics endpoint (rooms, participants, packet
+# loss, egress). Scraped by the prometheus job `livekit` on both
+# livekit and livekit-2 — the port is container-internal only, never
+# host-bound. Phase D of the observability plan builds the LiveKit/AI
+# dashboard on top of these.
+prometheus:
+  port: 6789
+
 room:
   max_participants: 50
   empty_timeout: 300

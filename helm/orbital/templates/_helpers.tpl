@@ -127,3 +127,37 @@ Storage class to use for a PVC. Empty values.global.storageClass means
 storageClassName: {{ . | quote }}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Spread a component's pods across nodes.
+
+The gap this closes: "2 replicas" is not redundancy if Kubernetes puts
+both on the same node, which it will happily do — the scheduler
+optimises for fit, not for surviving a node loss. On a 3-node VKE
+cluster that is not a hypothetical.
+
+topologySpreadConstraints rather than podAntiAffinity because it
+expresses the actual requirement ("keep these balanced across hosts")
+instead of approximating it with "never co-locate", and it degrades
+sensibly when there are fewer nodes than replicas.
+
+whenUnsatisfiable defaults to ScheduleAnyway so a single-node dev or
+k3s cluster still schedules everything; set `spreadPods.required=true`
+on a real multi-node cluster to make it a hard constraint and have
+Kubernetes refuse to co-locate rather than quietly doing it.
+
+  {{ include "orbital.topologySpread" (list . "laravel") }}
+*/}}
+{{- define "orbital.topologySpread" -}}
+{{- $ctx := index . 0 -}}
+{{- $component := index . 1 -}}
+{{- if $ctx.Values.spreadPods.enabled }}
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: {{ if $ctx.Values.spreadPods.required }}DoNotSchedule{{ else }}ScheduleAnyway{{ end }}
+    labelSelector:
+      matchLabels:
+        {{- include "orbital.selectorLabels" (list $ctx $component) | nindent 8 }}
+{{- end }}
+{{- end -}}

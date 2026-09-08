@@ -43,6 +43,7 @@ class IntakeGoal extends Model
         'chat_overrides',
         'is_active',
         'overrides',
+        'keep_partial_messages',
     ];
 
     protected function casts(): array
@@ -59,6 +60,12 @@ class IntakeGoal extends Model
             'chat_overrides' => 'array',
             'overrides' => 'array',
             'is_active' => 'boolean',
+            // Three-state on purpose: null inherits the client's
+            // setting, true/false override it. The boolean cast passes
+            // null straight through, so the distinction survives — but
+            // never add a default to the column, or every new goal
+            // silently opts out of a client-wide policy.
+            'keep_partial_messages' => 'boolean',
         ];
     }
 

@@ -58,7 +58,50 @@ telephony:
 # disabled on first install so the dashboard isn't red before DNS/certs
 # and the monitoring release land.
 health:
-  disabledComponents: "prometheus,loki,grafana,promtail,icecast,ollama,whisper_local,haproxy,mail,haraka,pgadmin,redis_commander,tls"
+  disabledComponents: "prometheus,loki,grafana,promtail,tempo,alertmanager,icecast,ollama,whisper_local,haproxy,mail,haraka,pgadmin,redis_commander,tls"
+
+# Real multi-node cluster, so co-location is refused rather than merely
+# discouraged: with maxSkew 1 across 3 nodes, two replicas of a tier can
+# never land on the same host. Losing a node still leaves room to
+# reschedule. On a single-node cluster this would block scheduling
+# entirely, which is why the chart default is ScheduleAnyway.
+spreadPods:
+  required: true
+
+# THE DATA TIER IS SINGLE-REPLICA IN-CLUSTER BY DEFAULT.
+#
+# The chart's Postgres, Valkey and SeaweedFS StatefulSets are one pod
+# each — fine for a first install, not what you want under real traffic.
+# Neither survives losing its node, and a lost block-storage volume is
+# unrecoverable without the backups below.
+#
+# For production on Vultr, point the two that matter at managed
+# services. That gets you replication, snapshots and provider-run
+# backups without this chart pretending to be a database operator:
+#
+#   postgres:
+#     external:
+#       enabled: true
+#       host: "<vultr-managed-pg-host>"
+#       port: 16751
+#       database: orbital
+#       username: orbital
+#   objectStorage:
+#     external:
+#       enabled: true
+#       s3Endpoint: "https://ewr1.vultrobjects.com"
+#       bucket: orbital-media
+#
+# ...with `postgres-creds` / `object-storage-creds` Secrets alongside.
+# See templates/secrets.example.yaml.
+
+# Encrypted nightly database backup. Turn this on BEFORE real traffic:
+# HA covers a dead node and replication covers a dead disk, but neither
+# covers a dropped table or a bad migration.
+backups:
+  enabled: false      # set true and supply the secrets — see docs/admin/backups.md
+  bucket: ""
+  endpoint: "https://ewr1.vultrobjects.com"
 
 # Asterisk runs multi-replica on plain vultr-block-storage (RWO) now —
 # the dialplan/prompt handoff is via object storage, not a shared RWX

@@ -6,8 +6,10 @@ namespace App\Providers\Filament;
 
 use App\Filament\Auth\EditProfile;
 use App\Filament\AvatarProviders\LocalAvatarProvider;
+use App\Filament\Pages\About;
 use App\Filament\Pages\Security;
 use App\Http\Middleware\PanelRedirect;
+use App\Http\Middleware\RequireTwoFactor;
 use App\Http\Middleware\SetPermissionsTeamContext;
 use App\Support\Branding;
 use Filament\Http\Middleware\Authenticate;
@@ -64,6 +66,11 @@ class PortalPanelProvider extends PanelProvider
             ->pages([
                 // Shared security page — 2FA, password, sessions.
                 Security::class,
+                // Shared About page — version, license, and the AGPL
+                // section 13 source offer. Registered on every panel
+                // because the obligation runs to every user, and a
+                // client portal user can reach no other surface.
+                About::class,
             ])
             ->userMenuItems([
                 // Layout mirrors AdminPanelProvider — see that file
@@ -97,6 +104,9 @@ class PortalPanelProvider extends PanelProvider
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
                 SetPermissionsTeamContext::class,
+                // Pushes users past their two-factor grace window to
+                // the security page. See AdminPanelProvider.
+                RequireTwoFactor::class,
                 // See AdminPanelProvider for why PanelRedirect lives in
                 // general middleware rather than authMiddleware.
                 PanelRedirect::class,
@@ -107,6 +117,21 @@ class PortalPanelProvider extends PanelProvider
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
                 fn (): string => view('filament.partials.panel-styles')->render(),
+            )
+            // Two-factor countdown. Disappears the moment a second
+            // factor is confirmed. See AdminPanelProvider.
+            ->renderHook(
+                PanelsRenderHook::BODY_START,
+                fn (): string => view('filament.partials.two-factor-banner')->render(),
+            )
+            // AGPL section 13 source offer. This is the one that legally
+            // matters most: portal users are "users interacting with it
+            // remotely through a computer network" who have no other way
+            // to reach the About page. Unconditional — not gated on auth,
+            // role, or branding.
+            ->renderHook(
+                PanelsRenderHook::FOOTER,
+                fn (): string => view('filament.partials.source-footer')->render(),
             );
     }
 }

@@ -32,6 +32,8 @@ spec:
       {{- include "orbital.imagePullSecrets" . | nindent 6 }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{/* Keep replicas on separate nodes — see the helper. */}}
+      {{- include "orbital.topologySpread" (list . "agent-worker") | nindent 6 }}
       containers:
         - name: agent-worker
           image: {{ include "orbital.image" (dict "ctx" . "name" .Values.agentWorker.image.name "tag" .Values.agentWorker.image.tag) }}

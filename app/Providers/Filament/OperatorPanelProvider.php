@@ -6,8 +6,10 @@ namespace App\Providers\Filament;
 
 use App\Filament\Auth\EditProfile;
 use App\Filament\AvatarProviders\LocalAvatarProvider;
+use App\Filament\Pages\About;
 use App\Filament\Pages\Security;
 use App\Http\Middleware\PanelRedirect;
+use App\Http\Middleware\RequireTwoFactor;
 use App\Http\Middleware\SetPermissionsTeamContext;
 use App\Models\LogoutReason;
 use App\Models\UserLogoutEvent;
@@ -87,6 +89,10 @@ class OperatorPanelProvider extends PanelProvider
                 // Lives in App\Filament\Pages so all three panels
                 // share one implementation.
                 Security::class,
+                // Shared About page — version, license, and the AGPL
+                // section 13 source offer. Same reasoning as Security:
+                // one implementation, registered on every panel.
+                About::class,
             ])
             ->userMenuItems([
                 // Layout mirrors AdminPanelProvider — see that file
@@ -221,6 +227,9 @@ class OperatorPanelProvider extends PanelProvider
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
                 SetPermissionsTeamContext::class,
+                // Pushes users past their two-factor grace window to
+                // the security page. See AdminPanelProvider.
+                RequireTwoFactor::class,
                 // See AdminPanelProvider for why PanelRedirect lives in
                 // general middleware rather than authMiddleware.
                 PanelRedirect::class,
@@ -273,6 +282,17 @@ class OperatorPanelProvider extends PanelProvider
             ->renderHook(
                 PanelsRenderHook::BODY_END,
                 fn (): string => Blade::render('@livewire(\'softphone\')'),
+            )
+            // Two-factor countdown. Disappears the moment a second
+            // factor is confirmed. See AdminPanelProvider.
+            ->renderHook(
+                PanelsRenderHook::BODY_START,
+                fn (): string => view('filament.partials.two-factor-banner')->render(),
+            )
+            // AGPL section 13 source offer — see PortalPanelProvider.
+            ->renderHook(
+                PanelsRenderHook::FOOTER,
+                fn (): string => view('filament.partials.source-footer')->render(),
             );
     }
 }

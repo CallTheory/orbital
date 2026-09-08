@@ -31,6 +31,8 @@ class Team extends JetstreamTeam
         'suspended_at',
         'recording_overrides',
         'tier',
+        'keep_partial_messages',
+        'two_factor_grace_days',
     ];
 
     /** Service tier vocabulary used by QueueMemberSyncer's penalty math. */
@@ -61,6 +63,10 @@ class Team extends JetstreamTeam
             'max_users' => 'integer',
             'max_concurrent_calls' => 'integer',
             'recording_overrides' => 'array',
+            // Keep a half-collected message when the caller hangs up
+            // mid-intake. See App\Services\Messages\PartialMessagePolicy.
+            'keep_partial_messages' => 'boolean',
+            'two_factor_grace_days' => 'integer',
             // Voicemail transcription creds — API keys live per-client,
             // encrypted at rest. The cast handles encrypt/decrypt on
             // read and write so consumers just see a plain array.
@@ -126,6 +132,34 @@ class Team extends JetstreamTeam
     public function messageQueues(): HasMany
     {
         return $this->hasMany(MessageQueue::class);
+    }
+
+    /**
+     * Numbers and shortcodes this client receives text traffic on.
+     *
+     * Separate from dids(): the same number is routinely voice with one
+     * carrier and SMS with another, and sharing one row would mean a
+     * voice DID edit silently repointing text traffic.
+     */
+    public function messagingEndpoints(): HasMany
+    {
+        // Ordered by pool rather than address: with a carrier sender
+        // pool required, `address` is an optional display label and is
+        // frequently null, which would sort the list arbitrarily.
+        return $this->hasMany(MessagingEndpoint::class)->orderBy('sender_pool_id')->orderBy('address');
+    }
+
+    /**
+     * People who have told this client to stop texting them.
+     */
+    public function messagingOptOuts(): HasMany
+    {
+        return $this->hasMany(MessagingOptOut::class)->orderByDesc('opted_out_at');
+    }
+
+    public function messageThreads(): HasMany
+    {
+        return $this->hasMany(MessageThread::class);
     }
 
     public function chatQueues(): HasMany

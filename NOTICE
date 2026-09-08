@@ -1,0 +1,56 @@
+Orbital
+Copyright (C) 2026 Call Theory
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, version 3.
+
+This program is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero
+General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+--------------------------------------------------------------------------
+THIRD-PARTY COMPONENTS
+--------------------------------------------------------------------------
+
+An Orbital deployment runs a number of independently developed and
+independently licensed systems. A full inventory with licenses lives in
+docs/third-party-licenses.md.
+
+Note on GPL compatibility
+-------------------------
+
+Several bundled components are licensed under GPLv2 or GPLv3 — most
+notably Asterisk (GPLv2 with a linking exception), Kamailio (GPLv2 or
+later), and rtpengine (GPLv3). GPLv2-only and AGPLv3 are famously
+incompatible *as a combined work*.
+
+Orbital does not create a combined work with any of them. Each runs as a
+separate program, in its own container, with its own address space and
+lifecycle. Orbital communicates with them only over documented network
+and IPC interfaces:
+
+  - Asterisk   — AMI (TCP), ARI (HTTP), ODBC realtime tables, and
+                 generated configuration files
+  - Kamailio   — the binrpc/jsonrpc control interface and generated
+                 dispatcher lists
+  - rtpengine  — the ng control protocol (UDP)
+  - LiveKit    — its HTTP/WebSocket server API (Apache-2.0 regardless)
+
+This is aggregation of separate programs on a distribution medium, which
+the GPL FAQ addresses directly and which does not cause either license to
+reach across the process boundary. No GPL-licensed code is compiled,
+linked, or statically embedded into the Orbital application.
+
+Configuration files that Orbital generates for these systems are the
+output of Orbital's own templates and are covered by the AGPL as part of
+Orbital, not by the licenses of the programs that consume them.
+
+If you modify Orbital and redistribute it, this reasoning is yours to
+maintain: keep the process boundaries intact. Vendoring Asterisk source
+into the application, or linking against its libraries, would change the
+analysis.

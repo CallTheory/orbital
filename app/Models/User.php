@@ -87,6 +87,10 @@ class User extends Authenticatable implements FilamentUser
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'availability_changed_at' => 'datetime',
+            // When this user's two-factor grace window started. Stamped
+            // on first request under the policy, NOT derived from
+            // created_at — see App\Services\Auth\TwoFactorPolicy.
+            'two_factor_grace_started_at' => 'datetime',
         ];
     }
 
@@ -286,6 +290,31 @@ class User extends Authenticatable implements FilamentUser
         }
 
         return EmailQueue::query()
+            ->whereIn('agent_group_id', $groupIds)
+            ->where('is_active', true)
+            ->pluck('id')
+            ->all();
+    }
+
+    /**
+     * IDs of message queues (SMS/MMS and the other text transports)
+     * this operator can work, from the same AgentGroup memberships.
+     * Same shape and same purpose as emailQueueIds() — an operator's
+     * group decides what they see, whatever the channel.
+     *
+     * @return array<int, int>
+     */
+    public function messageQueueIds(): array
+    {
+        $groupIds = $this->agentGroupMemberships()
+            ->pluck('agent_group_id')
+            ->all();
+
+        if (empty($groupIds)) {
+            return [];
+        }
+
+        return MessageQueue::query()
             ->whereIn('agent_group_id', $groupIds)
             ->where('is_active', true)
             ->pluck('id')

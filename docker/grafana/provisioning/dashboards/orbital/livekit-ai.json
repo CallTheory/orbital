@@ -1,0 +1,187 @@
+{
+  "uid": "orbital-livekit-ai",
+  "title": "Orbital — LiveKit & AI",
+  "tags": ["orbital", "livekit", "ai"],
+  "timezone": "browser",
+  "editable": false,
+  "graphTooltip": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "LiveKit nodes up",
+      "description": "Asterisk and LiveKit fail independently by design — an Asterisk failover does not touch AI rooms, and vice versa.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 5, "x": 0, "y": 0 },
+      "targets": [
+        { "refId": "A", "expr": "sum(up{job=\"livekit\"})", "instant": true }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 1 }, { "color": "green", "value": 2 }] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "AI-handled calls (24h)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 5, "x": 5, "y": 0 },
+      "targets": [
+        { "refId": "A", "expr": "orbital_calls_recent_by_handler{handler=\"ai\"}", "instant": true }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "value"
+      },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } }, "overrides": [] }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "AI share of calls",
+      "description": "Share of the trailing day's calls fronted by an AI agent rather than a human operator.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 5, "x": 10, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "orbital_calls_recent_by_handler{handler=\"ai\"} / clamp_min(sum(orbital_calls_recent_by_handler), 1)",
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 1 }, "overrides": [] }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Personas configured",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 15, "y": 0 },
+      "targets": [{ "refId": "A", "expr": "orbital_agent_personas_total", "instant": true }],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Knowledge chunks",
+      "description": "Embedded chunks available to the agent's search_knowledge tool.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 5, "x": 19, "y": 0 },
+      "targets": [{ "refId": "A", "expr": "orbital_knowledge_chunks_total", "instant": true }],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Who is handling the work",
+      "description": "The whole premise of the product on one axis: AI agents and human operators sharing the same call surface.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "targets": [
+        { "refId": "A", "expr": "orbital_calls_recent_by_handler", "legendFormat": "calls — {{handler}}" },
+        { "refId": "B", "expr": "orbital_messages_recent_by_handler", "legendFormat": "messages — {{handler}}" }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Chat sessions active",
+      "description": "Sessions with activity in the trailing hour, per client.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "targets": [
+        { "refId": "A", "expr": "sum(orbital_chat_sessions_active)", "legendFormat": "all clients" }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "fillOpacity": 15, "lineWidth": 2, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } }
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "LiveKit — rooms and participants",
+      "description": "From LiveKit's built-in Prometheus endpoint. Metric names come from the LiveKit server build in use; if these panels are empty, run `curl livekit:6789/metrics | grep -i room` and adjust the expressions to match your version.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "targets": [
+        { "refId": "A", "expr": "sum(livekit_room_total)", "legendFormat": "rooms" },
+        { "refId": "B", "expr": "sum(livekit_participant_total)", "legendFormat": "participants" }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 21,
+      "type": "table",
+      "title": "LiveKit metrics discovered",
+      "description": "Every livekit_* series Prometheus currently holds, with its latest value. This panel exists so the exact metric names this LiveKit build exposes are visible without shelling into the container — use it to fix up the expressions above after a LiveKit upgrade.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "targets": [
+        { "refId": "A", "expr": "{__name__=~\"livekit_.*\"}", "instant": true, "format": "table" }
+      ],
+      "options": { "showHeader": true },
+      "fieldConfig": { "defaults": { "custom": { "align": "auto" } }, "overrides": [] }
+    },
+    {
+      "id": 30,
+      "type": "timeseries",
+      "title": "LiveKit node CPU and memory",
+      "description": "Also version-dependent — see the discovery table. Empty panels here mean the metric names moved, not that LiveKit is unhealthy.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 21 },
+      "targets": [
+        { "refId": "A", "expr": "livekit_node_cpu_load", "legendFormat": "cpu load — {{instance}}" },
+        { "refId": "B", "expr": "livekit_node_memory_used / clamp_min(livekit_node_memory_total, 1)", "legendFormat": "memory used — {{instance}}" }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "fillOpacity": 0, "lineWidth": 1, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    }
+  ]
+}

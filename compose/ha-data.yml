@@ -437,6 +437,10 @@ services:
             - -ip=seaweed-master-1
             - -peers=seaweed-master-1:9333,seaweed-master-2:9333,seaweed-master-3:9333
             - -defaultReplication=001
+            # Prometheus metrics — every seaweed component (master/
+            # volume/filer) serves /metrics on 9324, scraped by the
+            # `seaweedfs` job in docker/prometheus/prometheus.yml.
+            - -metricsPort=9324
         volumes:
             - ha-seaweed-master-1:/data
         networks:
@@ -457,6 +461,7 @@ services:
             - -ip=seaweed-master-2
             - -peers=seaweed-master-1:9333,seaweed-master-2:9333,seaweed-master-3:9333
             - -defaultReplication=001
+            - -metricsPort=9324
         volumes:
             - ha-seaweed-master-2:/data
 
@@ -468,6 +473,7 @@ services:
             - -ip=seaweed-master-3
             - -peers=seaweed-master-1:9333,seaweed-master-2:9333,seaweed-master-3:9333
             - -defaultReplication=001
+            - -metricsPort=9324
         volumes:
             - ha-seaweed-master-3:/data
 
@@ -482,6 +488,7 @@ services:
             - -publicUrl=seaweed-volume-1:8080
             - -mserver=seaweed-master-1:9333,seaweed-master-2:9333,seaweed-master-3:9333
             - -max=50
+            - -metricsPort=9324
         depends_on:
             seaweed-master-1: { condition: service_healthy }
             seaweed-master-2: { condition: service_healthy }
@@ -508,6 +515,7 @@ services:
             - -publicUrl=seaweed-volume-2:8080
             - -mserver=seaweed-master-1:9333,seaweed-master-2:9333,seaweed-master-3:9333
             - -max=50
+            - -metricsPort=9324
         volumes:
             - ha-seaweed-volume-2:/data
 
@@ -522,6 +530,7 @@ services:
             - -s3
             - -s3.config=/etc/seaweedfs/s3.json
             - -defaultReplicaPlacement=001
+            - -metricsPort=9324
         environment:
             REDIS_PASSWORD: ${REDIS_PASSWORD}
             SENTINEL_PASSWORD: ${SENTINEL_PASSWORD:-sentinel-dev}
@@ -554,6 +563,7 @@ services:
             - -s3
             - -s3.config=/etc/seaweedfs/s3.json
             - -defaultReplicaPlacement=001
+            - -metricsPort=9324
 
     # ------------------------------------------------------------
     # HAProxy — internal L4/L7 frontend for the HA data tier.

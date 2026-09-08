@@ -48,9 +48,27 @@ RUN composer install \
 FROM php:8.4-fpm-alpine AS production
 
 LABEL maintainer="Orbital"
+LABEL org.opencontainers.image.title="Orbital"
+LABEL org.opencontainers.image.description="Multi-tenant answering-service and call center platform"
+LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
 
 ARG WWWGROUP=1000
 WORKDIR /var/www/html
+
+# Release identity, baked in at build time so a running container can
+# name exactly what it is without a .git directory. These feed
+# config/orbital.php, which in turn feeds the About page, the panel
+# footers, /source, and /api/version — i.e. Orbital's AGPL section 13
+# source offer. Build with:
+#   --build-arg ORBITAL_VERSION=1.4.2 --build-arg ORBITAL_COMMIT=$(git rev-parse HEAD)
+ARG ORBITAL_VERSION=dev
+ARG ORBITAL_COMMIT=""
+ARG ORBITAL_RELEASE_CHANNEL=stable
+ENV ORBITAL_VERSION=${ORBITAL_VERSION}
+ENV ORBITAL_COMMIT=${ORBITAL_COMMIT}
+ENV ORBITAL_RELEASE_CHANNEL=${ORBITAL_RELEASE_CHANNEL}
+LABEL org.opencontainers.image.version="${ORBITAL_VERSION}"
+LABEL org.opencontainers.image.revision="${ORBITAL_COMMIT}"
 
 ENV TZ=UTC
 ENV COMPOSER_ALLOW_SUPERUSER=1
@@ -74,6 +92,16 @@ RUN apk add --no-cache \
         ffmpeg \
         librsvg \
         nginx \
+        # PostgreSQL client tools — pg_dump / pg_restore for
+        # `orbital:backup` and `orbital:restore`. Deliberate addition to
+        # an image that otherwise keeps its package list minimal: there
+        # is no substitute for pg_dump, and a platform holding other
+        # people's call records without a backup path is not shippable.
+        #
+        # Version rule: pg_dump must match the server's major version or
+        # be NEWER. Alpine's current postgresql-client covers the
+        # postgres:16 the chart deploys and managed 17 alike.
+        postgresql-client \
         sox \
         sqlite \
         su-exec \

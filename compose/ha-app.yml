@@ -41,8 +41,13 @@ services:
             - 'asterisk-prompts:/var/spool/asterisk/prompts'
             - 'tls-certs:/etc/tls:ro'
         networks:
-            - sail
-            - telephony
+            # See the note on the base service in docker-compose.yml —
+            # the `laravel-2` alias is what the orbital-app Prometheus
+            # job scrapes.
+            sail:
+                aliases:
+                    - laravel-2
+            telephony: {}
         restart: unless-stopped
 
     # Second Reverb instance. With REVERB_SCALING_ENABLED=true,
@@ -86,6 +91,17 @@ services:
             OPENROUTER_API_KEY: '${OPENROUTER_API_KEY}'
             ORBITAL_API_URL: 'http://orbital.test/api'
             ORBITAL_API_TOKEN: '${AGENT_WORKER_TOKEN}'
+            # Parity with the base agent-worker — see the note there on
+            # why this container is environment-only.
+            TRACING_ENABLED: '${TRACING_ENABLED:-false}'
+            TRACING_ENDPOINT: '${TRACING_ENDPOINT:-}'
+            TRACING_SAMPLE_RATIO: '${TRACING_SAMPLE_RATIO:-0.05}'
+            TRACING_AUTH_MODE: '${TRACING_AUTH_MODE:-none}'
+            TRACING_AUTH_USERNAME: '${TRACING_AUTH_USERNAME:-}'
+            TRACING_AUTH_SECRET: '${TRACING_AUTH_SECRET:-}'
+            ERROR_REPORTING_ENABLED: '${ERROR_REPORTING_ENABLED:-false}'
+            ERROR_REPORTING_DSN: '${ERROR_REPORTING_DSN:-}'
+            ERROR_REPORTING_ENVIRONMENT: '${ERROR_REPORTING_ENVIRONMENT:-}'
         networks:
             - sail
             - telephony

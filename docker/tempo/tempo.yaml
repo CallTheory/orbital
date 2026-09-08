@@ -1,0 +1,76 @@
+#
+# Orbital Tempo config — shared S3 backend (SeaweedFS).
+#
+# Modelled on docker/loki/loki-config.yaml, deliberately: traces and
+# logs have the same storage story here, so a change to one should be
+# obviously transferable to the other. Blocks land in the
+# `tempo-traces` bucket on the clustered SeaweedFS filers via HAProxy's
+# seaweed-s3 frontend, alongside `loki-chunks`.
+#
+# CREATE THE BUCKET FIRST. Tempo does not create it, and the failure
+# mode is quiet — the distributor accepts spans and the compactor logs
+# an error nobody is watching.
+#
+# OTLP over HTTP only, on 4318. gRPC on 4317 is deliberately not
+# enabled: it would need a `mode tcp` HAProxy frontend instead of the
+# ordinary HTTP ones the rest of the observability tier uses, and the
+# app exports over HTTP regardless (no ext-grpc in the PHP image).
+#
+# Retention is 7 days to match Loki's 168h. Traces are for answering
+# "why was this slow last Tuesday", not for archival — and a trace
+# backend that grows without bound is the usual reason people turn
+# tracing off again.
+#
+
+stream_over_http_enabled: true
+
+server:
+  http_listen_port: 3200
+  grpc_listen_port: 9097
+  log_level: warn
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        http:
+          endpoint: 0.0.0.0:4318
+
+ingester:
+  # Flush promptly. A PHP request exports its spans and exits; there is
+  # no long-lived process to keep a trace warm, so a long idle period
+  # just delays when the trace becomes searchable.
+  max_block_duration: 5m
+
+compactor:
+  compaction:
+    block_retention: 168h
+
+storage:
+  trace:
+    backend: s3
+    s3:
+      endpoint: haproxy:8333
+      bucket: tempo-traces
+      access_key: ${AWS_ACCESS_KEY_ID}
+      secret_key: ${AWS_SECRET_ACCESS_KEY}
+      region: us-east-1
+      forcepathstyle: true
+      insecure: true
+    wal:
+      path: /tempo-data/wal
+    local:
+      path: /tempo-data/blocks
+
+# Span metrics and service graphs are NOT enabled. They would need a
+# remote-write path into Prometheus and a second copy of the data;
+# Orbital already exposes request rate and duration as first-class
+# metrics from /metrics, which is cheaper and does not depend on the
+# sampling ratio. See config/metrics.php.
+metrics_generator:
+  registry:
+    external_labels:
+      source: tempo
+
+usage_report:
+  reporting_enabled: false

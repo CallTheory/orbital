@@ -4,7 +4,7 @@
     "type": "project",
     "description": "Multi-tenant answering-service and call center platform.",
     "keywords": ["call-center", "voip", "asterisk", "livekit", "ai-agents"],
-    "license": "MIT",
+    "license": "AGPL-3.0-only",
     "require": {
         "php": "^8.2",
         "beyondcode/laravel-mailbox": "^6.0",
@@ -21,9 +21,12 @@
         "league/csv": "^9.28",
         "league/flysystem-aws-s3-v3": "^3.32",
         "livewire/livewire": "^4.1",
+        "open-telemetry/exporter-otlp": "^1.4",
+        "open-telemetry/sdk": "^1.15",
         "pgvector/pgvector": "^0.2.2",
         "phpoffice/phpspreadsheet": "^5.6",
         "predis/predis": "^3.4",
+        "sentry/sentry-laravel": "^4.27",
         "smalot/pdfparser": "^2.12",
         "spatie/laravel-permission": "^6"
     },

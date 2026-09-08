@@ -102,3 +102,76 @@ data:
   # Shared secret the agent-worker heartbeat POSTs with; the Laravel
   # /api/agent-worker/heartbeat route validates against this same value.
   AGENT_WORKER_TOKEN: {{ .Values.agentWorker.token | quote }}
+
+  # AGPL section 13 — where the corresponding source for THIS build
+  # lives. Anyone running MODIFIED Orbital must repoint this at their
+  # own repository; the panel footers, /source, /api/version, and the
+  # About page all resolve from it, so leaving it aimed upstream sends
+  # your users to source that isn't what they're running.
+  ORBITAL_SOURCE_URL: {{ .Values.licensing.sourceUrl | quote }}
+  ORBITAL_VERSION: {{ .Values.global.image.tag | quote }}
+  ORBITAL_RELEASE_CHANNEL: {{ .Values.licensing.releaseChannel | quote }}
+
+  # Metrics. /metrics is per-pod (HTTP counters keyed by METRICS_INSTANCE,
+  # which defaults to the pod hostname — so scraping N replicas yields N
+  # honest series rather than N copies of one total). Deployment-wide
+  # numbers are pushed by the scheduler's orbital:collect-metrics instead;
+  # see config/metrics.php for why that split matters.
+  METRICS_ENABLED: {{ .Values.metrics.enabled | quote }}
+  {{- if .Values.metrics.pushgateway.enabled }}
+  METRICS_PUSHGATEWAY_ENABLED: "true"
+  METRICS_PUSHGATEWAY_URL: {{ .Values.metrics.pushgateway.url | quote }}
+  {{- else }}
+  METRICS_PUSHGATEWAY_ENABLED: "false"
+  {{- end }}
+
+  # Nightly encrypted database backup, run by the scheduler pod.
+  # Credentials live in app-secrets: BACKUP_ENCRYPTION_KEY,
+  # BACKUP_AWS_ACCESS_KEY_ID, BACKUP_AWS_SECRET_ACCESS_KEY. The key
+  # alone does nothing without them, and vice versa.
+  {{- if .Values.backups.enabled }}
+  BACKUP_ENABLED: "true"
+  BACKUP_KEEP_DAYS: {{ .Values.backups.keepDays | quote }}
+  BACKUP_AWS_BUCKET: {{ .Values.backups.bucket | quote }}
+  BACKUP_AWS_DEFAULT_REGION: {{ .Values.backups.region | quote }}
+  {{- with .Values.backups.endpoint }}
+  BACKUP_AWS_ENDPOINT: {{ . | quote }}
+  {{- end }}
+  {{- else }}
+  BACKUP_ENABLED: "false"
+  {{- end }}
+
+  # Optional observability integrations. Both off by default and both
+  # inert when off — no exporter is built and no listeners are attached.
+  #
+  # The credentials are NOT here: ERROR_REPORTING_DSN, TRACING_AUTH_USERNAME
+  # and TRACING_AUTH_SECRET come from the app-secrets Secret, which every
+  # pod already picks up via secretRef. See templates/secrets.example.yaml.
+  #
+  # Changing any of these rolls the app pods (the checksum annotation on the
+  # laravel Deployment covers this ConfigMap). That is wanted: Horizon and
+  # the scheduler resolve config once at boot, so a value they never restart
+  # to see is a value that quietly does not apply.
+  {{- if .Values.observability.tracing.enabled }}
+  TRACING_ENABLED: "true"
+  TRACING_ENDPOINT: {{ .Values.observability.tracing.endpoint | quote }}
+  TRACING_SERVICE_NAME: {{ .Values.observability.tracing.serviceName | quote }}
+  TRACING_SAMPLE_RATIO: {{ .Values.observability.tracing.sampleRatio | quote }}
+  TRACING_AUTH_MODE: {{ .Values.observability.tracing.authMode | quote }}
+  {{- else }}
+  TRACING_ENABLED: "false"
+  {{- end }}
+  {{- if .Values.observability.errors.enabled }}
+  ERROR_REPORTING_ENABLED: "true"
+  {{- with .Values.observability.errors.environment }}
+  ERROR_REPORTING_ENVIRONMENT: {{ . | quote }}
+  {{- end }}
+  {{- else }}
+  ERROR_REPORTING_ENABLED: "false"
+  {{- end }}
+
+  # Two-factor enforcement. The grace clock starts on each user's first
+  # request under the policy, so enabling this never retroactively locks
+  # out existing users.
+  TWO_FACTOR_REQUIRED: {{ .Values.security.twoFactorRequired | quote }}
+  TWO_FACTOR_GRACE_DAYS: {{ .Values.security.twoFactorGraceDays | quote }}

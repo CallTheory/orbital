@@ -218,7 +218,80 @@ backend loki_be
     server loki-2 loki-2:3100 check inter 5s rise 2 fall 2 resolvers docker
 
 #-----------------------------------------------------------
+# Alertmanager — UI and API only. Prometheus does NOT send
+# alerts through here: it is configured with both nodes
+# directly, because the pair gossips about what has already
+# been notified and a load balancer would hide a dead node
+# while silently halving the redundancy.
+#-----------------------------------------------------------
+frontend alertmanager_fe
+    mode http
+    bind *:9093
+    default_backend alertmanager_be
+
+backend alertmanager_be
+    mode http
+    option httpchk GET /-/healthy
+    http-check expect status 200
+    balance roundrobin
+    server alertmanager   alertmanager:9093   check inter 5s rise 2 fall 2 resolvers docker
+    server alertmanager-2 alertmanager-2:9093 check inter 5s rise 2 fall 2 resolvers docker
+
+#-----------------------------------------------------------
+# Tempo — OPTIONAL. Only present when compose/obs-tracing.yml is
+# in COMPOSE_FILE; both backends sit DOWN otherwise, which is the
+# same posture as any other overlay this LB fronts.
+#
+# Two frontends because the traffic is two different things:
+# 4318 is span INGEST from the app tier, 3200 is the query API
+# Grafana reads. Ingest is by far the higher volume and the one
+# that must not block a request, hence the short timeouts.
+#
+# Both are `mode http` — OTLP here is HTTP, never gRPC. gRPC on
+# 4317 would need `mode tcp` (and ext-grpc in the PHP image),
+# which is exactly why the app exports over HTTP.
+#
+# There is no auth in front of ingest. Same trust model as
+# Prometheus and Loki: the compose network is the boundary, and
+# `tempo` is not host-bound.
+#-----------------------------------------------------------
+frontend tempo_otlp_fe
+    mode http
+    bind *:4318
+    timeout client 10s
+    default_backend tempo_otlp_be
+
+backend tempo_otlp_be
+    mode http
+    option httpchk GET /ready
+    http-check expect status 200
+    timeout server 10s
+    balance roundrobin
+    server tempo   tempo:4318   check port 3200 inter 5s rise 2 fall 2 resolvers docker
+    server tempo-2 tempo-2:4318 check port 3200 inter 5s rise 2 fall 2 resolvers docker
+
+frontend tempo_query_fe
+    mode http
+    bind *:3200
+    default_backend tempo_query_be
+
+backend tempo_query_be
+    mode http
+    option httpchk GET /ready
+    http-check expect status 200
+    balance roundrobin
+    server tempo   tempo:3200   check inter 5s rise 2 fall 2 resolvers docker
+    server tempo-2 tempo-2:3200 check inter 5s rise 2 fall 2 resolvers docker
+
+#-----------------------------------------------------------
 # Stats page — http://haproxy-{1,2}:8404/stats
+#
+# /metrics on the same port serves the built-in Prometheus
+# exporter (compiled into the official haproxy images since
+# 2.4). Scraped per-node by the `haproxy` job so Grafana can
+# tell the two VRRP peers apart; HAProxyStatsClient keeps
+# using the CSV endpoint at /stats;csv — same data, and the
+# Failover page's parsing predates the exporter.
 #-----------------------------------------------------------
 frontend stats_fe
     mode http
@@ -227,3 +300,4 @@ frontend stats_fe
     stats uri /stats
     stats refresh 10s
     stats admin if TRUE
+    http-request use-service prometheus-exporter if { path /metrics }

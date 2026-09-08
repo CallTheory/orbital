@@ -27,11 +27,16 @@ nav:
   - Getting Started:
     - Installation: getting-started/installation.md
     - First Login: getting-started/first-login.md
+    - Deploying to Vultr (VKE): getting-started/vultr-vke.md
   - Admin Guide:
-    - Tenants: admin/tenants.md
+    - Clients: admin/clients.md
     - Email Routing: admin/email-routing.md
+    - Messaging: admin/messaging.md
     - Agent Groups: admin/agent-groups.md
     - Users & Roles: admin/users-roles.md
+    - High Availability: admin/high-availability.md
+    - Observability: admin/observability.md
+    - Backups: admin/backups.md
   - Operator Guide:
     - Email Inbox: operator/email-inbox.md
     - Softphone: operator/softphone.md

@@ -99,8 +99,15 @@ class QueueMetricsRollupTest extends TestCase
             'event' => 'ENTERQUEUE',
         ]);
 
-        $this->artisan('orbital:roll-up-queue-metrics', ['--date' => '2026-04-13']);
-        $this->artisan('orbital:roll-up-queue-metrics', ['--date' => '2026-04-13']);
+        // --keep-days=0 disables the prune. Without it this test is a
+        // time bomb: the command aggregates and THEN prunes queue_log
+        // past the 90-day default, so once the wall clock drifts more
+        // than 90 days past the hard-coded date above, the first run
+        // deletes the source row and the second finds nothing to
+        // re-aggregate. Idempotency is what's under test here; pruning
+        // has its own test below.
+        $this->artisan('orbital:roll-up-queue-metrics', ['--date' => '2026-04-13', '--keep-days' => 0]);
+        $this->artisan('orbital:roll-up-queue-metrics', ['--date' => '2026-04-13', '--keep-days' => 0]);
 
         $count = DB::table('queue_metrics_daily')
             ->where('queue_name', 't1_demo')

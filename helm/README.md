@@ -17,8 +17,67 @@ Provider-agnostic K8s deployment of the Orbital application stack. Drives Larave
 | Valkey           | StatefulSet   | 1 (in-cluster)     |
 | SeaweedFS        | StatefulSet   | 1 (in-cluster)     |
 | Ingress          | Ingress       | 1                  |
+| Migrations       | Job (hook)    | 1 per release      |
+| Disruption budgets | PDB         | one per multi-replica tier |
 
-Default install lands all 26 resources. Flipping `<tier>.external.enabled=true` (Postgres / Valkey / Object storage) drops the in-cluster StatefulSet + Service + ConfigMap and the Filament admin's FailoverCentral page hides those tier rows.
+Default install lands all 26 resources.
+
+### Redundancy: what "2 replicas" actually buys
+
+Two knobs, both on by default, because replica count alone does not
+survive anything:
+
+- **`spreadPods`** adds a `topologySpreadConstraints` block to every
+  multi-replica tier. Kubernetes schedules for fit, not for surviving a
+  node loss, so without this both Laravel replicas can land on the same
+  node and one node failure takes the tier down. `required: false` by
+  default so single-node dev and k3s clusters still schedule; production
+  overlays set `required: true` to make co-location a scheduling error
+  rather than a silent risk.
+- **`podDisruptionBudgets`** protects against *planned* work — a
+  `kubectl drain`, a VKE node upgrade, an autoscaler scale-down. Without
+  a budget those evict with no regard for how many of a tier survive.
+  Rendered only for tiers with replicas > 1; a PDB over a single-replica
+  Deployment permits zero evictions and blocks drains forever.
+
+**The data tier is a different story.** Postgres, Valkey, and SeaweedFS
+ship as single-replica StatefulSets — enough for a first install, not
+for production. This chart does not attempt to be a database operator:
+for real deployments set `<tier>.external.enabled=true` and point at a
+managed service (Vultr Managed PostgreSQL, Vultr Object Storage) or run
+a dedicated operator alongside. The compose stack's Patroni/etcd/
+SeaweedFS-cluster topology has not been ported here, and installing an
+untested hand-rolled Patroni is worse than using a managed database.
+
+`helm install` prints a warning for every tier still running
+single-replica in-cluster, and another if backups are off.
+
+### Schema migrations
+
+`templates/migrate-job.yaml` runs `php artisan migrate --force` as a Helm
+hook. Nothing else in the chart applies migrations, so with
+`migrations.enabled=false` you own that step yourself.
+
+The hook timing is deliberate and the two halves differ:
+
+- **`post-install`** — on a fresh release the in-cluster Postgres
+  StatefulSet does not exist during `pre-install`, so there would be
+  nothing to connect to. An init container then waits (up to
+  `migrations.waitForDbSeconds`) for the database to accept connections.
+- **`pre-upgrade`** — the database already exists, so this runs *before*
+  the new pods roll. That ordering is the point: no pod ever serves new
+  code against an old schema.
+
+On a **first install only**, `migrations.seedOnInstall` also runs
+`db:seed --force`. A migrated-but-unseeded database has no permission
+catalogue, no roles, and no first super admin — the panel loads into a
+state nobody can log in to and administer. It is never re-run on
+upgrade.
+
+A failed migration fails the Helm release, so a broken schema change
+stops the rollout instead of half-applying it. The Job is kept on
+failure (`hook-delete-policy: hook-succeeded`) so `kubectl logs` still
+has the error. Flipping `<tier>.external.enabled=true` (Postgres / Valkey / Object storage) drops the in-cluster StatefulSet + Service + ConfigMap and the Filament admin's FailoverCentral page hides those tier rows.
 
 ## Per-provider values matrix
 

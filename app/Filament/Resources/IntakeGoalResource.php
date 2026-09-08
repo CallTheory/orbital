@@ -192,6 +192,27 @@ class IntakeGoalResource extends Resource
                         ->label('Decision field key')
                         ->placeholder('transfer_confirmed')
                         ->helperText('Only used when completion type = decision.'),
+
+                    // Three-state, not a toggle. "Inherit" has to be
+                    // distinguishable from "explicitly off", or every
+                    // goal saved with a default would silently opt out
+                    // of a client-wide policy the admin just turned on.
+                    Forms\Components\Select::make('keep_partial_messages')
+                        ->label('If the caller hangs up mid-goal')
+                        ->options([
+                            '' => 'Inherit from the client',
+                            '1' => 'Keep what was collected',
+                            '0' => 'Discard it',
+                        ])
+                        ->default('')
+                        ->native(false)
+                        ->dehydrateStateUsing(fn ($state) => $state === '' || $state === null
+                            ? null
+                            : (bool) $state)
+                        ->afterStateHydrated(fn (Forms\Components\Select $component, $state) => $component->state(
+                            $state === null ? '' : ($state ? '1' : '0'),
+                        ))
+                        ->helperText('Overrides the client-level "Keep partial messages" setting for this goal only. Sensitive goals (payment details, medical intake) are the usual reason to discard even when the client keeps partials elsewhere.'),
                 ]),
 
             Section::make('Tools')

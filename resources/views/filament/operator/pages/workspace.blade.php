@@ -68,7 +68,25 @@
                                     </x-filament::input.wrapper>
                                 </div>
 
-                                <div style="display: flex; gap: 0.5rem; justify-content: flex-end; border-top: 1px solid rgba(128,128,128,0.15); padding-top: 1rem;">
+                                <div style="display: flex; gap: 0.5rem; justify-content: flex-end; align-items: center; border-top: 1px solid rgba(128,128,128,0.15); padding-top: 1rem;">
+                                    {{--
+                                        Caller hung up mid-intake. Only offered for clients
+                                        whose policy keeps partials; the server re-checks, so
+                                        this is a convenience, not the authorization.
+                                    --}}
+                                    @if ($this->keepsPartialMessages())
+                                        <span style="font-size: 0.75rem; color: var(--gray-500); margin-right: auto;">
+                                            Caller dropped off? Save what you have — it will be marked incomplete.
+                                        </span>
+                                        <x-filament::button
+                                            type="button"
+                                            color="warning"
+                                            icon="heroicon-o-phone-x-mark"
+                                            wire:click="savePartialMessage"
+                                        >
+                                            Save Partial
+                                        </x-filament::button>
+                                    @endif
                                     <x-filament::button type="button" color="gray" wire:click="cancelMessage">
                                         Cancel
                                     </x-filament::button>

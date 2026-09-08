@@ -202,7 +202,164 @@ telephony:
 # per deploy — e.g. drop grafana/prometheus from the list once the
 # observability stack is installed alongside.
 health:
-  disabledComponents: "prometheus,loki,grafana,promtail,icecast,ollama,whisper_local,haproxy,mail,haraka,pgadmin,redis_commander,tls"
+  disabledComponents: "prometheus,loki,grafana,promtail,tempo,alertmanager,icecast,ollama,whisper_local,haproxy,mail,haraka,pgadmin,redis_commander,tls"
+
+# ============================================================================
+# Licensing — AGPL section 13 source offer
+# ============================================================================
+#
+# Orbital is AGPL-3.0. If you run MODIFIED Orbital and let anyone use it
+# over a network, section 13 asks you to offer them the source of what
+# they are actually running.
+#
+# Orbital does that for you: the footer of every panel, /source, and
+# /api/version all read sourceUrl. POINT IT AT YOUR OWN REPOSITORY when
+# you fork. Leaving it aimed upstream sends your users to source that
+# isn't yours.
+licensing:
+  sourceUrl: "https://github.com/calltheory/orbital"
+  releaseChannel: stable
+
+# ============================================================================
+# Metrics
+# ============================================================================
+#
+# /metrics on each Laravel pod carries per-pod HTTP metrics. Deployment-wide
+# numbers (per-client volume, queue depth, Asterisk state) are PUSHED once a
+# minute by the scheduler pod, so N replicas don't each report the same
+# global total — see config/metrics.php.
+#
+# Point pushgateway.url at a Pushgateway in your monitoring namespace, or
+# disable it if you aren't collecting metrics yet.
+metrics:
+  enabled: true
+  pushgateway:
+    enabled: false
+    url: "http://pushgateway.monitoring.svc.cluster.local:9091"
+
+# ============================================================================
+# Backups
+# ============================================================================
+#
+# Nightly encrypted PostgreSQL backup, run by the scheduler pod — no
+# CronJob needed, `schedule:work` already owns the timetable.
+#
+# HA covers a dead node, replication covers a dead disk. Neither covers a
+# dropped table or a bad migration; those replicate to every copy. This
+# is the only mechanism that recovers from a mistake, and it is the one
+# thing on this page that should be on before you carry real traffic.
+#
+# Secrets are NOT here — BACKUP_ENCRYPTION_KEY, BACKUP_AWS_ACCESS_KEY_ID
+# and BACKUP_AWS_SECRET_ACCESS_KEY go in the app-secrets Secret. See
+# templates/secrets.example.yaml.
+#
+# LOSING THE ENCRYPTION KEY MEANS LOSING EVERY ARCHIVE TAKEN WITH IT.
+# Store it in your secret manager, not only in the cluster it protects.
+backups:
+  enabled: false
+  keepDays: 30
+
+  # Destination bucket. Use a DIFFERENT bucket and a DIFFERENT key from
+  # the app's object storage: backups kept under the credential the app
+  # writes recordings with die to the same compromised key or buggy
+  # delete that destroys the recordings.
+  bucket: ""
+  endpoint: ""
+  region: "us-east-1"
+
+# ============================================================================
+# Schema migrations
+# ============================================================================
+#
+# Runs `php artisan migrate --force` as a Helm hook: post-install on a
+# fresh release (the in-cluster Postgres StatefulSet does not exist yet
+# during pre-install, so there would be nothing to connect to) and
+# pre-upgrade on every release after that, so the new schema lands
+# BEFORE the new pods roll. A pod serving new code against an old
+# schema is the failure this exists to prevent.
+#
+# Turn `enabled` off only if you run migrations from your own pipeline.
+# Nothing else in the chart applies them, so off means you own that step.
+migrations:
+  enabled: true
+
+  # Seed reference data on the FIRST install only — permissions, roles,
+  # the first super admin, hold-music classes, the intake-goal library.
+  # A migrated-but-unseeded database loads a panel nobody can log in to
+  # and administer. Never re-run on upgrade: DatabaseSeeder is safe in
+  # production (demo data is gated behind the `local` environment) but
+  # re-seeding every release would fight an operator's own edits to the
+  # same reference rows.
+  seedOnInstall: true
+
+  # How long the init container waits for Postgres to accept
+  # connections. Generous because on a fresh install the database
+  # container is starting at the same moment, and initdb on a cold
+  # block-storage volume is not fast.
+  waitForDbSeconds: 300
+
+  # Job retries. A migration that fails for a real reason fails the
+  # release, which is what you want; these retries are for transient
+  # connection loss during a rolling data-tier restart.
+  backoffLimit: 3
+
+  resources:
+    requests: {cpu: "100m", memory: "256Mi"}
+    limits: {cpu: "1000m", memory: "1Gi"}
+
+# ============================================================================
+# Observability integrations — optional, off by default
+# ============================================================================
+#
+# Neither of these ships a backend. Same posture the chart already takes
+# toward Prometheus/Grafana/Loki: a Kubernetes install is assumed to have an
+# observability stack of its own, or to be pointing at a hosted one, and
+# duplicating it inside this chart would fight whatever the cluster already
+# runs. The compose stack ships Tempo as an opt-in overlay
+# (compose/obs-tracing.yml) because there is nothing else there to use.
+#
+# READ THIS BEFORE ENABLING EITHER. Orbital handles other people's callers.
+# Spans carry identifiers only and error reports are scrubbed before they
+# leave the pod, but pointing these at a hosted backend still exports your
+# clients' operational data to a third party. If you run Orbital under a BAA
+# or a DPA, check that first.
+#
+# Secrets do NOT go here — the DSN and the OTLP credential belong in the
+# app-secrets Secret. See templates/secrets.example.yaml.
+observability:
+  # Distributed tracing over OTLP/HTTP. Point at Tempo, an OpenTelemetry
+  # Collector, or a vendor endpoint. Sampling defaults to 5%: a call center
+  # serves a lot of requests and tracing all of them costs a great deal
+  # without answering anything extra.
+  tracing:
+    enabled: false
+    endpoint: "http://tempo.monitoring.svc.cluster.local:4318/v1/traces"
+    serviceName: "orbital"
+    sampleRatio: 0.05
+    # none | basic | bearer. Credentials come from app-secrets:
+    # TRACING_AUTH_USERNAME and TRACING_AUTH_SECRET.
+    authMode: "none"
+
+  # Unhandled exceptions to GlitchTip, Sentry, or anything speaking the same
+  # ingest API. The DSN lives in app-secrets as ERROR_REPORTING_DSN; without
+  # it this stays off however this flag is set, which is deliberate.
+  errors:
+    enabled: false
+    # Blank uses the app environment. Set it when several installs report
+    # into one project and need telling apart.
+    environment: ""
+
+# ============================================================================
+# Security
+# ============================================================================
+#
+# Two-factor is required for every user — platform staff and client portal
+# users alike. The grace clock starts on each user's FIRST REQUEST under the
+# policy, not at account creation, so turning this on does not lock out
+# existing users. Per-client windows override the default on the client record.
+security:
+  twoFactorRequired: true
+  twoFactorGraceDays: 7
 
 # ============================================================================
 # Stateful dependencies — in-cluster by default, external opt-in
@@ -352,6 +509,40 @@ securityContext:
   readOnlyRootFilesystem: false
   capabilities:
     drop: [ALL]
+
+# ============================================================================
+# Pod spreading — makes "2 replicas" mean "2 nodes"
+# ============================================================================
+#
+# Kubernetes schedules for fit, not for surviving a node loss, so
+# without this both Laravel replicas (and both Asterisk pods, and both
+# agent-workers) can land on the same node and a single node failure
+# takes the tier down. That is the difference between configured
+# redundancy and actual redundancy.
+#
+# `required: false` by default so a single-node dev or k3s cluster still
+# schedules everything. On a real multi-node cluster set it to true and
+# have Kubernetes refuse to co-locate rather than quietly doing it.
+spreadPods:
+  enabled: true
+  required: false
+
+# ============================================================================
+# Disruption budgets — survive a node drain, not just a node crash
+# ============================================================================
+#
+# A `kubectl drain` during a provider maintenance window (or a VKE node
+# upgrade) evicts pods with no regard for how many of a tier are left
+# unless a PodDisruptionBudget says otherwise. Without one, a rolling
+# node upgrade can take out every replica of a tier at once — an outage
+# caused by routine maintenance, which is the most annoying kind.
+#
+# Only rendered for tiers running more than one replica; a PDB over a
+# single-replica Deployment blocks drains forever instead of protecting
+# anything.
+podDisruptionBudgets:
+  enabled: true
+  maxUnavailable: 1
 
 nodeSelector: {}
 tolerations: []

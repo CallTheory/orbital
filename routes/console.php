@@ -49,6 +49,43 @@ Schedule::command('orbital:roll-up-queue-metrics')
     ->withoutOverlapping()
     ->onOneServer();
 
+// Encrypted database backup to the configured off-box destination.
+//
+// 03:00 rather than 02:00 so it runs AFTER the queue-metrics rollup and
+// its 90-day prune — backing up first would capture rows that are about
+// to be deleted, making every archive slightly larger than the database
+// it came from for no benefit.
+//
+// onOneServer() because two replicas dumping the same database at the
+// same moment doubles the load on Postgres to produce two archives that
+// differ only in filename.
+//
+// Guarded on config rather than always-scheduled: an install with no
+// destination configured would otherwise fail nightly and train whoever
+// reads the logs to ignore backup errors.
+if (config('backup.enabled')) {
+    Schedule::command('orbital:backup')
+        ->dailyAt('03:00')
+        ->name('backup')
+        ->withoutOverlapping()
+        ->onOneServer();
+}
+
+// Collect deployment-wide metrics (per-client volume, queue depth,
+// Asterisk channel state, SIP registrations) and push them to
+// Pushgateway. Every minute matches Prometheus's scrape cadence closely
+// enough for the dashboards without hammering AMI.
+//
+// onOneServer() is load-bearing here, not just hygiene: these are
+// installation-wide numbers, so a second replica pushing them would
+// overwrite the first's series with an identical payload at best, and
+// interleave two half-collected snapshots at worst.
+Schedule::command('orbital:collect-metrics')
+    ->everyMinute()
+    ->name('collect-metrics')
+    ->withoutOverlapping()
+    ->onOneServer();
+
 // Drain rtpengine recording-daemon spool dirs into CallRecording rows.
 // Polled rather than inotify-driven so we don't need a sidecar
 // watcher container per node. Once-a-minute is fine — the upload

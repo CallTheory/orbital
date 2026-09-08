@@ -13,17 +13,31 @@ recordings taken on their behalf. They never configure telephony
 infrastructure themselves; the platform operator owns trunks, extensions,
 routing, and queues.
 
+It is a **multi-channel** inbound platform: voice, inbound email, web
+chat, and SMS/MMS all route into the same operator surface, share the
+same claim/release semantics, and are driven by the same compiled
+orchestrations — so a client's script is authored once and answers on
+whichever channel the customer used.
+
+Orbital is **free software under the AGPL-3.0**. Self-hosting is free
+forever with no feature gates and no seat counting — see
+[Licensing](#license).
+
 ## Stack
 
 - **Backend** — Laravel 12, PHP 8.4, Filament 5, Livewire 4
 - **Database** — PostgreSQL 17 with pgvector for knowledge-base embeddings
 - **Cache / queues / sessions** — Valkey (Redis-compatible)
 - **Telephony** — Asterisk 22 (SIP, MixMonitor recording, AMI)
+- **Messaging** — SMS/MMS via a pluggable provider contract (Twilio
+  driver ships; see `docs/admin/messaging.md`)
 - **Media / AI voice** — LiveKit server + LiveKit SIP bridge + a Python
   agent worker (Anthropic / OpenAI / ElevenLabs)
 - **Object storage** — MinIO (S3-compatible) for call recordings and
   tenant assets
-- **Observability** — Prometheus, Loki, Promtail, Grafana
+- **Observability** — Prometheus, Pushgateway, Loki, Promtail, Grafana
+  (four dashboards ship provisioned; app metrics on `/metrics`, platform
+  and telephony metrics pushed by `orbital:collect-metrics`)
 - **Frontend** — Tailwind 4, Alpine.js, SIP.js (WebRTC softphone),
   WaveSurfer.js (recording playback) — all bundled via Vite, no public
   CDNs (offline-first is a hard requirement)
@@ -275,4 +289,24 @@ Ship a new version later by rebuilding at a new tag (step a) and
 
 ## License
 
-Proprietary. All rights reserved.
+Orbital is free software under the **GNU Affero General Public License,
+version 3** ([`LICENSE`](LICENSE)).
+
+Self-hosting is free forever, with no feature gates, no seat counting, and
+no license key — unlimited clients, users, concurrent calls, and channels.
+What Call Theory sells is managed hosting, support subscriptions for
+self-hosters, and managed answering services. None of that is code withheld
+from this repository. See [`LICENSING.md`](LICENSING.md).
+
+If you modify Orbital and let others use it over a network, section 13 of
+the AGPL asks you to offer them the corresponding source. Orbital does this
+for you — the panel footers and `/source` link to the running version's
+source — so point `ORBITAL_SOURCE_URL` at your repository when you fork.
+
+Bundled third-party components and their licenses:
+[`NOTICE`](NOTICE), [`docs/third-party-licenses.md`](docs/third-party-licenses.md).
+The name is a trademark and is handled separately:
+[`TRADEMARK.md`](TRADEMARK.md).
+
+- Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`CLA.md`](CLA.md)
+- Reporting a vulnerability: [`SECURITY.md`](SECURITY.md)

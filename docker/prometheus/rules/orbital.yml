@@ -1,0 +1,316 @@
+#
+# Orbital alerting rules.
+#
+# Every expression below is written against a metric that already
+# exists — nothing here needs new instrumentation. Names and label sets
+# come from app/Services/Metrics/{PlatformMetricsCollector,
+# TelephonyMetricsCollector,HttpMetricsStore}.php; check there before
+# changing an expression, because a rule against a misspelled metric
+# never fires and looks exactly like a healthy system.
+#
+# TWO SOURCES, TWO FAILURE MODES. Per-instance metrics (orbital_http_*)
+# are SCRAPED: if the app dies the series go stale and `absent()` works.
+# Platform and telephony metrics are PUSHED to Pushgateway once a minute
+# by `orbital:collect-metrics`: Pushgateway serves the last value
+# FOREVER, so if the scheduler dies those series freeze at their last
+# healthy reading and every rule below them goes quietly green. That is
+# why OrbitalMetricsPipelineStale exists and why it inhibits the rest —
+# see docker/alertmanager/alertmanager.yml.tmpl.
+#
+# Severity is a routing decision, not a mood:
+#   critical  nobody is answering calls, or we are losing customer data
+#   warning   a human should look today
+#
+# The `source: pushed` label marks series that come via Pushgateway, so
+# the staleness alert can inhibit them as a group.
+#
+
+groups:
+  # ────────────────────────────────────────────────────────────────
+  # The alerting pipeline itself
+  # ────────────────────────────────────────────────────────────────
+  - name: orbital-pipeline
+    rules:
+      # The alert about the alerts. If this is firing, treat every
+      # `source: pushed` rule below as unknown rather than healthy.
+      - alert: OrbitalMetricsPipelineStale
+        expr: time() - push_time_seconds{job="orbital_platform"} > 300
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Platform metrics have stopped being pushed"
+          description: >-
+            No push from orbital:collect-metrics for
+            {{ $value | humanizeDuration }}. It runs every minute, so
+            the scheduler or Horizon has stopped. Until this clears,
+            every platform and telephony alert is reporting a frozen
+            value rather than the current one.
+          runbook: "docker compose logs scheduler; php artisan schedule:list"
+
+      # Pushgateway has never been written to at all — a fresh install
+      # where the scheduler was never started. Distinct from the above
+      # because push_time_seconds does not exist yet, so the staleness
+      # expression cannot match.
+      - alert: OrbitalMetricsPipelineMissing
+        expr: absent(push_time_seconds{job="orbital_platform"})
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Platform metrics have never been pushed"
+          description: >-
+            Pushgateway has no orbital_platform job. Either the
+            scheduler has never run or METRICS_PUSHGATEWAY_ENABLED is
+            off. Dashboards showing platform totals will be empty.
+
+      - alert: OrbitalAppInstanceDown
+        expr: up{job="orbital-app"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Orbital app instance {{ $labels.instance }} is not answering"
+          description: >-
+            Prometheus cannot scrape /metrics on {{ $labels.instance }}.
+            If this fires on a fresh clone rather than during an
+            incident, check the `laravel` network alias in
+            docker-compose.yml before assuming an outage.
+
+  # ────────────────────────────────────────────────────────────────
+  # Telephony — the alerts that mean calls are not being answered
+  # ────────────────────────────────────────────────────────────────
+  - name: orbital-telephony
+    rules:
+      - alert: OrbitalAsteriskDown
+        expr: orbital_asterisk_up == 0
+        for: 2m
+        labels:
+          severity: critical
+          source: pushed
+        annotations:
+          summary: "Asterisk AMI is not answering"
+          description: >-
+            The last AMI poll failed. No calls are being routed. This is
+            the one alert on this page that means the product is down.
+          runbook: "php artisan orbital:status"
+
+      # Registrations going to zero means every desk phone and softphone
+      # has dropped off — callers reach the platform and find nobody.
+      - alert: OrbitalNoSipRegistrations
+        expr: orbital_sip_contacts_registered == 0 and orbital_sip_endpoints_total > 0
+        for: 5m
+        labels:
+          severity: critical
+          source: pushed
+        annotations:
+          summary: "No SIP endpoints are registered"
+          description: >-
+            {{ with query "orbital_sip_endpoints_total" }}{{ . | first | value }}{{ end }}
+            endpoints are provisioned and none has a live registration.
+            Calls will route to nowhere.
+
+      # A count that only ever climbs is the signature of lost hangup
+      # events, not of a busy day — real concurrency falls back down.
+      - alert: OrbitalCallsInProgressStuck
+        expr: min_over_time(orbital_calls_in_progress[2h]) > 5
+        for: 30m
+        labels:
+          severity: warning
+          source: pushed
+        annotations:
+          summary: "Calls in progress never returns to baseline"
+          description: >-
+            orbital_calls_in_progress has not dropped below
+            {{ $value }} in two hours. Real concurrency fluctuates;
+            a floor that only rises means hangup events are being lost
+            and call_logs rows are never being closed.
+
+      - alert: OrbitalRtpengineNoActiveNodes
+        expr: orbital_rtpengine_nodes{state="active"} == 0 and orbital_rtpengine_nodes{state="registered"} > 0
+        for: 5m
+        labels:
+          severity: critical
+          source: pushed
+        annotations:
+          summary: "No active rtpengine nodes"
+          description: >-
+            Nodes are registered but none is active. Media relay has no
+            capacity — calls will connect and carry no audio, which is
+            worse than failing outright because it looks answered.
+
+  # ────────────────────────────────────────────────────────────────
+  # Work that is silently not getting done
+  # ────────────────────────────────────────────────────────────────
+  - name: orbital-work
+    rules:
+      # Mail that matched no routing rule is mail nobody is reading.
+      # This number should be zero.
+      - alert: OrbitalUnroutedEmail
+        expr: orbital_emails_unrouted > 0
+        for: 15m
+        labels:
+          severity: warning
+          source: pushed
+        annotations:
+          summary: "{{ $value }} inbound emails matched no routing rule"
+          description: >-
+            These are sitting unread with no client attached. Check the
+            client account numbers against the addresses being mailed.
+
+      - alert: OrbitalMessagingEndpointsWithoutPool
+        expr: orbital_messaging_endpoints_without_pool > 0
+        for: 10m
+        labels:
+          severity: warning
+          source: pushed
+        annotations:
+          summary: "{{ $value }} Twilio endpoints have no Messaging Service"
+          description: >-
+            Replies on these endpoints are refused outright — an
+            operator types an answer and the customer never receives it.
+            Add the Messaging Service SID on the client's messaging
+            number.
+
+      - alert: OrbitalTextsNotBeingDelivered
+        expr: orbital_messages_undelivered_recent > 5
+        for: 15m
+        labels:
+          severity: warning
+          source: pushed
+        annotations:
+          summary: "{{ $value }} texts reported undelivered in the last 24h"
+          description: >-
+            The carrier rejected these after accepting them. Customers
+            believe they were answered. Check the sender pool's
+            registration and whether the numbers have been flagged.
+
+      # Depth alone is not a fault — a burst is normal. Depth that is
+      # high AND has not fallen at all is a stalled worker.
+      - alert: OrbitalQueueNotDraining
+        expr: min_over_time(orbital_queue_depth[30m]) > 100
+        for: 15m
+        labels:
+          severity: warning
+          source: pushed
+        annotations:
+          summary: "Queue {{ $labels.queue }} is not draining"
+          description: >-
+            Depth has stayed above {{ $value }} for 30 minutes without
+            dipping. A busy queue empties between bursts; one that never
+            dips has no worker consuming it.
+          runbook: "php artisan horizon:status; docker compose logs horizon"
+
+      - alert: OrbitalFailedJobsClimbing
+        expr: increase(orbital_failed_jobs_total[1h]) > 10
+        for: 0m
+        labels:
+          severity: warning
+          source: pushed
+        annotations:
+          summary: "{{ $value }} jobs failed in the last hour"
+          description: >-
+            failed_jobs only clears on retry or flush, so this is a rate
+            of new failures. Inbound messages, media fetches, and AI
+            replies all ride these queues.
+
+  # ────────────────────────────────────────────────────────────────
+  # Backups — the failure whose only symptom is silence
+  # ────────────────────────────────────────────────────────────────
+  - name: orbital-backups
+    rules:
+      # A backup system that stops working announces nothing: the job
+      # fails, the log line scrolls past, and everything looks healthy
+      # until the day somebody needs a restore. This is the alert that
+      # turns that silence into a page.
+      - alert: OrbitalBackupStale
+        expr: >-
+          orbital_backup_enabled == 1
+          and
+          (time() - orbital_backup_last_success_timestamp_seconds) > 172800
+        for: 30m
+        labels:
+          severity: critical
+          source: pushed
+        annotations:
+          summary: "No successful database backup in over 48 hours"
+          description: >-
+            Last success was {{ $value | humanizeDuration }} ago and the
+            schedule runs nightly, so at least two runs have failed. HA
+            and replication do not cover a dropped table or a bad
+            migration — this is the only thing that does.
+          runbook: "php artisan orbital:backup --list; docker compose logs scheduler"
+
+      # Enabled but never once successful. Distinct from the above
+      # because the timestamp is 0, which would make the staleness
+      # expression report an absurd age rather than the real problem:
+      # this has never worked.
+      - alert: OrbitalBackupNeverSucceeded
+        expr: orbital_backup_enabled == 1 and orbital_backup_last_success_timestamp_seconds == 0
+        for: 6h
+        labels:
+          severity: critical
+          source: pushed
+        annotations:
+          summary: "Backups are enabled but none has ever succeeded"
+          description: >-
+            Usually a missing BACKUP_ENCRYPTION_KEY, an unreachable
+            destination bucket, or pg_dump not being present in the
+            image. Run `php artisan orbital:backup` and read the error.
+
+      # A backup that suddenly collapses in size is usually a dump that
+      # failed part-way and still uploaded, or a database that lost data
+      # nobody noticed. Either way the archive is not what it should be.
+      - alert: OrbitalBackupShrankSharply
+        expr: >-
+          orbital_backup_enabled == 1
+          and
+          orbital_backup_last_bytes
+            < 0.5 * max_over_time(orbital_backup_last_bytes[14d])
+        for: 1h
+        labels:
+          severity: warning
+          source: pushed
+        annotations:
+          summary: "Latest backup is less than half its usual size"
+          description: >-
+            {{ $value | humanize1024 }}B against a fortnight high-water
+            mark twice that. Check the last run completed rather than
+            uploading a partial dump.
+
+  # ────────────────────────────────────────────────────────────────
+  # The app tier itself — scraped, so absent() is meaningful here
+  # ────────────────────────────────────────────────────────────────
+  - name: orbital-app
+    rules:
+      - alert: OrbitalHighErrorRate
+        expr: >-
+          sum(rate(orbital_http_requests_total{status_class="5xx"}[5m]))
+          /
+          sum(rate(orbital_http_requests_total[5m]))
+          > 0.01
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Over 1% of requests are returning 5xx"
+          description: >-
+            {{ $value | humanizePercentage }} of requests are failing
+            across all surfaces. If error reporting is configured, the
+            exceptions behind this are already in your error project.
+
+      - alert: OrbitalSlowRequests
+        expr: >-
+          histogram_quantile(
+            0.95,
+            sum by (le, surface) (rate(orbital_http_request_duration_seconds_bucket[10m]))
+          ) > 5
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "95th percentile response time on {{ $labels.surface }} is over 5s"
+          description: >-
+            p95 is {{ $value | humanizeDuration }}. Operators work the
+            inbox and the softphone in the same browser tab; a slow
+            panel is a slow shift.

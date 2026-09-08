@@ -6,10 +6,12 @@ use App\Http\Controllers\Api\CallLogController;
 use App\Http\Controllers\Api\CallSessionController;
 use App\Http\Controllers\Api\ExtensionController;
 use App\Http\Controllers\Api\InboundMailController;
+use App\Http\Controllers\Api\InboundMessageController;
 use App\Http\Controllers\Api\KnowledgeController;
 use App\Http\Controllers\Api\LivekitWebhookController;
 use App\Http\Controllers\Api\TlsRenewalWebhookController;
 use App\Http\Controllers\Api\VoicemailWebhookController;
+use App\Support\Release;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Route;
@@ -17,6 +19,17 @@ use Illuminate\Support\Facades\Route;
 Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
+
+/**
+ * Release identity — version, commit, license, and the corresponding
+ * source URL for this exact build.
+ *
+ * Unauthenticated on purpose. It carries no tenant data and it's the
+ * machine-readable half of the AGPL section 13 offer served by /source;
+ * it also gives the Helm chart and any external monitor a cheap way to
+ * confirm which build a pod is running without exec'ing into it.
+ */
+Route::get('/version', fn () => Release::toArray());
 
 /**
  * Agent worker liveness heartbeat. The Python worker's docker HEALTHCHECK
@@ -55,6 +68,25 @@ Route::post('/mail/inbound', [InboundMailController::class, 'store'])
  */
 Route::get('/mail/validate-recipient', [InboundMailController::class, 'validateRecipient'])
     ->middleware('inbound-mail-token');
+
+/**
+ * Inbound messaging webhook — SMS/MMS and the other text transports.
+ * The carrier POSTs here; the driver named in the path verifies the
+ * signature, and everything past that is provider-agnostic.
+ *
+ * NO auth middleware, deliberately: each provider signs differently
+ * (Twilio HMACs the URL plus sorted params, others use bearer tokens or
+ * mTLS), so verification belongs to the driver, which is the only thing
+ * that knows the scheme. The controller calls verify() before reading a
+ * single field out of the payload and 403s on failure.
+ *
+ * Rate-limited because it's public: signature verification is the real
+ * defence, but a limit bounds the damage from a provider malfunctioning
+ * or a leaked secret, and keeps a flood off the Horizon queue.
+ */
+Route::post('/messaging/inbound/{provider}', InboundMessageController::class)
+    ->middleware('throttle:messaging-inbound')
+    ->name('messaging.inbound');
 
 /**
  * Voicemail webhook. Asterisk's externnotify hook (notify-voicemail.sh
@@ -98,6 +130,9 @@ Route::get('/call-sessions/{sessionKey}', [CallSessionController::class, 'show']
     ->middleware('auth:sanctum');
 Route::post('/call-sessions/{sessionKey}/field', [CallSessionController::class, 'captureField']);
 Route::post('/call-sessions/{sessionKey}/advance', [CallSessionController::class, 'advance']);
+// Call over. Finalises the session and, for clients whose policy keeps
+// them, writes whatever was collected as a partial message.
+Route::post('/call-sessions/{sessionKey}/end', [CallSessionController::class, 'end']);
 
 /**
  * Orchestration API — backs the Svelte Flow visual editor. Session-

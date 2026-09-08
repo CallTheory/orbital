@@ -41,6 +41,25 @@ If rotating a value requires coordinated changes to docker-compose, DNS,
 PKI, or a sibling container's env, the admin UI helper text spells that
 out but the operator is still responsible for the external half.
 
+### Observability integrations
+
+Tracing (**System → Settings → Tracing**) and error reporting
+(**System → Settings → Error Reporting**) are both settable from the UI,
+which is the better place for them — the DSN and the OTLP token are
+stored encrypted there rather than sitting in a file. The matching
+`TRACING_*` and `ERROR_REPORTING_*` vars in `.env.example` remain the
+supported alternative for installs that configure everything from files.
+
+Two things to know:
+
+- **Both are off by default and stay off without an endpoint.** A toggle
+  on its own does nothing. Enabled-with-no-DSN counts as disabled,
+  deliberately, so a half-finished setup can never look like it is
+  working.
+- **Workers need a restart.** Both registry sections carry
+  `restart_required => ['horizon']`, because Horizon resolves config
+  once at boot. The **Python agent worker is env-only** — see below.
+
 ---
 
 ## What's deliberately `.env`-only (and why)
@@ -69,6 +88,20 @@ Laravel. Editing them in a running app has zero effect:
 | `WWWUSER`, `WWWGROUP` | compose | UID/GID for the `www-data` shadow user inside containers. Pin to the host UID so bind mounts don't get permission-wedged. |
 | `FORWARD_*_PORT` | compose | Port mappings from host → container for DB/Redis/Mailpit/etc. during local dev. |
 | `VITE_PORT`, `VITE_APP_NAME`, `VITE_REVERB_*` | Vite | Baked into the browser bundle at `pnpm run build` time. Changing requires a rebuild. |
+
+### The Python agent worker (no config path from Laravel)
+
+`agent-worker/config.py` reads `os.environ` and nothing else. It fetches
+**per-call** configuration from the Orbital API at runtime (persona,
+compiled flow), but it has no path for fetching **infrastructure**
+settings, so anything it needs must reach it as a container environment
+variable.
+
+| Var | Reason |
+|---|---|
+| `TRACING_ENABLED`, `TRACING_ENDPOINT` | The worker exports its own spans. A value set in the admin UI never reaches it, so setting it there and expecting worker traces produces a silent half-instrumented system. |
+| `ERROR_REPORTING_DSN` | Same. The worker reports its own exceptions directly. |
+| `ORBITAL_API_URL`, `ORBITAL_API_TOKEN` | How it reaches Laravel at all — a chicken-and-egg for any UI-sourced value. |
 
 ### Tied to external systems (sibling-container parity)
 

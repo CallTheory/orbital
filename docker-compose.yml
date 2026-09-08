@@ -111,8 +111,15 @@ services:
             - 'rtpengine-1-spool:/var/spool/rtpengine/rtpengine-1:ro'
             - 'rtpengine-2-spool:/var/spool/rtpengine/rtpengine-2:ro'
         networks:
-            - sail
-            - telephony
+            # `laravel` alias so docker/prometheus/prometheus.yml can use
+            # one target list across compose and Helm, where the Service
+            # is named <release>-laravel. Without it the orbital-app
+            # scrape job resolves nothing and the app dashboard is blank
+            # while the app itself is perfectly healthy.
+            sail:
+                aliases:
+                    - laravel
+            telephony: {}
         depends_on:
             - mailpit
 
@@ -645,6 +652,20 @@ services:
             OPENROUTER_API_KEY: '${OPENROUTER_API_KEY}'
             ORBITAL_API_URL: 'http://orbital.test/api'
             ORBITAL_API_TOKEN: '${AGENT_WORKER_TOKEN}'
+            # Optional telemetry. Environment-only for this container:
+            # config.py reads os.environ and the worker has no path for
+            # fetching infrastructure settings from the Orbital API, so a
+            # value set in Settings -> Platform reaches Laravel and never
+            # reaches here. All no-ops when unset.
+            TRACING_ENABLED: '${TRACING_ENABLED:-false}'
+            TRACING_ENDPOINT: '${TRACING_ENDPOINT:-}'
+            TRACING_SAMPLE_RATIO: '${TRACING_SAMPLE_RATIO:-0.05}'
+            TRACING_AUTH_MODE: '${TRACING_AUTH_MODE:-none}'
+            TRACING_AUTH_USERNAME: '${TRACING_AUTH_USERNAME:-}'
+            TRACING_AUTH_SECRET: '${TRACING_AUTH_SECRET:-}'
+            ERROR_REPORTING_ENABLED: '${ERROR_REPORTING_ENABLED:-false}'
+            ERROR_REPORTING_DSN: '${ERROR_REPORTING_DSN:-}'
+            ERROR_REPORTING_ENVIRONMENT: '${ERROR_REPORTING_ENVIRONMENT:-}'
         networks:
             - sail
             - telephony
@@ -705,7 +726,90 @@ services:
             - '127.0.0.1:9090:9090'
         volumes:
             - './docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro'
+            # Alerting rules, loaded by the rule_files glob in
+            # prometheus.yml. Mounted as a directory so adding a rules
+            # file needs no compose change — only a reload.
+            - './docker/prometheus/rules:/etc/prometheus/rules:ro'
             - 'sail-prometheus:/prometheus'
+        networks:
+            - sail
+        restart: unless-stopped
+
+    # Alertmanager — turns firing rules into notifications somebody
+    # actually receives.
+    #
+    # Prometheus evaluates docker/prometheus/rules/*.yml and decides what
+    # is wrong; it has no ability to send anything itself. This is the
+    # layer that deduplicates (two Prometheus nodes firing the same alert
+    # is one message), groups (an outage tripping eight rules is one
+    # message), inhibits (no "queue not draining" while Asterisk is
+    # already reported down), silences during maintenance, and re-notifies
+    # while a problem is still open.
+    #
+    # Built rather than pulled: Alertmanager has NO environment-variable
+    # expansion of its own, so the SMTP smarthost, sender, recipient and
+    # password would otherwise have to be committed to a tracked file.
+    # docker/alertmanager renders the config via envsubst at start, the
+    # same way haproxy, valkey-ha, and seaweed-ha do.
+    #
+    # Ships with NO delivery configured. Set ALERT_EMAIL_TO and/or
+    # ALERT_WEBHOOK_URL in .env to turn it on. Until then alerts still
+    # group and deduplicate and are visible in its own UI — an install
+    # that has not chosen a destination should not be emailing a
+    # placeholder address.
+    #
+    # Loopback-bound for the same reason as Prometheus: no auth in front
+    # of it, and the alert bodies name clients.
+    alertmanager:
+        build:
+            context: ./docker/alertmanager
+        ports:
+            - '127.0.0.1:9093:9093'
+        environment:
+            ALERT_SMTP_SMARTHOST: '${ALERT_SMTP_SMARTHOST:-mailpit:1025}'
+            ALERT_SMTP_FROM: '${ALERT_SMTP_FROM:-alerts@orbital.test}'
+            ALERT_SMTP_USERNAME: '${ALERT_SMTP_USERNAME:-}'
+            ALERT_SMTP_PASSWORD: '${ALERT_SMTP_PASSWORD:-}'
+            ALERT_SMTP_REQUIRE_TLS: '${ALERT_SMTP_REQUIRE_TLS:-false}'
+            ALERT_EMAIL_TO: '${ALERT_EMAIL_TO:-}'
+            ALERT_WEBHOOK_URL: '${ALERT_WEBHOOK_URL:-}'
+            ALERT_EXTERNAL_URL: '${ALERT_EXTERNAL_URL:-http://localhost:9093}'
+        command:
+            # Gossip port for the HA pair. Harmless on a base-only stack
+            # where there is no peer to talk to.
+            - '--cluster.listen-address=0.0.0.0:9094'
+        volumes:
+            # Silences and notification state. Losing this volume means
+            # re-notification of everything currently firing and the loss
+            # of any active maintenance silence.
+            - 'sail-alertmanager:/alertmanager'
+        networks:
+            - sail
+        restart: unless-stopped
+
+    # Receives the platform + telephony metrics pushed once a minute by
+    # the `orbital:collect-metrics` scheduled command, and holds them for
+    # Prometheus to scrape.
+    #
+    # Why a Pushgateway at all, when Prometheus prefers pull: these are
+    # deployment-wide numbers (per-client call volume, queue depth,
+    # Asterisk channel state), not per-replica ones. Exposing them from
+    # every app instance would give Prometheus N identical copies and
+    # make every dashboard sum wrong by a factor of the replica count.
+    # One scheduled writer, one series. See config/metrics.php.
+    #
+    # No host port binding: the metrics carry per-client volume, so the
+    # only things that should reach it are the app (push) and Prometheus
+    # (scrape), both on the sail network.
+    pushgateway:
+        image: 'prom/pushgateway:latest'
+        command:
+            # Persist between restarts so a Pushgateway bounce doesn't
+            # blank every platform metric until the next scheduler tick.
+            - '--persistence.file=/pushgateway/persistence'
+            - '--persistence.interval=1m'
+        volumes:
+            - 'sail-pushgateway:/pushgateway'
         networks:
             - sail
         restart: unless-stopped
@@ -802,7 +906,7 @@ services:
         # X-WEBAUTH-USER for auth-proxy mode. Binding to
         # 127.0.0.1 prevents the LAN from bypassing the proxy.
         ports:
-            - '127.0.0.1:3000:3000'
+            - '127.0.0.1:13000:3000'
         environment:
             GF_SECURITY_ADMIN_USER: '${GRAFANA_ADMIN_USER:-admin}'
             GF_SECURITY_ADMIN_PASSWORD: '${GRAFANA_ADMIN_PASSWORD:-admin}'
@@ -885,6 +989,10 @@ volumes:
     icecast-config:
         driver: local
     sail-prometheus:
+        driver: local
+    sail-alertmanager:
+        driver: local
+    sail-pushgateway:
         driver: local
     sail-loki:
         driver: local

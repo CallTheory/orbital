@@ -5,13 +5,17 @@ use App\Http\Middleware\ApplyUserPreferences;
 use App\Http\Middleware\CheckRole;
 use App\Http\Middleware\CheckToolPermission;
 use App\Http\Middleware\PanelRedirect;
+use App\Http\Middleware\RecordHttpMetrics;
 use App\Http\Middleware\RequirePlatformRole;
 use App\Http\Middleware\SetPermissionsTeamContext;
+use App\Http\Middleware\TraceRequest;
 use App\Http\Middleware\VerifyInboundMailToken;
+use App\Support\Observability;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Sentry\Laravel\Integration as SentryIntegration;
 use Spatie\Permission\Middleware\PermissionMiddleware;
 use Spatie\Permission\Middleware\RoleMiddleware;
 use Spatie\Permission\Middleware\RoleOrPermissionMiddleware;
@@ -59,6 +63,22 @@ return Application::configure(basePath: dirname(__DIR__))
             'oauth/*',
         ]);
 
+        // Request rate + duration metrics for every surface. Appended to
+        // both stacks so API traffic (agent worker, webhooks, LiveKit) is
+        // measured alongside the panels — those are the requests most
+        // likely to be failing silently. Recording happens in terminate(),
+        // after the response is flushed.
+        $middleware->appendToGroup('web', RecordHttpMetrics::class);
+        $middleware->appendToGroup('api', RecordHttpMetrics::class);
+
+        // Distributed tracing, when it's switched on. Sits beside the
+        // metrics middleware and shares its rules — same surface labels,
+        // same /metrics and /up exemption, same "do the work in
+        // terminate() so observing a request never costs the user
+        // latency". A no-op with tracing disabled.
+        $middleware->appendToGroup('web', TraceRequest::class);
+        $middleware->appendToGroup('api', TraceRequest::class);
+
         $middleware->web(append: [
             SetPermissionsTeamContext::class,
             ApplyUserPreferences::class,
@@ -82,6 +102,18 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // Ship unhandled exceptions to the operator's error project
+        // (GlitchTip, Sentry, anything speaking the same ingest API).
+        //
+        // Guarded rather than unconditional: with no integration
+        // configured this must not install a reporter at all, and
+        // Integration::handles() would otherwise wire a client that
+        // silently discards everything. What gets sent, and what is
+        // stripped first, is decided in ObservabilityServiceProvider.
+        if (Observability::errorsEnabled()) {
+            SentryIntegration::handles($exceptions);
+        }
+
         // When Filament's Authenticate middleware aborts with 403
         // because the user doesn't have canAccessPanel for the panel
         // they hit, redirect them to their actual home panel instead

@@ -47,9 +47,21 @@ database/*.sqlite
 # Tests + docs
 tests
 phpunit.xml
-docs
+# `docs/*` rather than `docs` so the third-party license inventory below
+# can be re-included — Docker cannot un-ignore a file inside a directory
+# that was itself excluded.
+docs/*
 *.md
 !README.md
+
+# Licensing must travel with the software. The AGPL requires the license
+# text to reach every recipient of the program, and an operator poking
+# around a running container should be able to find out what they're
+# allowed to do with it without going back to the repository.
+!LICENSING.md
+!SECURITY.md
+!TRADEMARK.md
+!docs/third-party-licenses.md
 
 # Other-image source / infra not needed at Laravel runtime
 agent-worker

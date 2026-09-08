@@ -1,0 +1,136 @@
+{{- if .Values.migrations.enabled -}}
+{{/*
+Schema migrations — the step that otherwise has to be remembered.
+
+Without this the chart installs a running app against an empty
+database, and an UPGRADE is worse than that: new pods roll in running
+new code against the old schema and start erroring while the old pods
+are still healthy, which reads as a partial outage rather than as a
+missed step.
+
+HOOK TIMING is the whole design, and the two halves are deliberately
+different:
+
+  post-install   On a fresh install the in-cluster Postgres StatefulSet
+                 does not exist until the chart's resources are created,
+                 so a pre-install hook has nothing to connect to. Running
+                 after means the database is there; the init container
+                 below covers the gap between "created" and "accepting
+                 connections".
+
+  pre-upgrade    On an upgrade the database already exists, so this runs
+                 BEFORE the new pods roll. That ordering is the point —
+                 the new schema lands first and no pod ever serves new
+                 code against an old schema.
+
+Helm treats a failed hook as a failed release, so a broken migration
+stops the rollout rather than half-applying it.
+*/}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "orbital.componentName" (list . "migrate") }}
+  labels:
+    {{- include "orbital.componentLabels" (list . "migrate") | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,pre-upgrade
+    {{/* Ahead of any other hook this chart might grow later. */}}
+    "helm.sh/hook-weight": "-5"
+    {{/* before-hook-creation clears the previous run's Job (names are
+         stable across releases); hook-succeeded keeps a failed Job
+         around so `kubectl logs` still has the error in it. */}}
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  {{/* Migrations must never run twice concurrently. */}}
+  parallelism: 1
+  completions: 1
+  backoffLimit: {{ .Values.migrations.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        {{- include "orbital.componentLabels" (list . "migrate") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      {{- include "orbital.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        {{/*
+          Wait for Postgres to accept connections. On a fresh install the
+          StatefulSet is created moments before this hook runs, so the
+          first few attempts will fail while the container starts and
+          initdb completes.
+
+          Done with PDO rather than pg_isready because the app image is
+          php-fpm-alpine and has pdo_pgsql but no postgres client tools —
+          adding them to the runtime image for this alone would widen the
+          CVE surface the Dockerfile deliberately keeps small.
+        */}}
+        - name: wait-for-db
+          image: {{ include "orbital.image" (dict "ctx" . "name" .Values.laravel.image.name "tag" .Values.laravel.image.tag) }}
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "orbital.componentName" (list . "app-env") }}
+            - secretRef:
+                name: {{ include "orbital.componentName" (list . "app-secrets") }}
+          command:
+            - sh
+            - -c
+            - |
+              deadline=$(( $(date +%s) + {{ .Values.migrations.waitForDbSeconds }} ))
+              until php -r '
+                  $dsn = sprintf("pgsql:host=%s;port=%s;dbname=%s",
+                      getenv("DB_HOST"), getenv("DB_PORT") ?: "5432", getenv("DB_DATABASE"));
+                  new PDO($dsn, getenv("DB_USERNAME"), getenv("DB_PASSWORD"),
+                      [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+              ' 2>/dev/null; do
+                  if [ "$(date +%s)" -ge "$deadline" ]; then
+                      echo "database did not become reachable within {{ .Values.migrations.waitForDbSeconds }}s" >&2
+                      echo "check DB_HOST/DB_DATABASE in the app-env ConfigMap and DB_PASSWORD in app-secrets" >&2
+                      exit 1
+                  fi
+                  echo "waiting for ${DB_HOST}:${DB_PORT:-5432} ..."
+                  sleep 3
+              done
+              echo "database is accepting connections"
+      containers:
+        - name: migrate
+          image: {{ include "orbital.image" (dict "ctx" . "name" .Values.laravel.image.name "tag" .Values.laravel.image.tag) }}
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "orbital.componentName" (list . "failover-tiers") }}
+            - configMapRef:
+                name: {{ include "orbital.componentName" (list . "app-env") }}
+            - secretRef:
+                name: {{ include "orbital.componentName" (list . "app-secrets") }}
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              php artisan migrate --force
+              {{- if and .Release.IsInstall .Values.migrations.seedOnInstall }}
+              {{/*
+                Seeded on FIRST INSTALL ONLY. A fresh database is not a
+                working install: the permission catalogue, the roles, the
+                first super admin, hold-music classes and the intake-goal
+                library all come from seeders, and without them the panel
+                loads into a state nobody can log in to and administer.
+
+                Never on upgrade. DatabaseSeeder guards demo data behind
+                the `local` environment so it is safe in production, but
+                re-running it on every release would fight an operator's
+                own edits to that same reference data.
+              */}}
+              echo "fresh install — seeding reference data"
+              php artisan db:seed --force
+              {{- end }}
+          resources:
+            {{- toYaml .Values.migrations.resources | nindent 12 }}
+{{- end }}

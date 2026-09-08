@@ -24,10 +24,13 @@ use App\Services\Clients\ClientPermissionGatekeeper;
 use Filament\Support\Facades\FilamentView;
 use Filament\View\PanelsRenderHook;
 use Illuminate\Auth\Events\Login;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Jetstream\Events\TeamSwitched;
@@ -44,6 +47,19 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->registerBootstrappers();
+
+        // Inbound messaging webhook limiter. The endpoint is public by
+        // necessity (the carrier has to reach it) and its real defence
+        // is per-provider signature verification — this only bounds the
+        // blast radius of a malfunctioning provider or a leaked secret,
+        // and keeps a message flood off the Horizon queue that
+        // telephony shares.
+        //
+        // Keyed per source IP so one misbehaving carrier POP can't
+        // throttle a different carrier's traffic.
+        RateLimiter::for('messaging-inbound', fn (Request $request) => Limit::perMinute(
+            (int) config('messaging.inbound_rate_limit', 300),
+        )->by($request->ip() ?: 'unknown'));
 
         // Reverb connection details (app key, browser-facing host/port
         // derived from APP_URL) must be injected at request time, not

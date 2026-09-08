@@ -6,16 +6,24 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\IngestLivekitEgressJob;
+use App\Models\CallSessionState;
+use App\Services\Messages\PartialMessagePolicy;
+use App\Services\Messages\SessionMessageWriter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 /**
  * Receives LiveKit server-side webhook events at
- * `POST /api/livekit/webhook`. We currently only act on
- * `egress_ended` — that's the signal a per-participant track
- * file has been finalized in the configured S3 bucket and is
- * ready to register as a `CallRecording` row.
+ * `POST /api/livekit/webhook`. Two events are acted on:
+ *
+ *   - `egress_ended` — a per-participant track file has been
+ *     finalized in the configured S3 bucket and is ready to
+ *     register as a `CallRecording` row.
+ *   - `room_finished` — the call is definitively over. Finalises
+ *     the matching call session so a partial message capture can
+ *     be written for clients whose policy keeps them, even if the
+ *     agent worker died without reporting the end itself.
  *
  * Every other event passes through with a 200; LiveKit retries
  * on non-2xx so we'd rather log-and-accept unknown event types
@@ -50,7 +58,43 @@ class LivekitWebhookController extends Controller
             IngestLivekitEgressJob::dispatch($payload['egressInfo'] ?? []);
         }
 
+        if ($event === 'room_finished') {
+            $this->finaliseSession($payload['room']['name'] ?? null);
+        }
+
         return response()->json(['ok' => true]);
+    }
+
+    /**
+     * The room closed, so the call is definitively over.
+     *
+     * The agent worker normally reports this itself via
+     * POST /api/call-sessions/{key}/end, and that path is the fast one.
+     * This is the backstop for a worker that crashed, was OOM-killed, or
+     * lost its connection — without it, a session whose worker died
+     * would sit un-ended forever and any partial capture the client
+     * asked us to keep would never be written.
+     *
+     * markEnded() is idempotent, so the two paths racing is fine and
+     * expected: whichever arrives first sets the reason.
+     */
+    protected function finaliseSession(?string $roomName): void
+    {
+        if (! $roomName) {
+            return;
+        }
+
+        // The LiveKit room name IS the session key — that's the contract
+        // the agent worker follows when it opens a session.
+        $state = CallSessionState::where('session_key', $roomName)->first();
+
+        if (! $state) {
+            return;
+        }
+
+        $state->markEnded(PartialMessagePolicy::REASON_SESSION_ABANDONED);
+
+        app(SessionMessageWriter::class)->write($state->fresh());
     }
 
     /**

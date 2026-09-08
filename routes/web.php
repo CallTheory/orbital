@@ -13,10 +13,12 @@ use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ClientInvitationController;
 use App\Http\Controllers\ImpersonationController;
 use App\Http\Controllers\Mail\AttachmentDownloadController;
+use App\Http\Controllers\MetricsController;
 use App\Http\Controllers\Oidc\OidcDiscoveryController;
 use App\Http\Controllers\Oidc\OidcJwksController;
 use App\Http\Controllers\Oidc\OidcUserinfoController;
 use App\Models\Orchestration;
+use App\Support\Release;
 use Illuminate\Support\Facades\Route;
 
 /**
@@ -64,6 +66,35 @@ Route::middleware(['auth', config('jetstream.auth_session')])->group(function ()
 // /operator and /portal are both Filament panels now — see
 // OperatorPanelProvider and PortalPanelProvider. Filament registers
 // their routes on boot; no web.php entries needed.
+
+/**
+ * AGPL section 13 — "offer ... an opportunity to receive the
+ * Corresponding Source ... through some standard or customary means of
+ * facilitating copying of software."
+ *
+ * This is that opportunity, and it's the target of the Source link in
+ * every panel footer. Deliberately unauthenticated: the obligation runs
+ * to everyone interacting with the software over the network, and gating
+ * it behind a login would put the source offer behind the very access
+ * control a user might not have.
+ *
+ * Operators who modify Orbital must repoint ORBITAL_SOURCE_URL at their
+ * own repository — see config/orbital.php.
+ */
+Route::get('/source', function () {
+    return redirect()->away(Release::sourceUrlForCommit());
+})->name('source');
+
+/**
+ * Prometheus scrape endpoint for this app instance. Registered on the
+ * web routes file but outside the session middleware group's concerns —
+ * it reads no session, sets no cookie, and answers in plain text.
+ *
+ * Optional bearer auth via METRICS_TOKEN; see config/metrics.php for why
+ * it's optional (the app's HTTP port isn't host-bound in the shipped
+ * compose topology).
+ */
+Route::get('/metrics', MetricsController::class)->name('metrics');
 
 // Public chat surface — anonymous text conversation with a client's
 // agent persona. The session is anchored by a random public_token

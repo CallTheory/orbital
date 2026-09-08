@@ -49,6 +49,35 @@ Image pull check:
   (look for ImagePullBackOff — typically a missing or wrong-named
    `orbital-registry-creds` secret; see helm/README.md in this repo)
 
+{{ if .Values.migrations.enabled -}}
+Schema migrations ran as a Helm hook{{ if and .Release.IsInstall .Values.migrations.seedOnInstall }}, and reference data was seeded (first install){{ end }}.
+Check them with:
+  kubectl --namespace {{ .Release.Namespace }} logs job/{{ include "orbital.componentName" (list . "migrate") }}
+{{- else }}
+MIGRATIONS ARE DISABLED (migrations.enabled=false). Nothing in this chart
+applies them — run them yourself before serving traffic:
+  kubectl --namespace {{ .Release.Namespace }} exec deploy/{{ include "orbital.componentName" (list . "laravel") }} -- php artisan migrate --force
+{{- end }}
+
+{{- $singles := list }}
+{{- if not .Values.postgres.external.enabled }}{{ $singles = append $singles "Postgres" }}{{ end }}
+{{- if not .Values.objectStorage.external.enabled }}{{ $singles = append $singles "object storage" }}{{ end }}
+{{- if not .Values.valkey.external.enabled }}{{ $singles = append $singles "Valkey" }}{{ end }}
+{{- if $singles }}
+
+  ! {{ join ", " $singles }} {{ if gt (len $singles) 1 }}are{{ else }}is{{ end }} running SINGLE-REPLICA IN-CLUSTER.
+    Fine for a first install; not what you want under real traffic. A lost
+    node takes the tier down and a lost volume is unrecoverable. Set
+    <tier>.external.enabled=true to point at a managed service.
+{{- end }}
+{{- if not .Values.backups.enabled }}
+
+  ! BACKUPS ARE OFF. HA covers a dead node and replication covers a dead
+    disk — neither covers a dropped table, a bad migration, or a
+    compromised account, because those replicate to every copy. Turn on
+    backups.enabled before carrying real traffic: docs/admin/backups.md
+{{- end }}
+
 Next:
   - Create the secrets per templates/secrets.example.yaml
   - Point your DNS at the ingress LoadBalancer IP / hostname

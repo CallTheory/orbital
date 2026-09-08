@@ -10,6 +10,9 @@ datasources:
     type: prometheus
     access: proxy
     orgId: 1
+    # Stable uid so provisioned dashboards can reference the
+    # datasource without depending on a generated id.
+    uid: prometheus
     url: http://prometheus:9090
     isDefault: true
     editable: true
@@ -22,7 +25,50 @@ datasources:
     type: loki
     access: proxy
     orgId: 1
+    uid: loki
     url: http://loki:3100
     editable: true
     jsonData:
       maxLines: 5000
+      # Turns a trace id appearing in a log line into a clickable link
+      # into Tempo. This is the half that makes tracing worth having:
+      # without it you have two UIs and no way to get from "this request
+      # errored" to "here is where it spent its time".
+      #
+      # Harmless when Tempo isn't deployed — the link renders and leads
+      # to a missing datasource rather than breaking the log view.
+      derivedFields:
+        - name: TraceID
+          matcherRegex: '(?:trace_id|traceID|traceparent)[=:"\s-]+([0-9a-f]{32})'
+          url: '$${__value.raw}'
+          datasourceUid: tempo
+
+  # Optional — only reachable when compose/obs-tracing.yml is in
+  # COMPOSE_FILE, or when TRACING_ENDPOINT points at something else.
+  # Provisioned unconditionally so an operator who turns tracing on
+  # doesn't also have to hand-add a datasource; an absent Tempo shows as
+  # a failing datasource test rather than a missing feature.
+  - name: Tempo
+    type: tempo
+    access: proxy
+    orgId: 1
+    uid: tempo
+    url: http://tempo:3200
+    editable: true
+    jsonData:
+      # The return journey: from a span, jump to the logs of the same
+      # container over the span's own time range. `filterByTraceID` is
+      # off because Orbital's log lines don't yet carry the trace id —
+      # turn it on once they do, or the panel comes back empty and looks
+      # broken.
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: '-5m'
+        spanEndTimeShift: '5m'
+        filterByTraceID: false
+        filterBySpanID: false
+        tags:
+          - key: 'service.name'
+            value: 'service'
+      nodeGraph:
+        enabled: true

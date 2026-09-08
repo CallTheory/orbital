@@ -1,0 +1,59 @@
+# Orbital tracing tier — OPT-IN.
+#
+# Grafana Tempo, receiving OTLP over HTTP from the Laravel app and (once
+# Phase 4 lands) the Python agent worker. Not part of the base stack and
+# not in the Helm chart: most installs will never turn tracing on, and
+# the ones that do often already run a collector or point at Grafana
+# Cloud. Adding a container to every install to serve a minority is the
+# wrong default.
+#
+# The app side is off independently — this file gives you somewhere to
+# send traces, it does not start sending them. Set TRACING_ENABLED=true
+# (or Settings -> Platform -> Tracing) for that.
+#
+# Shared state: blocks land in the SeaweedFS S3 bucket `tempo-traces`,
+# the same way Loki uses `loki-chunks`, so a second Tempo can serve
+# queries against the same data.
+#
+# CREATE THE BUCKET FIRST — Tempo does not, and it fails quietly:
+# the distributor keeps accepting spans while nothing is durable.
+#
+#   docker compose exec seaweed-filer-1 \
+#       weed shell -c "s3.bucket.create -name tempo-traces"
+#
+# Usage — append to COMPOSE_FILE in .env:
+#   COMPOSE_FILE=docker-compose.yml:compose/ha-data.yml:compose/ha-app.yml:\
+#   compose/ha-telephony.yml:compose/ha-edge.yml:compose/ha-obs.yml:\
+#   compose/obs-tracing.yml
+#
+# Then point the app at it:
+#   TRACING_ENABLED=true
+#   TRACING_ENDPOINT=http://tempo:4318/v1/traces
+
+services:
+    tempo:
+        image: 'grafana/tempo:latest'
+        # Root for the same reason as Loki: Tempo needs to mkdir its WAL
+        # and block directories inside the named volume on first boot,
+        # and the non-root user in the image cannot.
+        user: '0'
+        # -config.expand-env resolves ${AWS_SECRET_ACCESS_KEY} in the
+        # config at boot, matching how Loki picks up the same
+        # credentials.
+        command: '-config.file=/etc/tempo/tempo.yaml -config.expand-env=true'
+        # No host port binding. Nothing outside the sail network should
+        # be able to write spans — an unauthenticated OTLP receiver
+        # reachable from the host is a way to fill somebody's disk.
+        environment:
+            AWS_ACCESS_KEY_ID: 'orbital'
+            AWS_SECRET_ACCESS_KEY: '${AWS_SECRET_ACCESS_KEY}'
+        volumes:
+            - './docker/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro'
+            - 'sail-tempo:/tempo-data'
+        networks:
+            - sail
+        restart: unless-stopped
+
+volumes:
+    sail-tempo:
+        driver: local

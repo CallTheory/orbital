@@ -56,6 +56,8 @@ class PlatformSettings extends Page implements HasForms
         'icecast',
         'sessions',
         'security',
+        'tracing',
+        'error_reporting',
         'telescope',
         'knowledge',
     ];

@@ -26,6 +26,8 @@ class CallSessionState extends Model
         'active_step',
         'operator_owned',
         'last_field_at',
+        'ended_at',
+        'end_reason',
     ];
 
     protected function casts(): array
@@ -35,7 +37,33 @@ class CallSessionState extends Model
             'active_step' => 'integer',
             'operator_owned' => 'boolean',
             'last_field_at' => 'datetime',
+            'ended_at' => 'datetime',
         ];
+    }
+
+    public function hasEnded(): bool
+    {
+        return $this->ended_at !== null;
+    }
+
+    /**
+     * Mark the session finished. Idempotent — the worker's end call and
+     * the LiveKit room_finished webhook race each other by design (either
+     * one alone is enough, and we want whichever arrives first), so the
+     * second one through must not overwrite the first's reason or move
+     * the timestamp.
+     */
+    public function markEnded(string $reason): self
+    {
+        if ($this->ended_at !== null) {
+            return $this;
+        }
+
+        $this->ended_at = now();
+        $this->end_reason = $reason;
+        $this->save();
+
+        return $this;
     }
 
     public function team(): BelongsTo

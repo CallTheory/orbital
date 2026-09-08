@@ -138,6 +138,33 @@ class ClientResource extends Resource
                                     })
                                     ->dehydrateStateUsing(fn (bool $state) => $state ? null : now())
                                     ->helperText('Suspended clients can\'t place or receive calls.'),
+                                // Two-factor is required for every user
+                                // on the platform; this is only how long
+                                // this client's people get to enrol. The
+                                // clock starts on each user's first
+                                // request under the policy, so raising or
+                                // lowering it never retroactively locks
+                                // anyone out.
+                                Forms\Components\TextInput::make('two_factor_grace_days')
+                                    ->label('Two-factor grace period (days)')
+                                    ->numeric()
+                                    ->minValue(0)
+                                    ->maxValue(30)
+                                    ->default(7)
+                                    ->helperText('How long this client\'s users have to enable two-factor authentication before they are held at the security page. 0 means immediately.'),
+                                // What happens to a half-taken message
+                                // when the caller hangs up mid-intake.
+                                // Off by default: a partial in the
+                                // client's inbox is only useful if they
+                                // actually want to chase it, and for
+                                // plenty of answering services it's just
+                                // noise. Applies to AI agents and human
+                                // operators alike — see
+                                // App\Services\Messages\PartialMessagePolicy.
+                                Forms\Components\Toggle::make('keep_partial_messages')
+                                    ->label('Keep partial messages')
+                                    ->default(false)
+                                    ->helperText('When a caller hangs up before the script finishes, keep what was collected (name, callback number) and mark it incomplete instead of discarding it. Individual intake goals can override this.'),
                                 Forms\Components\Hidden::make('personal_team')
                                     ->default(false),
                             ]),
@@ -426,6 +453,13 @@ class ClientResource extends Resource
         return $page->generateNavigationItems([
             Pages\EditClient::class,
             Pages\ManageClientDids::class,
+            // The messaging counterparts of the DID list. Both were
+            // route-reachable but unlinked, which for the do-not-text
+            // list in particular is the same as absent — an operator
+            // told "stop texting me" on a call has to be able to find
+            // somewhere to record it.
+            Pages\ManageClientMessagingEndpoints::class,
+            Pages\ManageClientOptOuts::class,
             Pages\ManageClientExtensions::class,
             // Channels hub replaces the four per-channel sidebar
             // entries. Call/Email/Message/Chat queue pages remain
@@ -447,6 +481,8 @@ class ClientResource extends Resource
             'create' => Pages\CreateClient::route('/create'),
             'edit' => Pages\EditClient::route('/{record}/edit'),
             'dids' => Pages\ManageClientDids::route('/{record}/dids'),
+            'messaging-endpoints' => Pages\ManageClientMessagingEndpoints::route('/{record}/messaging-numbers'),
+            'messaging-opt-outs' => Pages\ManageClientOptOuts::route('/{record}/do-not-text'),
             'extensions' => Pages\ManageClientExtensions::route('/{record}/extensions'),
             'channels' => Pages\ManageClientChannels::route('/{record}/channels'),
             'call-queues' => Pages\ManageClientCallQueues::route('/{record}/call-queues'),

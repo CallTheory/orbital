@@ -74,6 +74,22 @@ class Tools extends Page
                 'group' => 'System',
             ],
             [
+                'id' => 'orbital-about',
+                'name' => 'About this build',
+                'description' => 'Version, commit, license, and the source URL this installation offers its users. First thing to grab for a bug report.',
+                'command' => 'orbital:about',
+                'icon' => 'heroicon-o-information-circle',
+                'group' => 'System',
+            ],
+            [
+                'id' => 'collect-metrics',
+                'name' => 'Collect + push metrics',
+                'description' => 'Gather platform and telephony metrics and push them to Pushgateway now, instead of waiting for the next scheduler tick.',
+                'command' => 'orbital:collect-metrics',
+                'icon' => 'heroicon-o-chart-bar-square',
+                'group' => 'System',
+            ],
+            [
                 'id' => 'orbital-status',
                 'name' => 'Orbital status',
                 'description' => 'Full system status dump — same data the dashboard cards read, rendered as a CLI report.',

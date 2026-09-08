@@ -99,6 +99,9 @@ return [
     'waits' => [
         'redis:default' => 60,
         'redis:inbound-mail' => 120,
+        // Lower than mail on purpose: a customer waiting on a text
+        // notices a two-minute delay in a way an emailer does not.
+        'redis:inbound-messages' => 60,
     ],
 
     /*
@@ -233,6 +236,30 @@ return [
             // Parsing + MinIO round-trip should never exceed 30s
             // even for fat messages with large attachments.
             'timeout' => 60,
+            'nice' => 0,
+        ],
+
+        // Same reasoning as inbound-mail, one channel over: a burst of
+        // SMS (an automated alert loop, a marketing reply storm) must
+        // not starve telephony workers, and being able to pause the
+        // messaging channel alone in the Horizon dashboard is worth the
+        // extra supervisor.
+        //
+        // Timeout is generous because ProcessMessageWithAgentJob makes
+        // an LLM call on this queue; the HTTP client caps itself at 60s
+        // and the worker needs headroom above that to record the
+        // failure rather than being killed mid-write.
+        'supervisor-inbound-messages' => [
+            'connection' => 'redis',
+            'queue' => ['inbound-messages'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'time',
+            'maxProcesses' => 2,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 128,
+            'tries' => 3,
+            'timeout' => 120,
             'nice' => 0,
         ],
     ],

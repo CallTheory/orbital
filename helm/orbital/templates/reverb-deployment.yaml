@@ -31,6 +31,8 @@ spec:
       {{- include "orbital.imagePullSecrets" . | nindent 6 }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{/* Keep replicas on separate nodes — see the helper. */}}
+      {{- include "orbital.topologySpread" (list . "reverb") | nindent 6 }}
       containers:
         - name: reverb
           image: {{ include "orbital.image" (dict "ctx" . "name" .Values.laravel.image.name "tag" .Values.laravel.image.tag) }}

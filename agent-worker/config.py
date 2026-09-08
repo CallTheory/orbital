@@ -2,6 +2,8 @@
 
 import os
 
+import observability
+
 
 class Config:
     def __init__(self):
@@ -14,8 +16,20 @@ class Config:
 
     @property
     def api_headers(self) -> dict[str, str]:
-        return {
+        headers = {
             "Authorization": f"Bearer {self.orbital_api_token}",
             "Accept": "application/json",
             "Content-Type": "application/json",
         }
+
+        # Carry the current trace across the process boundary. Laravel's
+        # TraceRequest middleware reads this off the inbound request and
+        # continues our trace rather than starting an orphan, which is
+        # the difference between one story about a call and two
+        # unrelated ones. Absent entirely when tracing is off.
+        traceparent = observability.traceparent()
+
+        if traceparent:
+            headers["traceparent"] = traceparent
+
+        return headers

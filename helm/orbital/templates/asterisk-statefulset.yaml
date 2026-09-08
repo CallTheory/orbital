@@ -58,6 +58,8 @@ spec:
               mountPath: /etc/asterisk/generated
             - name: prompts
               mountPath: /var/spool/asterisk/prompts
+      {{/* Keep replicas on separate nodes — see the helper. */}}
+      {{- include "orbital.topologySpread" (list . "asterisk") | nindent 6 }}
       containers:
         - name: asterisk
           image: {{ include "orbital.image" (dict "ctx" . "name" .Values.asterisk.image.name "tag" .Values.asterisk.image.tag) }}

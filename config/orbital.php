@@ -4,6 +4,89 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Release Identity & Licensing
+    |--------------------------------------------------------------------------
+    |
+    | Orbital is AGPL-3.0. Section 13 of that license obliges anyone who
+    | offers modified Orbital to users over a network to offer those users
+    | the corresponding source. The app satisfies that itself — the panel
+    | footers, the /source route, the /api/version endpoint, and the About
+    | page all read from here.
+    |
+    | IF YOU FORK AND MODIFY ORBITAL, POINT `ORBITAL_SOURCE_URL` AT YOUR OWN
+    | REPOSITORY. Leaving it aimed at upstream while shipping changed code
+    | does not discharge your obligation — it misdirects your users to
+    | source that isn't what they're running.
+    |
+    | `version` and `commit` are baked at image build time (Dockerfile ARGs
+    | ORBITAL_VERSION / ORBITAL_COMMIT) so a running container can name
+    | exactly what it is without a .git directory present.
+    |
+    */
+    'version' => env('ORBITAL_VERSION', 'dev'),
+    'commit' => env('ORBITAL_COMMIT'),
+    'release_channel' => env('ORBITAL_RELEASE_CHANNEL', 'dev'),
+
+    'license' => [
+        'spdx' => 'AGPL-3.0-only',
+        'name' => 'GNU Affero General Public License v3.0',
+        'url' => 'https://www.gnu.org/licenses/agpl-3.0.html',
+    ],
+
+    'source_url' => env('ORBITAL_SOURCE_URL', 'https://github.com/calltheory/orbital'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Support Subscription
+    |--------------------------------------------------------------------------
+    |
+    | A support subscription key gates SUPPORT SURFACES ONLY — in-app ticket
+    | submission and the signed update channel. It never gates a product
+    | feature, never expires the software, and its absence is a completely
+    | normal, fully supported state. See LICENSING.md.
+    |
+    | Verification is offline: the key is a base64 payload plus a detached
+    | Ed25519 signature checked against the public key below. No phone-home,
+    | consistent with the offline-first constraint.
+    |
+    */
+    'support' => [
+        // Ed25519 public key (base64, 32 raw bytes) used to verify
+        // subscription keys. Null here on purpose: official release builds
+        // bake Call Theory's key in via env, and a downstream distributor
+        // selling their own support sets their own. With no key configured
+        // there is simply no support subscription — which is the correct
+        // default for a source build.
+        'public_key' => env('ORBITAL_SUPPORT_PUBLIC_KEY'),
+        'portal_url' => env('ORBITAL_SUPPORT_PORTAL_URL', 'https://calltheory.com/orbital/support'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Security
+    |--------------------------------------------------------------------------
+    |
+    | Two-factor enforcement applies to EVERYONE — platform staff and
+    | client portal users alike. Staff have access to every client's
+    | messages and recordings, so the argument for a second factor is
+    | stronger for them, not weaker.
+    |
+    | The grace window is the only knob, and it's per-client on
+    | `teams.two_factor_grace_days`; the value here is the fallback for
+    | platform staff, who have no client team.
+    |
+    | TWO_FACTOR_REQUIRED exists because enabling this is a change that
+    | can lock people out. An operator has to be able to turn it off
+    | from the environment without a code change.
+    |
+    */
+    'security' => [
+        'two_factor_required' => (bool) env('TWO_FACTOR_REQUIRED', true),
+        'two_factor_grace_days' => (int) env('TWO_FACTOR_GRACE_DAYS', 7),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Platform Branding
     |--------------------------------------------------------------------------
     |

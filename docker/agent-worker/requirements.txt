@@ -7,3 +7,12 @@ livekit-plugins-silero>=1.0
 
 # HTTP client for Orbital API
 requests>=2.31
+
+# Optional observability. Both no-ops unless the matching env vars are
+# set — see agent-worker/observability.py. Kept as pinned floors rather
+# than a lockfile to match the rest of this manifest; the production
+# image's CVE surface is a design constraint (see its Dockerfile), so
+# adding to this list is a deliberate act.
+sentry-sdk>=2.20
+opentelemetry-sdk>=1.30
+opentelemetry-exporter-otlp-proto-http>=1.30

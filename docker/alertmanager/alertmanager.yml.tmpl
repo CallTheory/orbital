@@ -1,0 +1,76 @@
+# Orbital Alertmanager config (rendered by entrypoint via envsubst).
+#
+# Prometheus decides WHAT is wrong; this decides who hears about it
+# and how often. The parts that matter:
+#
+#   group_by      one notification per incident, not one per series
+#   inhibit_rules don't report symptoms when the cause is already firing
+#   repeat_interval  re-notify while still broken, so an ignored alert
+#                    doesn't become a forgotten one
+#
+# Delivery is email (SMTP) and/or a generic webhook, both driven from
+# .env. With neither configured Alertmanager still runs: alerts group,
+# deduplicate, and are visible in its own UI. That is a deliberate
+# state, not a broken one — an install that has not chosen a
+# destination should not be emailing a placeholder address.
+
+global:
+  # How long a firing alert can go without a refresh from Prometheus
+  # before it is treated as resolved. Must comfortably exceed
+  # Prometheus's evaluation_interval (15s) or alerts flap.
+  resolve_timeout: 5m
+
+route:
+  # Group by the alert and the client it belongs to. Without team in
+  # here, one noisy tenant's problem and a platform-wide outage look
+  # identical in the inbox.
+  group_by: ['alertname', 'severity', 'team']
+
+  # Wait this long before sending the first notification for a new
+  # group, so a rolling failure arrives as one message rather than as
+  # a burst of near-identical ones.
+  group_wait: 30s
+
+  # A new member joining an existing group waits this long.
+  group_interval: 5m
+
+  # Re-notify while an alert is still firing. Four hours is a
+  # compromise: short enough that an ignored outage resurfaces within
+  # a shift, long enough not to train people to filter the sender.
+  repeat_interval: 4h
+
+  receiver: orbital-default
+
+  routes:
+    # Critical alerts re-notify much faster. These are the ones where
+    # nobody is answering calls.
+    - matchers:
+        - severity = "critical"
+      receiver: orbital-default
+      group_wait: 10s
+      repeat_interval: 1h
+
+inhibit_rules:
+  # A critical alert silences warnings about the same subject. When
+  # Asterisk is down, "queue depth climbing" and "SIP registrations
+  # dropped" are consequences — reporting all three sends someone
+  # chasing three problems that are one problem.
+  - source_matchers:
+      - severity = "critical"
+    target_matchers:
+      - severity = "warning"
+    equal: ['alertname', 'team']
+
+  # Everything downstream of a dead metrics pipeline is unreliable, so
+  # a stale-push alert suppresses the platform alerts that depend on
+  # those pushed series. Without this, a dead scheduler produces a wave
+  # of alerts about numbers that simply stopped updating.
+  - source_matchers:
+      - alertname = "OrbitalMetricsPipelineStale"
+    target_matchers:
+      - source = "pushed"
+
+receivers:
+  - name: orbital-default
+${ALERT_EMAIL_BLOCK}
+${ALERT_WEBHOOK_BLOCK}

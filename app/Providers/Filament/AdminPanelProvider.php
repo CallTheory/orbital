@@ -7,6 +7,7 @@ namespace App\Providers\Filament;
 use App\Filament\Auth\EditProfile;
 use App\Filament\AvatarProviders\LocalAvatarProvider;
 use App\Http\Middleware\PanelRedirect;
+use App\Http\Middleware\RequireTwoFactor;
 use App\Http\Middleware\SetPermissionsTeamContext;
 use App\Support\Branding;
 use Filament\Http\Middleware\Authenticate;
@@ -267,6 +268,11 @@ class AdminPanelProvider extends PanelProvider
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
                 SetPermissionsTeamContext::class,
+                // Pushes users past their two-factor grace window to
+                // the security page. Exempts the security page itself,
+                // logout, and Livewire XHR so nobody gets trapped —
+                // see the middleware.
+                RequireTwoFactor::class,
             ])
             ->authMiddleware([
                 // PanelRedirect must run BEFORE Filament's Authenticate.
@@ -297,6 +303,17 @@ class AdminPanelProvider extends PanelProvider
                 fn (): string => auth()->user()?->hasAnyPlatformRole()
                     ? Blade::render('@livewire(\App\Livewire\SystemStatusBar::class)')
                     : '',
+            )
+            // Two-factor countdown. Disappears the moment a second
+            // factor is confirmed.
+            ->renderHook(
+                PanelsRenderHook::BODY_START,
+                fn (): string => view('filament.partials.two-factor-banner')->render(),
+            )
+            // AGPL section 13 source offer — see PortalPanelProvider.
+            ->renderHook(
+                PanelsRenderHook::FOOTER,
+                fn (): string => view('filament.partials.source-footer')->render(),
             );
     }
 

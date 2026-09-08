@@ -6,6 +6,7 @@ namespace App\Filament\Operator\Pages;
 
 use App\Models\Message;
 use App\Models\Team;
+use App\Services\Messages\PartialMessagePolicy;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Forms;
@@ -148,11 +149,97 @@ class Workspace extends Page implements HasTable
             'reason' => $this->msgReason,
             'urgency' => $this->msgUrgency,
             'status' => Message::STATUS_NEW,
+            'is_partial' => false,
         ]);
 
         $this->takingMessage = false;
         $this->resetTable();
         Notification::make()->title('Message saved')->success()->send();
+    }
+
+    /**
+     * Does this client want partial messages kept?
+     *
+     * Drives the "Save what I have" button. Same policy the AI path
+     * consults — an answering service can't sensibly keep partials from
+     * the robot and discard them from the human.
+     */
+    public function keepsPartialMessages(): bool
+    {
+        if (! $this->activeTeamId) {
+            return false;
+        }
+
+        return app(PartialMessagePolicy::class)
+            ->keepsPartials(Team::find($this->activeTeamId));
+    }
+
+    /**
+     * The caller hung up mid-intake. Keep whatever was typed.
+     *
+     * Only reachable for clients whose policy asks for partials, and the
+     * server re-checks that — the button's visibility is a UI
+     * convenience, not the authorization.
+     *
+     * Validation is deliberately looser than saveMessage(), not absent:
+     * the policy's own threshold still applies, so an empty form can't
+     * be saved as "a caller rang and said nothing", which would be noise
+     * in the client's inbox rather than a lead.
+     */
+    public function savePartialMessage(): void
+    {
+        if (! $this->activeTeamId) {
+            return;
+        }
+
+        $policy = app(PartialMessagePolicy::class);
+
+        if (! $policy->keepsPartials(Team::find($this->activeTeamId))) {
+            Notification::make()
+                ->title('This client does not keep partial messages')
+                ->body('Turn on "Keep partial messages" on the client record to save incomplete intakes.')
+                ->warning()
+                ->send();
+
+            return;
+        }
+
+        $captured = [
+            'caller_name' => $this->msgCallerName,
+            'caller_phone' => $this->msgCallerPhone,
+            'reason' => $this->msgReason,
+        ];
+
+        if (! $policy->isWorthKeeping($captured)) {
+            Notification::make()
+                ->title('Not enough to save')
+                ->body('A partial message needs a callback number, or a name and something they said.')
+                ->warning()
+                ->send();
+
+            return;
+        }
+
+        // array_merge, not `+`: the operator's urgency selection has to
+        // beat the policy's "normal" default, and `+` keeps the
+        // left-hand key.
+        Message::create(array_merge(
+            $policy->attributesFor($captured, PartialMessagePolicy::REASON_OPERATOR_SAVED),
+            [
+                'team_id' => $this->activeTeamId,
+                'created_by_user_id' => auth()->id(),
+                'urgency' => $this->msgUrgency,
+            ],
+        ));
+
+        $this->takingMessage = false;
+        $this->resetTable();
+
+        Notification::make()
+            ->title('Partial message saved')
+            ->body('Marked incomplete so the client knows the caller dropped off.')
+            ->success()
+            ->send();
     }
 
     /**
@@ -240,7 +327,17 @@ class Workspace extends Page implements HasTable
                     ->label('Message')
                     ->limit(80)
                     ->wrap()
-                    ->searchable(),
+                    ->searchable()
+                    // A partial has to be visibly different in the list,
+                    // not just on the detail view. Otherwise "Caller hung
+                    // up before giving a reason" reads as an operator who
+                    // typed something odd, and the client acts on it as
+                    // though the intake finished.
+                    ->badge(fn (Message $record): bool => $record->is_partial)
+                    ->color(fn (Message $record) => $record->is_partial ? 'warning' : null)
+                    ->description(fn (Message $record): ?string => $record->is_partial
+                        ? 'Incomplete — missing '.$record->missingFieldLabels()
+                        : null),
                 Tables\Columns\TextColumn::make('taken_by')
                     ->label('Taken by')
                     ->getStateUsing(fn (Message $record) => $record->createdByUser?->name ?? $record->agentPersona?->name ?? 'Unknown')
@@ -275,6 +372,11 @@ class Workspace extends Page implements HasTable
                     ->action(fn (Message $record) => $record->update(['status' => Message::STATUS_ARCHIVED])),
             ])
             ->filters([
+                Tables\Filters\TernaryFilter::make('is_partial')
+                    ->label('Completeness')
+                    ->placeholder('All messages')
+                    ->trueLabel('Incomplete only')
+                    ->falseLabel('Complete only'),
                 Tables\Filters\TernaryFilter::make('archived')
                     ->placeholder('Active messages')
                     ->trueLabel('Include archived')

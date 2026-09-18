@@ -59,7 +59,7 @@ escalate beats an invisible one that surfaces as a carrier ban.
 
 ## Provisioning a number
 
-**Clients → (client) → Messaging Numbers → Create.**
+**Customers → Clients → (client) → Messaging Numbers → Create.**
 
 | Field | Purpose |
 |-------|---------|
@@ -94,7 +94,7 @@ makes a number added later work without anyone touching Orbital.
 ## Opt-out (STOP / HELP / START)
 
 Every client has a **do-not-text list** at
-**Clients → (client) → Do Not Text.**
+**Customers → Clients → (client) → Do Not Text.**
 
 A customer who texts `STOP` (or `UNSUBSCRIBE`, `CANCEL`, `END`, `QUIT`,
 `OPTOUT`, `REVOKE`) is added to it immediately, and their conversation is
@@ -159,7 +159,7 @@ because it's irreversible.
 
 ## Message queues
 
-**Clients → (client) → Message Queues.** One queue can carry several
+**Clients → (client) → Channels → Messages.** One queue can carry several
 protocols, so a "Support" queue takes every text inbound regardless of
 transport.
 

@@ -76,7 +76,7 @@ Orbital orchestrates several independently licensed systems — Asterisk,
 Kamailio, rtpengine, LiveKit, PostgreSQL, Valkey, SeaweedFS, and others. They
 run as separate processes in separate containers and are not linked into
 Orbital. See [`NOTICE`](NOTICE) and
-[`docs/third-party-licenses.md`](docs/third-party-licenses.md).
+[`docs/reference/third-party-licenses.md`](docs/reference/third-party-licenses.md).
 
 ## The name
 

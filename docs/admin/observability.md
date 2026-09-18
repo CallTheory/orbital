@@ -108,7 +108,7 @@ at boot rather than as alerts quietly never arriving.
 
 ### What is alerted on
 
-Fourteen rules across four groups, all written against metrics that
+Seventeen rules across five groups, all written against metrics that
 already exist — nothing here needed new instrumentation.
 
 | Group | Covers |
@@ -116,6 +116,7 @@ already exist — nothing here needed new instrumentation.
 | `orbital-pipeline` | The alerting itself: stale metric pushes, an app instance not answering |
 | `orbital-telephony` | Asterisk down, no SIP registrations, stuck call counts, no active rtpengine |
 | `orbital-work` | Unrouted email, endpoints without a sender pool, undelivered texts, queues not draining, failed jobs |
+| `orbital-backups` | No recent successful backup, none ever successful, an archive that shrank sharply. See [Backups](backups.md) |
 | `orbital-app` | 5xx rate over 1%, p95 response time over 5s |
 
 Two of those deserve explanation.
@@ -185,7 +186,7 @@ both backends avoids the question entirely.
 
 ## Error reporting
 
-Settings → Platform → **Error Reporting**, or `.env`.
+**System → Settings → Error Reporting**, or `.env`.
 
 | Setting | Env | Notes |
 |---------|-----|-------|
@@ -221,7 +222,7 @@ unchanged.
 
 ## Tracing
 
-Settings → Platform → **Tracing**, or `.env`.
+**System → Settings → Tracing**, or `.env`.
 
 | Setting | Env | Notes |
 |---------|-----|-------|
@@ -367,7 +368,7 @@ Changing either rolls the app pods, via the checksum annotation on the
 ## Restarting after a change
 
 Horizon workers, Reverb, and the Python agent worker resolve configuration
-**once, at boot**. A change made in Settings → Platform reaches HTTP
+**once, at boot**. A change made in System → Settings reaches HTTP
 requests immediately and background workers only after a restart, which is
 why both settings sections ask for one.
 
@@ -379,9 +380,10 @@ infrastructure settings from the API — so it is restarted the usual way.
 
 ## See also
 
+- [Monitoring](monitoring.md) — system status, call logs, and failed inbound mail
 - [High Availability](high-availability.md) — the observability tier itself
 - `docker/prometheus/rules/orbital.yml` — every alert, with the reasoning
 - `config/observability.php` — every setting, with the reasoning
 - `config/metrics.php` — why deployment-wide numbers are pushed, not scraped
-- `docs/ENVIRONMENT.md` — which settings live in the UI and which are
+- [Environment Variables](../reference/environment.md) — which settings live in the UI and which are
   deliberately `.env`-only

@@ -1,6 +1,6 @@
 # Email Inbox
 
-The email inbox shows threads assigned to you plus unclaimed threads in queues you're a member of. Navigate to **Operator > Inbox > Email Inbox**.
+The email inbox shows threads assigned to you plus unclaimed threads in queues you're a member of. Navigate to **Inbox → Email Inbox** in the operator panel.
 
 ## Availability
 

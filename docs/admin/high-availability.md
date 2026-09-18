@@ -4,8 +4,7 @@ This is the administrative guide for running Orbital's HA stack: what each
 tier does, how it self-heals, how to run planned maintenance without a
 customer-visible outage, and what to do when something breaks.
 
-> **Looking to install Orbital on real infrastructure?** See the [orbital-setup repo](https://git.calltheory.com/calltheory/orbital-setup) — the OpenTofu + Ansible deployment workflow that produces the topology described here. The Helm chart it installs lives in this repo at `helm/orbital/` and ships to Harbor on every tagged release. This doc is the operator handbook for what already exists.
-
+> **This is the operator handbook, not an install guide.** It describes how the tiers behave once they are running, how to take one offline safely, and what to do when something breaks. For getting Orbital onto infrastructure in the first place, see [Installation](../getting-started/installation.md).
 
 Orbital's HA is **single-site active/active**: every customer-facing service
 has at least two instances. Losing any single node keeps the service up.
@@ -228,6 +227,18 @@ active calls are pinned to the node that took them.
    When both hit zero, "Safe to reboot" appears.
 3. Restart the container.
 4. Click **Activate**.
+
+**What callers experience during a drain:**
+
+| Scenario | Caller experience |
+|---|---|
+| Call already in progress on the draining node | No interruption. It continues to normal hangup |
+| New call while every backend is drained or unreachable | Kamailio answers `503 Service Unavailable`. Most carriers retry, and one with failover configured on their side will use it |
+| New call while another node is live | Normal setup. Nothing is visible to the caller |
+| New call after Activate | Normal setup |
+
+The window that matters is the one where *no* backend is taking calls, so drain
+one node at a time and keep the restart short.
 
 ### Asterisk backends registry
 

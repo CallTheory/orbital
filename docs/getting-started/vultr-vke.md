@@ -4,12 +4,12 @@ A step-by-step first deployment, written for someone who has not used
 VKE before. Follow it in order; each part says what you should see
 before moving on.
 
-> **Automation exists for parts 1–6.** The `orbital-setup` repo has
-> OpenTofu under `terraform/vultr/managed-vke/` that provisions the
-> cluster, the SIP edge VMs, ingress-nginx and cert-manager in one go.
-> This page does it by hand instead, so you can see what the automation
-> is doing and debug it when it misbehaves. If you'd rather run the
-> tofu, do that and skip to **Part 7**.
+> **Parts 1–6 can be automated.** They are ordinary provisioning —
+> cluster, database, storage, ingress, DNS — and are a good fit for
+> OpenTofu or Terraform. This page does them by hand so you can see what
+> the automation would be doing and debug it when it misbehaves. If you
+> already have infrastructure-as-code for your provider, use it and skip
+> to **Part 7**.
 
 > **Calls will not work at the end of this page.** The admin panel, the
 > portal, email and messaging will. SIP and RTP run on edge VMs outside
@@ -18,13 +18,29 @@ before moving on.
 
 ---
 
+## Where the images come from
+
+Orbital is AGPL, so you have two options and the rest of this page works
+with either.
+
+**Build them yourself.** The source includes the Dockerfiles. This is the
+path if you are self-hosting independently, and it means you are not
+dependent on anyone else's registry.
+
+**Pull prebuilt images.** Call Theory hosting and support customers get
+credentials to a registry carrying released images and the Helm chart, which
+saves maintaining a build pipeline.
+
+Wherever `<your-registry-host>` appears below, substitute whichever you are
+using.
+
 ## What you need before starting
 
 | Thing | Notes |
 |---|---|
 | A Vultr account with billing | VKE control plane is free; you pay for worker nodes |
 | A domain you control | You'll point a record at a load balancer |
-| Harbor pull credentials | Your `robot$…-pull` username + token for `cr.calltheory.com` |
+| Container images | Either credentials for a registry that has them, or images you built yourself — see [Where the images come from](#where-the-images-come-from) |
 | A terminal | `kubectl` and `helm`, installed below |
 
 Budget roughly 45–90 minutes for a first run, most of it waiting for
@@ -241,24 +257,26 @@ dig +short orbital.yourcompany.com
 
 Three secrets. Nothing here goes in a values file or in git.
 
-**7a. Harbor pull credentials** — without this every pod sits in
-`ImagePullBackOff`.
+**7a. Registry credentials** — without this every pod sits in
+`ImagePullBackOff`. Skip it if your images are somewhere the cluster can
+already read.
 
 ```bash
 kubectl create secret docker-registry orbital-registry-creds \
   --namespace orbital \
-  --docker-server=cr.calltheory.com \
-  --docker-username='robot$yourcustomer-pull' \
+  --docker-server=<your-registry-host> \
+  --docker-username='<username>' \
   --docker-password='<token>'
 ```
 
-> Note the single quotes around the username. Harbor robot names contain
-> a `$`, and without quoting your shell eats it.
+> Quote the username. Harbor robot accounts — and some other registries —
+> put a `$` in it, and an unquoted `$` gets eaten by your shell. The failure
+> looks like a wrong password rather than a quoting mistake.
 
 **7b. Generate a backup encryption key.**
 
 ```bash
-docker run --rm cr.calltheory.com/orbital/laravel:0.1.0 \
+docker run --rm <your-registry-host>/orbital/laravel:0.1.0 \
   php artisan orbital:backup --generate-key
 ```
 
@@ -293,7 +311,7 @@ kubectl create secret generic orbital-orbital-app-secrets \
 > doubled word is correct, not a typo.
 
 > The AI keys are left blank on purpose. They're easier to set later in
-> **Settings → Platform → AI Providers**, where they're stored encrypted
+> **Conversational AI → Providers**, where they're stored encrypted
 > in the database. The blank entries just keep the pods from complaining
 > about missing variables.
 
@@ -350,7 +368,7 @@ If pgvector wasn't available in Part 3, drop the whole `postgres:` block
 ## Part 9 — Install
 
 ```bash
-helm install orbital oci://cr.calltheory.com/orbital/charts/orbital \
+helm install orbital oci://<your-registry-host>/orbital/charts/orbital \
   --namespace orbital \
   -f helm/orbital/values-vultr-vke.yaml \
   -f orbital-values.yaml
@@ -386,7 +404,7 @@ kubectl describe pod -n orbital <pod-name> | tail -30
 
 | Symptom | Almost always |
 |---|---|
-| `ImagePullBackOff` | The Harbor secret (7a) — wrong name, or the `$` got eaten |
+| `ImagePullBackOff` | The registry secret from 7a — wrong name, or the `$` in the username got eaten |
 | `CrashLoopBackOff` on laravel | Can't reach the database — check host, port, and the DB firewall |
 | Migrate job failed | Read its logs; usually pgvector or database credentials |
 | Pod `Pending` forever | Not enough room on 3 nodes — scale the node plan up |
@@ -427,13 +445,18 @@ kubectl exec -n orbital deploy/orbital-orbital-laravel -- \
 > and `kubectl exec` without `-it` gives it no terminal to prompt on —
 > it will simply hang.
 
-Now log in. Once in, go to **Settings → Platform** and:
+Now log in, and:
 
-1. **AI Providers** — paste your Anthropic key. Nothing AI works
-   without it.
-2. **Error Reporting / Tracing** — optional, off by default.
-3. Check **System → Status**. Cards for components you didn't deploy
-   (Prometheus, Grafana, Tempo) read "not deployed" rather than red.
+1. **Conversational AI → Providers** — paste your Anthropic key. Nothing
+   AI works without it.
+2. **System → Setup** — run the bootstrappers so the object storage
+   buckets, the `vector` extension, and the Asterisk and LiveKit
+   configuration exist.
+3. **System → Settings → Error Reporting / Tracing** — optional, off by
+   default.
+4. Check **Monitor → System Status**. Cards for components you didn't
+   deploy (Prometheus, Grafana, Tempo) read "not deployed" rather than
+   red.
 
 Then prove the backups work, before you need them:
 
@@ -453,14 +476,14 @@ An untested backup is a belief, not a plan.
 
 Everything above gives you the web platform. **Telephony needs the edge
 VMs**, which live outside the cluster: Kamailio as the SIP front door and
-rtpengine for media, provisioned by the `orbital-setup` repo's
-`terraform/vultr/` entrypoint.
+rtpengine for media, running on ordinary VMs in the same region as the
+cluster.
 
 Once those exist, tell the chart where Kamailio's control interface is
 and upgrade:
 
 ```bash
-helm upgrade orbital oci://cr.calltheory.com/orbital/charts/orbital \
+helm upgrade orbital oci://<your-registry-host>/orbital/charts/orbital \
   --namespace orbital \
   -f helm/orbital/values-vultr-vke.yaml \
   -f orbital-values.yaml \
@@ -477,7 +500,7 @@ Kubernetes load balancer.
 Same command, `upgrade` instead of `install`, with a new image tag:
 
 ```bash
-helm upgrade orbital oci://cr.calltheory.com/orbital/charts/orbital \
+helm upgrade orbital oci://<your-registry-host>/orbital/charts/orbital \
   --namespace orbital \
   -f helm/orbital/values-vultr-vke.yaml \
   -f orbital-values.yaml \

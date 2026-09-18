@@ -61,7 +61,7 @@ real problem.
 - **Keep controllers thin.** Logic belongs in `app/Services/`.
 - **Long-running work goes in a queued Job**, not in a request cycle.
 - **New third-party dependencies get a row in
-  [`docs/third-party-licenses.md`](docs/third-party-licenses.md)** in the same
+  [`docs/reference/third-party-licenses.md`](docs/reference/third-party-licenses.md)** in the same
   pull request, with the license. A GPLv2-only *library* (as opposed to a
   separate containerized program) cannot be accepted — see [`NOTICE`](NOTICE).
 

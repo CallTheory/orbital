@@ -19,7 +19,7 @@ THIRD-PARTY COMPONENTS
 
 An Orbital deployment runs a number of independently developed and
 independently licensed systems. A full inventory with licenses lives in
-docs/third-party-licenses.md.
+docs/reference/third-party-licenses.md.
 
 Note on GPL compatibility
 -------------------------

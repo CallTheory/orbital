@@ -139,7 +139,7 @@ operation is one-shot during provisioning:
 
 | Var | Managed by |
 |---|---|
-| `ACME_ENABLED`, `ACME_DOMAIN`, `ACME_DNS_PROVIDER`, `ACME_WEBHOOK_TOKEN` | **System → TLS Certificates** page |
+| `ACME_ENABLED`, `ACME_DOMAIN`, `ACME_DNS_PROVIDER`, `ACME_WEBHOOK_TOKEN` | **System → Certificates** page |
 | `TLS_CERT_PATH`, `TLS_KEY_PATH` | Baked into nginx/Asterisk configs; changing these is a container-topology change |
 | `GRAFANA_INTERNAL_URL`, `GRAFANA_PROXY_TRUST_TOKEN` | `SsoSecretsBootstrapper` populates and rotates on first-run / restart |
 | `KAMAILIO_ENABLED`, `KAMAILIO_JSONRPC_URL`, `KAMAILIO_JSONRPC_URLS` | Cluster-topology setting — adding/removing Kamailio nodes is a deployment event, not a runtime toggle |

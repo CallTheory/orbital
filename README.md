@@ -304,7 +304,7 @@ for you — the panel footers and `/source` link to the running version's
 source — so point `ORBITAL_SOURCE_URL` at your repository when you fork.
 
 Bundled third-party components and their licenses:
-[`NOTICE`](NOTICE), [`docs/third-party-licenses.md`](docs/third-party-licenses.md).
+[`NOTICE`](NOTICE), [`docs/reference/third-party-licenses.md`](docs/reference/third-party-licenses.md).
 The name is a trademark and is handled separately:
 [`TRADEMARK.md`](TRADEMARK.md).
 

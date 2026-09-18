@@ -20,12 +20,19 @@ Sender → SMTP (Haraka) → Webhook → Laravel Router → Queue → Operator I
 
 Each client can have one or more email queues. A queue is a named bucket that threads land in, worked by a specific group of operators.
 
+Queues are created on the client's **Channels** hub, on the Email tab.
+
 | Field | Purpose |
 |-------|---------|
 | **Name** | Display name shown to operators (e.g. "Support", "VIP", "Alarms") |
-| **Operator Group** | Which agent group works this queue. Leave empty for "open" — all operators see it. |
-| **Overflow AI** | Optional AI persona that handles threads when no human is available |
-| **Strategy** | How operators pick up threads (manual is the default) |
+| **Description** | An internal note about what belongs here |
+| **Claim strategy** | How operators pick up threads. Manual is the default |
+| **Operator group** | Which agent group works this queue. Leave empty for "open" — all operators see it |
+| **Overflow AI persona** | Optional AI persona that handles threads when no human is available |
+| **Orchestration** | The intake script this queue runs |
+| **Matched addresses** | Local-part patterns this queue accepts |
+| **Matched domain** | An optional domain constraint |
+| **Active** | Inactive queues take no new threads |
 
 ### Operator Group Assignment
 
@@ -33,12 +40,27 @@ Queues reference platform-level **Agent Groups**. An agent group is a pool of op
 
 If no operator group is assigned, the queue is "open" — all operators can see its threads.
 
-!!! tip "Simple setup"
-    Most clients only need one queue with a catch-all rule. Create a queue called "General Inbox", assign your operator group, and add a default routing rule pointing to it.
+> **Simple setup.** Most clients only need one queue with a catch-all rule,
+> which is exactly what provisioning gives them. Rename the queue, assign your
+> operator group, and you are done — the default rule already points at it.
 
 ## Routing Rules
 
-Rules determine which queue (or other destination) an inbound email lands in. They're evaluated per-client in priority order.
+Rules determine which queue (or other destination) an inbound email lands in.
+They're evaluated per-client in priority order.
+
+> **Rules are not yet editable in the admin panel.** The router evaluates them
+> on every inbound message exactly as described below, and every client is
+> provisioned with a **Default catch-all** rule pointing at their first queue —
+> so mail routes correctly out of the box. What is missing is the editor: the
+> additional function, from-address, and subject rules in the examples here
+> need to be created outside the panel today. The **Assign to client** action on
+> [Failed Inbound Mail](monitoring.md) re-runs a client's rules by hand in the
+> meantime. See the [Roadmap](../roadmap.md).
+
+For a client that needs more than one destination, the practical route today is
+the queue's own **Matched addresses** and **Matched domain** fields, which are
+editable on the Channels hub.
 
 ### Match Types
 
@@ -78,7 +100,8 @@ One queue, one rule — every email goes to the same place.
 
 ## Example: Advanced Setup (Acme Corp)
 
-Three queues with tiered routing:
+Three queues with tiered routing. This is what the router supports; creating
+the second and third rules needs work outside the panel today.
 
 | Rule | Match | Priority | Destination |
 |------|-------|----------|-------------|
@@ -109,7 +132,7 @@ The function suffix is extracted by the router and matched against function-type
 
 ### Emails not appearing in the operator inbox
 
-1. Check **Admin > Monitor > Unrouted Mail** for messages that failed routing
+1. Check **Monitor → Failed Inbound Mail** for messages that failed routing
 2. Verify the client has at least one email routing rule (a default catch-all)
 3. Verify the destination queue exists and is active
 4. If using operator groups, verify the operator is a member of the queue's agent group
@@ -119,3 +142,9 @@ The function suffix is extracted by the router and matched against function-type
 1. Check rule priorities — lower numbers evaluate first
 2. Subject regex rules are case-insensitive by default
 3. Function suffix rules are exact matches (no regex)
+
+## See also
+
+- [Channels](channels.md) — how email fits with the other three
+- [Monitoring](monitoring.md) — the Failed Inbound Mail queue
+- [Email Inbox](../operator/email-inbox.md) — what an operator does with a thread

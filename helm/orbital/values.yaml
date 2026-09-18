@@ -217,7 +217,7 @@ health:
 # you fork. Leaving it aimed upstream sends your users to source that
 # isn't yours.
 licensing:
-  sourceUrl: "https://github.com/calltheory/orbital"
+  sourceUrl: "https://git.calltheory.com/calltheory/orbital"
   releaseChannel: stable
 
 # ============================================================================

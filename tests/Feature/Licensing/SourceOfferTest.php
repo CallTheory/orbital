@@ -9,6 +9,7 @@ use App\Support\Release;
 use Database\Seeders\PermissionCatalogSeeder;
 use Database\Seeders\SuperAdminRoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\CreatesOrbitalUsers;
 use Tests\TestCase;
 
@@ -52,8 +53,47 @@ class SourceOfferTest extends TestCase
         config()->set('orbital.source_url', 'https://example.test/my-orbital-fork');
         config()->set('orbital.commit', 'abc123def456abc123def456abc123def456abcd');
 
+        // Unknown forge: Gitea/Forgejo spelling, which is what the
+        // canonical repository runs and what most self-hosters have.
         $this->get('/source')
-            ->assertRedirect('https://example.test/my-orbital-fork/tree/abc123def456abc123def456abc123def456abcd');
+            ->assertRedirect('https://example.test/my-orbital-fork/src/commit/abc123def456abc123def456abc123def456abcd');
+    }
+
+    /**
+     * The commit path is not the same on every forge. /tree/<sha> is
+     * GitHub's and 404s on Forgejo; getting this wrong points the AGPL
+     * section 13 offer at a dead page.
+     *
+     * @return array<string, array{0: string, 1: string}>
+     */
+    public static function forgeCommitUrls(): array
+    {
+        $sha = 'abc123def456abc123def456abc123def456abcd';
+
+        return [
+            'forgejo (canonical)' => ['https://git.calltheory.com/calltheory/orbital', "https://git.calltheory.com/calltheory/orbital/src/commit/{$sha}"],
+            'github (release mirror)' => ['https://github.com/calltheory/orbital', "https://github.com/calltheory/orbital/tree/{$sha}"],
+            'gitlab fork' => ['https://gitlab.com/someone/orbital', "https://gitlab.com/someone/orbital/-/tree/{$sha}"],
+            'self-hosted gitea' => ['https://code.example.test/ops/orbital', "https://code.example.test/ops/orbital/src/commit/{$sha}"],
+        ];
+    }
+
+    #[DataProvider('forgeCommitUrls')]
+    public function test_commit_deep_link_uses_the_right_path_for_each_forge(string $sourceUrl, string $expected): void
+    {
+        config()->set('orbital.source_url', $sourceUrl);
+        config()->set('orbital.commit', 'abc123def456abc123def456abc123def456abcd');
+
+        $this->get('/source')->assertRedirect($expected);
+    }
+
+    public function test_commit_deep_link_falls_back_to_the_repository_root_without_a_commit(): void
+    {
+        config()->set('orbital.source_url', 'https://git.calltheory.com/calltheory/orbital');
+        config()->set('orbital.commit', null);
+
+        $this->get('/source')
+            ->assertRedirect('https://git.calltheory.com/calltheory/orbital');
     }
 
     public function test_version_endpoint_reports_license_and_source(): void

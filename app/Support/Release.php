@@ -95,13 +95,17 @@ final class Release
     {
         $url = (string) config('orbital.source_url', '');
 
-        return $url !== '' ? $url : 'https://github.com/calltheory/orbital';
+        return $url !== '' ? $url : 'https://git.calltheory.com/calltheory/orbital';
     }
 
     /**
-     * Deep link to the exact commit when we know it and the source host
-     * understands /tree/<sha> URLs (GitHub, Gitea, Forgejo all do).
-     * Falls back to the repository root.
+     * Deep link to the exact commit, falling back to the repository root
+     * when we don't know the commit.
+     *
+     * The path is forge-specific and there is no single spelling that
+     * works everywhere — an earlier version of this method assumed
+     * /tree/<sha> was universal, which silently 404s on Gitea and
+     * Forgejo. See commitPathFor().
      */
     public static function sourceUrlForCommit(): string
     {
@@ -112,7 +116,33 @@ final class Release
             return $base;
         }
 
-        return $base.'/tree/'.$commit;
+        return $base.self::commitPathFor($base).$commit;
+    }
+
+    /**
+     * The forge-specific path segment that shows a repository tree at one
+     * commit.
+     *
+     * Gitea/Forgejo is the default rather than a special case: it is where
+     * the canonical repository lives and what most self-hosters run. GitHub
+     * and GitLab are named because Orbital mirrors releases to the former
+     * and forks land on the latter often enough to be worth getting right.
+     *
+     * A fork on some other forge gets a link that may not resolve. That is
+     * the reason this returns a tree path and never a bare root — a wrong
+     * deep link is visible and reportable, whereas silently dropping the
+     * commit would leave users pointed at a moving branch and looking at
+     * source that is not what they are running.
+     */
+    private static function commitPathFor(string $base): string
+    {
+        $host = strtolower((string) parse_url($base, PHP_URL_HOST));
+
+        return match (true) {
+            $host === 'github.com', str_ends_with($host, '.github.com') => '/tree/',
+            $host === 'gitlab.com', str_ends_with($host, '.gitlab.com') => '/-/tree/',
+            default => '/src/commit/',
+        };
     }
 
     /**

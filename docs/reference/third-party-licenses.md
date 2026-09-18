@@ -1,11 +1,11 @@
 # Third-party components
 
-Orbital itself is AGPL-3.0 (see [`LICENSE`](https://github.com/calltheory/orbital/blob/main/LICENSE)). It orchestrates a
+Orbital itself is AGPL-3.0 (see [`LICENSE`](https://git.calltheory.com/calltheory/orbital/src/branch/main/LICENSE)). It orchestrates a
 number of independently licensed systems. This page is the inventory.
 
 The GPL-compatibility reasoning — why shipping GPLv2 components alongside an
 AGPLv3 application is aggregation rather than a combined work — lives in
-[`NOTICE`](https://github.com/calltheory/orbital/blob/main/NOTICE) and is not repeated here. The short version: everything
+[`NOTICE`](https://git.calltheory.com/calltheory/orbital/src/branch/main/NOTICE) and is not repeated here. The short version: everything
 below runs as a separate program in its own container, reached over a network
 or IPC interface. Nothing is linked into Orbital.
 
@@ -92,7 +92,7 @@ its public API. LGPL-3.0 is compatible with AGPL-3.0.
 
 All frontend dependencies are bundled locally through Vite. Orbital never
 loads assets from a public CDN — see the offline-first constraint in
-[`README.md`](https://github.com/calltheory/orbital/blob/main/README.md).
+[`README.md`](https://git.calltheory.com/calltheory/orbital/src/branch/main/README.md).
 
 ## Agent worker (Python)
 

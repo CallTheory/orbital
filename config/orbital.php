@@ -33,7 +33,7 @@ return [
         'url' => 'https://www.gnu.org/licenses/agpl-3.0.html',
     ],
 
-    'source_url' => env('ORBITAL_SOURCE_URL', 'https://github.com/calltheory/orbital'),
+    'source_url' => env('ORBITAL_SOURCE_URL', 'https://git.calltheory.com/calltheory/orbital'),
 
     /*
     |--------------------------------------------------------------------------

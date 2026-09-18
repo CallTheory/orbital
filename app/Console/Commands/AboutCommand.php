@@ -57,7 +57,15 @@ class AboutCommand extends Command
         $this->line('  Orbital is free software. Self-hosting is free forever with no');
         $this->line('  feature gates and no seat limits. See LICENSING.md.');
 
-        if (Release::sourceUrl() === 'https://github.com/calltheory/orbital') {
+        // Both upstreams count: git.calltheory.com is canonical, GitHub is
+        // a read-only release mirror of the same code. Someone pointed at
+        // either one has not repointed at their own fork.
+        $upstreams = [
+            'https://git.calltheory.com/calltheory/orbital',
+            'https://github.com/calltheory/orbital',
+        ];
+
+        if (in_array(rtrim(Release::sourceUrl(), '/'), $upstreams, true)) {
             $this->newLine();
             $this->line('  <comment>If you have modified Orbital, set ORBITAL_SOURCE_URL to your own</>');
             $this->line('  <comment>repository so your users\' AGPL section 13 offer resolves to the</>');

@@ -82,7 +82,7 @@ jobs:
         # Fix locally with `vendor/bin/pint` (no --test) before pushing.
         run: vendor/bin/pint --test
 
-      - name: Setup Node 20
+      - name: Setup Node 22
         # Filament panels render Vite-managed assets (panel-styles partial),
         # so feature tests that hit a panel URL fail without a built
         # manifest at public/build/manifest.json. The frontend job builds
@@ -90,12 +90,12 @@ jobs:
         # here as well, just before the test run.
         uses: https://git.calltheory.com/actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Enable corepack + activate pnpm
         run: |
           corepack enable
-          corepack prepare pnpm@latest --activate
+          corepack install
 
       - name: Get pnpm store path
         id: pnpm-cache
@@ -127,19 +127,19 @@ jobs:
       - name: Checkout
         uses: https://git.calltheory.com/actions/checkout@v4
 
-      - name: Setup Node 20
+      - name: Setup Node 22
         uses: https://git.calltheory.com/actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Enable corepack + activate pnpm
         # corepack ships with Node; no third-party action needed.
-        # `pnpm@latest` tracks the latest stable; pin a specific version
-        # in package.json's `packageManager` field if reproducibility
-        # becomes important.
+        # `corepack install` activates the version pinned in package.json's
+        # `packageManager` field, so CI matches local dev. pnpm 11 needs
+        # Node >= 22.13 (node:sqlite), hence Node 22 above.
         run: |
           corepack enable
-          corepack prepare pnpm@latest --activate
+          corepack install
           pnpm --version
 
       - name: Get pnpm store path
@@ -211,15 +211,15 @@ jobs:
         # severity-based gating.
         run: composer audit --format=plain
 
-      - name: Setup Node 20
+      - name: Setup Node 22
         uses: https://git.calltheory.com/actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Enable corepack + activate pnpm
         run: |
           corepack enable
-          corepack prepare pnpm@latest --activate
+          corepack install
 
       - name: Get pnpm store path
         id: pnpm-cache

@@ -6,21 +6,22 @@
 # generated config + prompts to object storage; each Asterisk pod pulls
 # its own local copy into an emptyDir via this image. No RWX anywhere.
 #
-# `mc` is lifted from the official minio/mc image (a docker.io image the
-# chart already mirrors) rather than curl'd at build time, so the build
-# needs no public internet and the result is air-gap mirrorable like any
-# other first-party image.
+# `rclone` is lifted from the official rclone/rclone image rather than
+# curl'd at build time, so the build needs no public internet beyond the
+# registry and the result is air-gap mirrorable like any other first-party
+# image. (This used minio/mc until MinIO archived the client and pulled
+# its images.)
 
-FROM minio/mc:latest AS mc
+FROM rclone/rclone:1 AS rclone
 
 FROM alpine:3.20
 
 # bash for the /dev/tcp AMI client; coreutils for `timeout`.
 RUN apk add --no-cache bash coreutils ca-certificates
 
-COPY --from=mc /usr/bin/mc /usr/local/bin/mc
+COPY --from=rclone /usr/local/bin/rclone /usr/local/bin/rclone
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/mc /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/rclone /usr/local/bin/entrypoint.sh
 
 # Mode is the first arg: "once" (initContainer — sync then exit) or
 # "loop" (sidecar — sync + reload forever). Defaults to loop.

@@ -31,20 +31,28 @@ AMI_USER="${ASTERISK_AMI_USERNAME:-orbital}"
 AMI_SECRET="${ASTERISK_AMI_SECRET:-}"
 INTERVAL="${SYNC_INTERVAL_SECONDS:-10}"
 
-ALIAS="obj"
-CONFIG_SRC="${ALIAS}/${AWS_BUCKET}/${CONFIG_PREFIX}"
-PROMPTS_SRC="${ALIAS}/${AWS_BUCKET}/${PROMPTS_PREFIX}"
+REMOTE="obj"
+BUCKET_SRC="${REMOTE}:${AWS_BUCKET}"
+CONFIG_SRC="${BUCKET_SRC}/${CONFIG_PREFIX}"
+PROMPTS_SRC="${BUCKET_SRC}/${PROMPTS_PREFIX}"
 
 log() { echo "[config-sync] $*"; }
 
-configure_mc() {
-  # --api S3v4 + path-style works against SeaweedFS and Vultr/AWS alike.
-  mc alias set "$ALIAS" "$AWS_ENDPOINT" "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY" \
-    --api S3v4 >/dev/null
-  # Best-effort: make sure the bucket exists so the first mirror doesn't
+configure_rclone() {
+  # rclone reads remote config from RCLONE_CONFIG_<NAME>_* env, so no
+  # config file is written. Provider "Other" + path-style works against
+  # SeaweedFS and Vultr/AWS alike.
+  export RCLONE_CONFIG_OBJ_TYPE=s3
+  export RCLONE_CONFIG_OBJ_PROVIDER=Other
+  export RCLONE_CONFIG_OBJ_ENDPOINT="$AWS_ENDPOINT"
+  export RCLONE_CONFIG_OBJ_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID"
+  export RCLONE_CONFIG_OBJ_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY"
+  export RCLONE_CONFIG_OBJ_REGION="${AWS_DEFAULT_REGION:-us-east-1}"
+  export RCLONE_CONFIG_OBJ_FORCE_PATH_STYLE=true
+  # Best-effort: make sure the bucket exists so the first sync doesn't
   # error before Laravel has written anything. Harmless if it already
-  # exists or if perms disallow it (mirror still works once populated).
-  mc mb --ignore-existing "${ALIAS}/${AWS_BUCKET}" >/dev/null 2>&1 || true
+  # exists or if perms disallow it (sync still works once populated).
+  rclone mkdir "$BUCKET_SRC" >/dev/null 2>&1 || true
 }
 
 # Block until object storage answers — the seaweedfs pod may still be
@@ -52,7 +60,7 @@ configure_mc() {
 # doesn't wedge the initContainer forever.
 wait_for_object_store() {
   local tries=0
-  until mc ls "${ALIAS}/${AWS_BUCKET}" >/dev/null 2>&1; do
+  until rclone lsf --max-depth 1 "$BUCKET_SRC" >/dev/null 2>&1; do
     tries=$((tries + 1))
     if [ "$tries" -ge 60 ]; then
       log "object store ${AWS_ENDPOINT}/${AWS_BUCKET} unreachable after 60 tries; giving up"
@@ -65,16 +73,17 @@ wait_for_object_store() {
 
 sync_files() {
   mkdir -p "$CONFIG_DIR" "$PROMPTS_DIR"
-  # --overwrite: pick up edits. --remove: prune client dialplans that were
-  # deleted upstream. --exclude version.txt: the marker isn't Asterisk config.
-  mc mirror --overwrite --remove --exclude "version.txt" "$CONFIG_SRC/" "$CONFIG_DIR/" || true
+  # sync picks up edits and prunes client dialplans that were deleted
+  # upstream; a missing source prefix errors out without touching the
+  # local copy. --exclude /version.txt: the marker isn't Asterisk config.
+  rclone sync --exclude "/version.txt" "$CONFIG_SRC" "$CONFIG_DIR" || true
   # Prompts are optional and often absent until the first TTS render, so
   # keep this quiet — a missing source prefix is expected, not an error.
-  mc mirror --overwrite --remove "$PROMPTS_SRC/" "$PROMPTS_DIR/" >/dev/null 2>&1 || true
+  rclone sync "$PROMPTS_SRC" "$PROMPTS_DIR" >/dev/null 2>&1 || true
 }
 
 remote_version() {
-  mc cat "${CONFIG_SRC}/version.txt" 2>/dev/null || echo ""
+  rclone cat "${CONFIG_SRC}/version.txt" 2>/dev/null || echo ""
 }
 
 # Minimal AMI client over bash /dev/tcp — logs in, fires the reload
@@ -98,7 +107,7 @@ ami_reload() {
   log "AMI dialplan+voicemail reload sent"
 }
 
-configure_mc
+configure_rclone
 
 case "$MODE" in
   once)

@@ -14,6 +14,7 @@
 /.zed
 /auth.json
 /node_modules
+/.pnpm-store
 /public/build
 /public/hot
 /public/storage

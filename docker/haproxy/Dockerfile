@@ -12,7 +12,7 @@
 # stable-endpoint behavior in dev by returning the active
 # haproxy container's IP on lookup.
 
-FROM haproxy:3.0-alpine
+FROM haproxy:3.4-alpine
 
 USER root
 RUN apk add --no-cache gettext bash

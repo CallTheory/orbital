@@ -14,7 +14,7 @@
 
 FROM rclone/rclone:1 AS rclone
 
-FROM alpine:3.20
+FROM alpine:3.24
 
 # bash for the /dev/tcp AMI client; coreutils for `timeout`.
 RUN apk add --no-cache bash coreutils ca-certificates

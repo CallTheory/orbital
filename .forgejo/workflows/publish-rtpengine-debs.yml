@@ -119,9 +119,19 @@ jobs:
         # -us -uc -b: unsigned source, unsigned changes, binary-only.
         # Source-package signing is irrelevant — we Cosign-sign the .debs
         # downstream. Test suite (~672 tests) runs as part of build.
+        # Full output goes to a file so success stays quiet (tail only),
+        # but a failure surfaces the failing tests instead of just the
+        # last 40 lines of whichever test script happened to finish last.
         run: |
           cd /tmp/rtpengine
-          DEB_BUILD_OPTIONS="parallel=$(nproc)" dpkg-buildpackage -us -uc -b 2>&1 | tail -40
+          if ! DEB_BUILD_OPTIONS="parallel=$(nproc)" dpkg-buildpackage -us -uc -b > /tmp/rtpengine-build.log 2>&1; then
+            echo "=== build failed; failing tests / errors ==="
+            grep -nE -B5 -A15 '^not ok|FAIL|Bail out|Segmentation|Aborted|Assertion|Error [0-9]+$' /tmp/rtpengine-build.log | head -400 || true
+            echo "=== last 150 lines ==="
+            tail -150 /tmp/rtpengine-build.log
+            exit 1
+          fi
+          tail -40 /tmp/rtpengine-build.log
           echo "=== output ==="
           ls -lh /tmp/*.deb
 

@@ -118,15 +118,14 @@ jobs:
       - name: Build .debs
         # -us -uc -b: unsigned source, unsigned changes, binary-only.
         # Source-package signing is irrelevant — we Cosign-sign the .debs
-        # downstream. Test suite (~672 tests) runs as part of build.
-        # Full output goes to a file so success stays quiet (tail only),
-        # but a failure surfaces the failing tests instead of just the
-        # last 40 lines of whichever test script happened to finish last.
+        # downstream. Tests are skipped here (nocheck) and run serially in
+        # the next step. Full output goes to a file so success stays quiet
+        # (tail only), but a failure surfaces the actual errors.
         run: |
           cd /tmp/rtpengine
-          if ! DEB_BUILD_OPTIONS="parallel=$(nproc)" dpkg-buildpackage -us -uc -b > /tmp/rtpengine-build.log 2>&1; then
-            echo "=== build failed; failing tests / errors ==="
-            grep -nE -B5 -A15 '^not ok|FAIL|Bail out|Segmentation|Aborted|Assertion|Error [0-9]+$' /tmp/rtpengine-build.log | head -400 || true
+          if ! DEB_BUILD_OPTIONS="parallel=$(nproc) nocheck" dpkg-buildpackage -us -uc -b > /tmp/rtpengine-build.log 2>&1; then
+            echo "=== build failed; errors ==="
+            grep -nE -B5 -A15 'error:|Error [0-9]+$' /tmp/rtpengine-build.log | head -400 || true
             echo "=== last 150 lines ==="
             tail -150 /tmp/rtpengine-build.log
             exit 1
@@ -134,6 +133,32 @@ jobs:
           tail -40 /tmp/rtpengine-build.log
           echo "=== output ==="
           ls -lh /tmp/*.deb
+
+      - name: Run rtpengine test suite
+        # Upstream's daemon tests (MoH, jitter buffer, etc.) assert on
+        # packet timing windows. Run under `make -j$(nproc)` while the
+        # image builds share the runner host, one of them occasionally
+        # sees a packet land outside its window (e.g. daemon-tests-moh
+        # "no packet received"). Serial + one retry keeps the suite as a
+        # real gate without failing releases on a scheduling blip; a
+        # genuine regression fails both attempts.
+        env:
+          # Mirrors the export in rtpengine's debian/rules, which the
+          # in-build dh_auto_test would otherwise have provided.
+          FIXTURES_PATH: /usr/share/rtpengine-perftest
+        run: |
+          cd /tmp/rtpengine
+          for attempt in 1 2; do
+            if make -j1 check > /tmp/rtpengine-test.log 2>&1; then
+              echo "test suite passed (attempt ${attempt})"
+              exit 0
+            fi
+            echo "=== test suite failed (attempt ${attempt}); failing tests ==="
+            grep -nE -B5 -A15 '^not ok|Bail out|Segmentation|Aborted|Assertion|Error [0-9]+$' /tmp/rtpengine-test.log | head -400 || true
+          done
+          echo "=== last 150 lines ==="
+          tail -150 /tmp/rtpengine-test.log
+          exit 1
 
       - name: Stage production package set
         # Keep only what production edges install. Drop:

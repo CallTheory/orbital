@@ -26,6 +26,6 @@
         "laravel-echo": "^2.5.0",
         "pusher-js": "^8.6.0",
         "sip.js": "^0.21.2",
-        "wavesurfer.js": "^7.12.12"
+        "wavesurfer.js": "^8.0.0"
     }
 }

@@ -45,7 +45,7 @@ RUN composer install \
         --ignore-platform-reqs
 
 # ---------- Stage 3: production runtime ----------
-FROM php:8.4-fpm-alpine AS production
+FROM php:8.5-fpm-alpine AS production
 
 LABEL maintainer="Orbital"
 LABEL org.opencontainers.image.title="Orbital"

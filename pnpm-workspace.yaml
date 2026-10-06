@@ -4,3 +4,9 @@
 # install. esbuild needs its build script; allow it explicitly.
 allowBuilds:
   esbuild: true
+
+# Refuse packages published less than a day ago (minutes). Lives here
+# because pnpm 11 no longer reads pnpm settings from .npmrc. Keep in
+# step with `minimumReleaseAge` in renovate.json so Renovate doesn't
+# open PRs that `pnpm install` would reject.
+minimumReleaseAge: 1440

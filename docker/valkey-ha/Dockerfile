@@ -11,7 +11,7 @@
 # file in-place to remember the new primary — that file therefore
 # lives on a persistent volume per sentinel.
 
-FROM valkey/valkey:8-alpine
+FROM valkey/valkey:9-alpine
 
 # envsubst (from gettext) for config templating, tini as init, bash
 # for the entrypoint.

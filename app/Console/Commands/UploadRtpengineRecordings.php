@@ -14,18 +14,26 @@ use Illuminate\Support\Facades\Log;
  * Periodic spool watcher for rtpengine recording-daemon output.
  *
  * Walks each rtpengine node's spool directory (mounted into the
- * Laravel container as `/var/spool/rtpengine-{N}/`), picks up
- * any finalized files (recording-daemon writes a `.done` marker
- * — or, with `output-single=yes`, the bare `.wav` exists once
- * the call ends), parses the SIP Call-ID + direction from the
+ * Laravel container as `/var/spool/rtpengine/{hostname}/`), picks up
+ * finished recordings, parses the SIP Call-ID + direction from the
  * filename, and dispatches an `UploadCallRecordingJob` per file.
  *
- * Filename pattern matches recording-daemon's default
- * `metadata-pattern = call-id-%c--leg-%l.wav` (with `%c` =
- * Call-ID, `%l` = leg index `0` / `1` mapped to caller_in /
- * caller_out). We tolerate slight variations because operators
- * sometimes tweak the pattern; anything we can't parse is left
- * on disk for human triage with a warning logged.
+ * The edge's recording-daemon is configured with
+ *
+ *     output-mixed
+ *     output-pattern = call-id-%c--leg-%t
+ *
+ * so each call yields one `call-id-<Call-ID>--leg-mix.wav`. The daemon
+ * appends the extension itself, rejects any pattern lacking `%c` or
+ * `%t`, and adds `-1`, `-2`, ... before the extension if the name is
+ * already taken. Anything we can't parse is left on disk for human
+ * triage with a warning logged.
+ *
+ * recording-daemon writes straight to the final filename for the
+ * whole call (no `.tmp` / `.done` marker) and only completes the WAV
+ * header on close, so a file counts as finished once it has gone
+ * unmodified for SETTLE_SECONDS. With the default 256 kB output
+ * buffer, an active 8 kHz call flushes roughly every 16 seconds.
  *
  * Idempotent — the upload job deletes the source file on
  * success, so a re-run picks up only files that haven't been
@@ -33,6 +41,12 @@ use Illuminate\Support\Facades\Log;
  */
 class UploadRtpengineRecordings extends Command
 {
+    /**
+     * How long a recording must sit unmodified before it's treated as
+     * finished. Comfortably above the daemon's buffer flush interval.
+     */
+    public const SETTLE_SECONDS = 120;
+
     protected $signature = 'orbital:upload-recordings {--node= : Limit to one node (hostname)}';
 
     protected $description = 'Drain rtpengine recording-daemon spool dirs into CallRecording rows';
@@ -92,12 +106,8 @@ class UploadRtpengineRecordings extends Command
                 continue;
             }
 
-            // Skip files actively being written. recording-daemon
-            // appends `.tmp` while the audio is still flushing and
-            // renames on close — checking the absence of a sibling
-            // `.tmp` for the same basename is the cheap correctness
-            // signal.
-            if (is_file($path.'.tmp') || str_ends_with($path, '.tmp')) {
+            // Skip calls still in progress — see the class docblock.
+            if (! $this->isSettled($path)) {
                 continue;
             }
 
@@ -125,47 +135,51 @@ class UploadRtpengineRecordings extends Command
     }
 
     /**
-     * Parse recording-daemon filename into (sip_call_id, direction, leg_uuid).
+     * A file is finished once nothing has written to it for
+     * SETTLE_SECONDS.
+     */
+    protected function isSettled(string $path): bool
+    {
+        $mtime = @filemtime($path);
+
+        return $mtime !== false && time() - $mtime >= self::SETTLE_SECONDS;
+    }
+
+    /**
+     * Parse a recording-daemon filename into (sip_call_id, direction,
+     * leg_uuid).
      *
-     * Matches the default `metadata-pattern = call-id-%c--leg-%l.wav`
-     * shape and a few common variations. Returns null when nothing
-     * lines up so the caller can warn + skip.
+     * Expects `call-id-<Call-ID>--leg-<%t>[-<n>].<ext>`. The Call-ID may
+     * contain anything but `/` (real ones look like `a84b4c76@10.0.0.5`),
+     * and is matched greedily so a Call-ID containing `--leg-` still
+     * splits on the last occurrence. `-<n>` is the daemon's collision
+     * suffix; it's folded into leg_uuid so a second recording of the
+     * same Call-ID isn't discarded as a duplicate of the first.
+     *
+     * Returns null for anything else, including per-source (`%t` =
+     * SSRC) files, so the caller warns and leaves them for triage.
      *
      * @return array{sip_call_id: string, direction: string, leg_uuid: string}|null
      */
-    protected function parseFilename(string $name): ?array
+    public function parseFilename(string $name): ?array
     {
-        // call-id-<id>--leg-<0|1>.wav (and variants where leg is
-        // already `recv` / `send` thanks to recording-daemon's
-        // direction-of-flow naming).
-        if (preg_match('/^call-id-(?<id>[^.\/]+)--leg-(?<leg>[^.\/]+)\.[a-z0-9]+$/', $name, $m)) {
-            return [
-                'sip_call_id' => $m['id'],
-                'direction' => $this->mapDirection($m['leg']),
-                'leg_uuid' => $m['id'],
-            ];
+        if (! preg_match('/^call-id-(?<id>[^\/]+)--leg-(?<leg>[a-z0-9_]+?)(?:-(?<dup>\d+))?\.(?:wav|mp3|opus)$/i', $name, $m)) {
+            return null;
         }
 
-        // <call-id>-recv.wav / <call-id>-send.wav (recording-daemon's
-        // shorthand for `output-single=yes` mode).
-        if (preg_match('/^(?<id>[^.\/]+)-(?<dir>recv|send)\.[a-z0-9]+$/', $name, $m)) {
-            return [
-                'sip_call_id' => $m['id'],
-                'direction' => $m['dir'] === 'recv' ? CallRecording::DIRECTION_CALLER_IN : CallRecording::DIRECTION_CALLER_OUT,
-                'leg_uuid' => $m['id'],
-            ];
+        // `%t` is `mix` for the mixed output we configure; anything else
+        // is an SSRC from per-source output, which we don't ingest.
+        if (strtolower($m['leg']) !== 'mix') {
+            return null;
         }
 
-        return null;
-    }
+        $dup = $m['dup'] ?? '';
 
-    protected function mapDirection(string $leg): string
-    {
-        return match ($leg) {
-            '0', 'recv', 'caller_in' => CallRecording::DIRECTION_CALLER_IN,
-            '1', 'send', 'caller_out' => CallRecording::DIRECTION_CALLER_OUT,
-            default => CallRecording::DIRECTION_CALLER_IN,
-        };
+        return [
+            'sip_call_id' => $m['id'],
+            'direction' => CallRecording::DIRECTION_MIXED,
+            'leg_uuid' => $dup === '' ? $m['id'] : "{$m['id']}-{$dup}",
+        ];
     }
 
     /**

@@ -90,8 +90,8 @@ Schedule::command('orbital:collect-metrics')
 // Polled rather than inotify-driven so we don't need a sidecar
 // watcher container per node. Once-a-minute is fine — the upload
 // job is idempotent (deletes the source after success), and the
-// recording-daemon's `output-single=yes` mode finalizes a file
-// only on call end, so we're not racing with active flushes.
+// command skips files modified within the last couple of minutes,
+// since recording-daemon writes in place until the call ends.
 Schedule::command('orbital:upload-recordings')
     ->everyMinute()
     ->name('upload-rtpengine-recordings')

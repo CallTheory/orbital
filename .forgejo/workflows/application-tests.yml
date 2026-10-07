@@ -88,7 +88,7 @@ jobs:
         # manifest at public/build/manifest.json. The frontend job builds
         # too, but its artefacts don't cross job boundaries — so build
         # here as well, just before the test run.
-        uses: https://git.calltheory.com/actions/setup-node@v4
+        uses: https://git.calltheory.com/actions/setup-node@v7
         with:
           node-version: '22'
 
@@ -128,7 +128,7 @@ jobs:
         uses: https://git.calltheory.com/actions/checkout@v4
 
       - name: Setup Node 22
-        uses: https://git.calltheory.com/actions/setup-node@v4
+        uses: https://git.calltheory.com/actions/setup-node@v7
         with:
           node-version: '22'
 
@@ -212,7 +212,7 @@ jobs:
         run: composer audit --format=plain
 
       - name: Setup Node 22
-        uses: https://git.calltheory.com/actions/setup-node@v4
+        uses: https://git.calltheory.com/actions/setup-node@v7
         with:
           node-version: '22'
 

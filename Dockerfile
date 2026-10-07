@@ -13,19 +13,18 @@ FROM node:22-alpine AS frontend
 
 WORKDIR /build
 
-# Pin pnpm to the version the project is developed + locked against.
-# `pnpm@latest` drifted onto 11.11+, which aborts on esbuild's ignored
-# build script; 11.5.0 honors the pnpm-workspace.yaml allowlist. Keep
-# this in lockstep with the `packageManager` field in package.json.
-RUN corepack enable \
-    && corepack prepare pnpm@11.5.0 --activate
+# pnpm-workspace.yaml carries the `allowBuilds` allowlist (esbuild's
+# build is required for `vite build` below) and the minimumReleaseAge
+# supply-chain policy. It must be present BEFORE install or pnpm's
+# strict-dep-builds aborts on the ignored esbuild build script.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
-# pnpm-workspace.yaml carries `onlyBuiltDependencies` (esbuild's build
-# is required for `vite build` below) and .npmrc carries the supply-chain
-# policy. Both must be present BEFORE install or pnpm 10's strict-dep-
-# builds aborts on the ignored esbuild build script.
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
-RUN pnpm install --frozen-lockfile
+# Activate the pnpm pinned in package.json's `packageManager` field (the
+# same version CI and local dev use, and the one Renovate bumps) rather
+# than a hard-coded version here that silently drifts.
+RUN corepack enable \
+    && corepack install \
+    && pnpm install --frozen-lockfile
 
 COPY . .
 RUN pnpm run build

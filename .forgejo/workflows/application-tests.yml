@@ -522,7 +522,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/release
-          for image in laravel asterisk agent-worker; do
+          # Every first-party image the chart references. Keep in sync
+          # with the publish-images matrix and the release body below.
+          for image in laravel asterisk asterisk-config-sync agent-worker; do
             src="docker://${HARBOR_REGISTRY}/orbital/${image}:${VERSION}"
             dst="oci-archive:/tmp/release/${image}-${VERSION}.oci.tar"
             echo "==> ${src} → ${dst}"
@@ -599,6 +601,7 @@ jobs:
           |------|----------|
           | \`laravel-${VERSION}.oci.tar\` | Laravel app image (linux/amd64) |
           | \`asterisk-${VERSION}.oci.tar\` | Asterisk image (linux/amd64) |
+          | \`asterisk-config-sync-${VERSION}.oci.tar\` | Asterisk dialplan/prompt sync init + sidecar image (linux/amd64) |
           | \`agent-worker-${VERSION}.oci.tar\` | Python agent-worker image (linux/amd64) |
           | \`orbital-${VERSION}.tgz\` | Helm chart |
           | \`SHA256SUMS\` | SHA-256 checksums for all archives above |
@@ -632,13 +635,14 @@ jobs:
           \`\`\`bash
           docker load -i laravel-${VERSION}.oci.tar
           docker load -i asterisk-${VERSION}.oci.tar
+          docker load -i asterisk-config-sync-${VERSION}.oci.tar
           docker load -i agent-worker-${VERSION}.oci.tar
           \`\`\`
 
           ### Pushing to your own registry
 
           \`\`\`bash
-          for image in laravel asterisk agent-worker; do
+          for image in laravel asterisk asterisk-config-sync agent-worker; do
               skopeo copy oci-archive:\${image}-${VERSION}.oci.tar \\
                   docker://your-registry.example.com/orbital/\${image}:${VERSION}
           done

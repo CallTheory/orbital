@@ -66,6 +66,9 @@ docs/*
 # Other-image source / infra not needed at Laravel runtime
 agent-worker
 deploy
+# Local-dev k3d + edge tooling, including the edge's self-signed TLS
+# key (local/edge/tls) — image scanners flag it as a leaked credential.
+local
 
 # The Dockerfile + .dockerignore themselves
 Dockerfile

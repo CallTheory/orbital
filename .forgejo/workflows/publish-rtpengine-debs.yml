@@ -315,23 +315,37 @@ jobs:
           cd /tmp/release
           for f in *; do
               EXISTING_ID=$(echo "$EXISTING" \
-                  | jq -r ".[] | select(.name == \"${f}\") | .id")
+                  | jq -r --arg n "$f" '.[] | select(.name == $n) | .id')
               if [[ -n "$EXISTING_ID" && "$EXISTING_ID" != "null" ]]; then
                   echo "==> deleting existing asset ${f} (id ${EXISTING_ID})"
                   curl -sS -X DELETE "${API}/releases/${RELEASE_ID}/assets/${EXISTING_ID}" \
                       -H "$AUTH"
               fi
+              # URL-encode the name: the .deb versions contain `+`
+              # (26.0.1.4+0~mr26.0.1.4), which a raw query string turns
+              # into a space. Releases up to v0.3.4 shipped that way.
+              NAME_Q=$(jq -rn --arg n "$f" '$n | @uri')
               echo "==> uploading ${f}"
-              curl -sS -X POST "${API}/releases/${RELEASE_ID}/assets?name=${f}" \
+              UP_CODE=$(curl -sS -o /tmp/upload.json -w '%{http_code}' \
+                  -X POST "${API}/releases/${RELEASE_ID}/assets?name=${NAME_Q}" \
                   -H "$AUTH" \
-                  -F "attachment=@${f}" \
-                  >/dev/null
+                  -F "attachment=@${f}")
+              if [[ "$UP_CODE" != "201" ]]; then
+                  echo "Upload of ${f} failed (HTTP ${UP_CODE}):" >&2
+                  cat /tmp/upload.json >&2
+                  exit 1
+              fi
+              STORED=$(jq -r '.name' /tmp/upload.json)
+              if [[ "$STORED" != "$f" ]]; then
+                  echo "Asset stored as '${STORED}', expected '${f}'" >&2
+                  exit 1
+              fi
           done
           echo "All assets uploaded to ${TARGET_REPO} release ${TAG_NAME}."
 
       - name: Cleanup
         if: ${{ always() }}
-        run: rm -rf /tmp/release /tmp/rtpengine /tmp/get.json /tmp/create.json
+        run: rm -rf /tmp/release /tmp/rtpengine /tmp/get.json /tmp/create.json /tmp/upload.json
 
       - name: Report
         env:

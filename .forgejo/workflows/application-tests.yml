@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: https://git.calltheory.com/actions/checkout@v4
+        uses: https://git.calltheory.com/actions/checkout@v7
 
       - name: Install PHP runtime libraries
         # The act-based runner image is minimal and ships without
@@ -125,7 +125,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: https://git.calltheory.com/actions/checkout@v4
+        uses: https://git.calltheory.com/actions/checkout@v7
 
       - name: Setup Node 22
         uses: https://git.calltheory.com/actions/setup-node@v7
@@ -176,7 +176,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: https://git.calltheory.com/actions/checkout@v4
+        uses: https://git.calltheory.com/actions/checkout@v7
 
       - name: Install PHP runtime libraries
         run: |
@@ -341,7 +341,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: https://git.calltheory.com/actions/checkout@v4
+        uses: https://git.calltheory.com/actions/checkout@v7
 
       - name: Set up Helm
         uses: https://git.calltheory.com/actions/setup-helm@v4
@@ -465,7 +465,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: https://git.calltheory.com/actions/checkout@v4
+        uses: https://git.calltheory.com/actions/checkout@v7
 
       - name: Surface version
         id: version

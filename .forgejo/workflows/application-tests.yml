@@ -62,7 +62,7 @@ jobs:
           tools: composer:v2
 
       - name: Cache Composer files
-        uses: https://git.calltheory.com/actions/cache@v4
+        uses: https://git.calltheory.com/actions/cache@v6
         with:
           path: ~/.cache/composer/files
           key: composer-${{ runner.os }}-${{ hashFiles('composer.lock') }}
@@ -102,7 +102,7 @@ jobs:
         run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
 
       - name: Cache pnpm store
-        uses: https://git.calltheory.com/actions/cache@v4
+        uses: https://git.calltheory.com/actions/cache@v6
         with:
           path: ${{ steps.pnpm-cache.outputs.path }}
           key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
@@ -147,7 +147,7 @@ jobs:
         run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
 
       - name: Cache pnpm store
-        uses: https://git.calltheory.com/actions/cache@v4
+        uses: https://git.calltheory.com/actions/cache@v6
         with:
           path: ${{ steps.pnpm-cache.outputs.path }}
           key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
@@ -192,7 +192,7 @@ jobs:
           tools: composer:v2
 
       - name: Cache Composer files
-        uses: https://git.calltheory.com/actions/cache@v4
+        uses: https://git.calltheory.com/actions/cache@v6
         with:
           path: ~/.cache/composer/files
           key: composer-${{ runner.os }}-${{ hashFiles('composer.lock') }}
@@ -226,7 +226,7 @@ jobs:
         run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
 
       - name: Cache pnpm store
-        uses: https://git.calltheory.com/actions/cache@v4
+        uses: https://git.calltheory.com/actions/cache@v6
         with:
           path: ${{ steps.pnpm-cache.outputs.path }}
           key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}

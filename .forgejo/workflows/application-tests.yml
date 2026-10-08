@@ -410,6 +410,15 @@ jobs:
           fi
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
+      - name: Install envsubst for cosign-installer
+        # cosign-installer v4 runs envsubst before anything else and the
+        # runner image doesn't ship it (v0.3.3's publish-helm failed with
+        # `envsubst: command not found`). Move into the runner image
+        # alongside libsodium23 later.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends gettext-base
+
       - name: Install Cosign
         uses: https://git.calltheory.com/actions/cosign-installer@v4.1.2
         with:
@@ -473,10 +482,12 @@ jobs:
           echo "tag=${{ needs.tag.outputs.tag }}"        >> "$GITHUB_OUTPUT"
           echo "version=${{ needs.tag.outputs.version }}" >> "$GITHUB_OUTPUT"
 
-      - name: Install tooling (skopeo, jq, curl)
+      - name: Install tooling (skopeo, jq, curl, envsubst)
+        # gettext-base provides envsubst, which cosign-installer v4 runs
+        # before anything else; the runner image doesn't ship it.
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends skopeo jq curl
+          sudo apt-get install -y --no-install-recommends skopeo jq curl gettext-base
 
       - name: Set up Helm
         uses: https://git.calltheory.com/actions/setup-helm@v5

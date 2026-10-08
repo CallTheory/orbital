@@ -344,7 +344,7 @@ jobs:
         uses: https://git.calltheory.com/actions/checkout@v7
 
       - name: Set up Helm
-        uses: https://git.calltheory.com/actions/setup-helm@v4
+        uses: https://git.calltheory.com/actions/setup-helm@v5
         with:
           version: v3.16.0
 
@@ -479,7 +479,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends skopeo jq curl
 
       - name: Set up Helm
-        uses: https://git.calltheory.com/actions/setup-helm@v4
+        uses: https://git.calltheory.com/actions/setup-helm@v5
         with:
           version: v3.16.0
 

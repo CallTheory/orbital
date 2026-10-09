@@ -183,7 +183,7 @@ Real managed Kubernetes on Vultr, images pulled from the private Harbor
 registry (`cr.calltheory.com`), SIP edge on dedicated VMs.
 
 **Infrastructure comes first, from a different repo.** The cluster, the
-Kamailio/rtpengine edge VMs, ingress-nginx, and cert-manager are all
+Kamailio/rtpengine edge VMs, Traefik, and cert-manager are all
 provisioned by **orbital-setup**
 (https://git.calltheory.com/calltheory/orbital-setup,
 `terraform/vultr/managed-vke/`). This app repo only supplies images and

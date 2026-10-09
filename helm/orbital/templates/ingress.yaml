@@ -8,7 +8,7 @@ provisioned secret; toggle with ingress.tls.enabled.
 
 The provider-specific ingressClassName comes from values:
   values-vultr-k3s.yaml → traefik
-  values-vultr-vke.yaml → nginx (VKE default)
+  values-vultr-vke.yaml → traefik (installed by orbital-setup)
   values-onprem-k3s.yaml → traefik
 */}}
 {{- $host := .Values.global.domain -}}

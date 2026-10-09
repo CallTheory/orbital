@@ -191,12 +191,16 @@ VKE ships no ingress controller. Install one, plus cert-manager for
 Let's Encrypt certificates.
 
 ```bash
-helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo add traefik https://traefik.github.io/charts
 helm repo add jetstack https://charts.jetstack.io
 helm repo update
 
-helm install ingress-nginx ingress-nginx/ingress-nginx \
-  --namespace ingress-nginx --create-namespace
+helm install traefik traefik/traefik \
+  --namespace traefik --create-namespace \
+  --set ports.web.http.redirections.entryPoint.to=websecure \
+  --set ports.web.http.redirections.entryPoint.scheme=https \
+  --set ports.web.allowACMEByPass=true \
+  --set ports.websecure.transport.respondingTimeouts.readTimeout=300s
 
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager --create-namespace \
@@ -206,7 +210,7 @@ helm install cert-manager jetstack/cert-manager \
 Wait for Vultr to allocate a load balancer — this takes a minute or two:
 
 ```bash
-kubectl get svc -n ingress-nginx -w
+kubectl get svc -n traefik -w
 ```
 
 **You want an `EXTERNAL-IP` that is a real address, not `<pending>`.**
@@ -229,7 +233,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: traefik
 EOF
 ```
 

@@ -84,7 +84,7 @@ has the error. Flipping `<tier>.external.enabled=true` (Postgres / Valkey / Obje
 | Knob                  | onprem-k3s          | vultr-k3s              | vultr-vke              |
 |-----------------------|---------------------|------------------------|------------------------|
 | `global.storageClass` | `local-path`        | `vultr-block-storage`  | `vultr-block-storage`  |
-| `ingress.className`   | `traefik`           | `traefik`              | `nginx`                |
+| `ingress.className`   | `traefik`           | `traefik`              | `traefik`              |
 | `asterisk.replicas`   | 1                   | 1                      | 1                      |
 | LB type               | klipper-lb          | Vultr LB               | Vultr LB (managed)     |
 

@@ -2,7 +2,7 @@
 #
 # This is the first production environment overlay. It assumes the cluster
 # and the SIP edge VMs were already provisioned by the orbital-setup repo
-# (terraform/vultr/managed-vke/), which also installs ingress-nginx +
+# (terraform/vultr/managed-vke/), whose install script also installs Traefik +
 # cert-manager before this chart goes in.
 #
 # Apply with (see "Production" in README.md for the full flow):
@@ -17,7 +17,7 @@
 # - vultr-block-storage CSI driver (RWO)
 # - Vultr cloud controller (managed LB for Service type=LoadBalancer)
 # - NO ingress controller by default — the OpenTofu VKE module
-#   installs ingress-nginx + cert-manager via separate Helm releases
+#   install script installs Traefik + cert-manager via separate Helm releases
 #   before this chart goes in.
 
 global:
@@ -28,11 +28,10 @@ global:
     pullPolicy: IfNotPresent
 
 ingress:
-  className: "nginx"
-  annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: "100m"     # large for media uploads
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"   # WSS keepalive
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+  # Traefik has no request-body cap by default, and established WSS
+  # connections aren't subject to its read timeout; orbital-setup raises
+  # the websecure entrypoint's readTimeout to 300s for slow uploads.
+  className: "traefik"
   # Real TLS in prod: cert-manager issues a Let's Encrypt cert for the
   # ingress host. Requires DNS pointing at the Vultr LB first (the
   # ACME HTTP-01 challenge fails otherwise).
@@ -40,6 +39,8 @@ ingress:
     enabled: true
   tlsAnnotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    traefik.ingress.kubernetes.io/router.entrypoints: "websecure"
+    traefik.ingress.kubernetes.io/router.tls: "true"
 
 # SIP edge (Kamailio + rtpengine) runs on dedicated VMs OUTSIDE the
 # cluster — provisioned by orbital-setup, never in-cluster in prod. The

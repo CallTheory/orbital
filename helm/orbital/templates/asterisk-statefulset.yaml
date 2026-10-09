@@ -39,6 +39,23 @@ spec:
         checksum/app-env: {{ include (print $.Template.BasePath "/configmap-app-env.yaml") . | sha256sum }}
     spec:
       {{- include "orbital.imagePullSecrets" . | nindent 6 }}
+      {{- if .Values.asterisk.hostNetwork.enabled }}
+      {{- if .Values.asterisk.edgeExpose.enabled }}
+      {{- fail "asterisk.hostNetwork and asterisk.edgeExpose are mutually exclusive" }}
+      {{- end }}
+      # Node network: SIP/RTP reachable at the node's private IP from the
+      # SIP edge VMs. Two Asterisks can't share a node's ports, so the
+      # anti-affinity is required, not preferred.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  {{- include "orbital.selectorLabels" (list . "asterisk") | nindent 18 }}
+      {{- end }}
       initContainers:
         # Pull the current dialplan + prompts from object storage into
         # the local emptyDirs BEFORE Asterisk boots, so it starts with
@@ -86,6 +103,17 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name   # asterisk-0 / asterisk-1 / ...
+            {{- if .Values.asterisk.hostNetwork.enabled }}
+            # On the node network the pod IP is the node's private IP.
+            - name: ASTERISK_BIND_ADDRESS
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: ASTERISK_RTP_START
+              value: {{ .Values.asterisk.hostNetwork.rtpStart | quote }}
+            - name: ASTERISK_RTP_END
+              value: {{ .Values.asterisk.hostNetwork.rtpEnd | quote }}
+            {{- end }}
             {{- if .Values.asterisk.edgeExpose.enabled }}
             # Local-edge test: advertise a reachable address + pin the
             # RTP window so an off-cluster rtpengine can relay media in.

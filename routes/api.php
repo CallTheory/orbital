@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\OrchestrationController;
 use App\Http\Controllers\Api\AgentPersonaController;
 use App\Http\Controllers\Api\CallLogController;
 use App\Http\Controllers\Api\CallSessionController;
+use App\Http\Controllers\Api\EdgeDispatcherController;
 use App\Http\Controllers\Api\ExtensionController;
 use App\Http\Controllers\Api\InboundMailController;
 use App\Http\Controllers\Api\InboundMessageController;
@@ -159,3 +160,9 @@ Route::middleware(['web', 'auth'])->group(function () {
  * by ACME_WEBHOOK_TOKEN so arbitrary callers can't trigger reloads.
  */
 Route::post('/tls/renewed', TlsRenewalWebhookController::class);
+
+/**
+ * Current Kamailio dispatcher list for the SIP edge VMs, which poll it
+ * (same edge token as /tls/renewed) and reload when it changes.
+ */
+Route::get('/edge/dispatcher', EdgeDispatcherController::class);

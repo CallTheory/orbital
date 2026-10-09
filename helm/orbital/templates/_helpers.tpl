@@ -77,6 +77,13 @@ without any --set.
 {{- end -}}
 
 {{/*
+Public hostname for LiveKit signaling when livekit.public is on.
+*/}}
+{{- define "orbital.livekitPublicHost" -}}
+{{- .Values.livekit.public.host | default (printf "livekit.%s" .Values.global.domain) -}}
+{{- end -}}
+
+{{/*
 Build a fully-qualified image reference for a first-party Orbital
 image (Laravel, Asterisk, agent-worker). Honors per-component tag
 override; falls back to orbital.imageTag.

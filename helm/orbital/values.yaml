@@ -127,6 +127,16 @@ asterisk:
     resources:
       requests: {cpu: "25m", memory: "32Mi"}
       limits: {cpu: "100m", memory: "128Mi"}
+  # Run Asterisk on its node's network, for SIP edge VMs outside the
+  # cluster (values-vultr-vke.yaml turns this on). SIP binds to the
+  # node's private IP and RTP uses the range below on the node, so the
+  # edge's rtpengine relays media straight to it; the edge VMs learn
+  # the Asterisk addresses from /api/edge/dispatcher. At most one
+  # Asterisk per node, so keep asterisk.replicas <= node count.
+  hostNetwork:
+    enabled: false
+    rtpStart: 10000
+    rtpEnd: 10999
   # LOCAL-EDGE TEST ONLY. Exposes Asterisk SIP + a bounded RTP range via
   # NodePort so an OFF-cluster rtpengine (local/edge/) can relay media
   # into the pod, and makes pjsip advertise a reachable address. NEVER
@@ -156,6 +166,17 @@ livekit:
     limits: {cpu: "2000m", memory: "2Gi"}
   service:
     port: 7880
+  # Reachable from browsers outside the cluster (operators joining
+  # rooms). Signaling goes through the ingress at wss://<host>; media
+  # needs the node's public IP, so LiveKit moves onto the node network
+  # (one per node) with this UDP range plus a TCP fallback, which the
+  # node firewall must allow. Off = cluster-internal only.
+  public:
+    enabled: false
+    host: ""            # blank = livekit.<global.domain>
+    udpPortStart: 50000
+    udpPortEnd: 60000
+    tcpPort: 7881
 
 livekitSip:
   enabled: true
@@ -196,6 +217,9 @@ telephony:
     # them. jsonrpcUrl (single) is still honoured for older values files.
     jsonrpcUrls: []  # e.g. [http://10.1.96.3:8090/jsonrpc, http://10.1.96.4:8090/jsonrpc]
     jsonrpcUrl: ""   # e.g. http://host.k3d.internal:8090/jsonrpc
+    # SIP URI Asterisk sends outbound trunk calls through (the edge's
+    # private address). Blank = the app default, sip:kamailio:5060;lr.
+    outboundProxy: ""   # e.g. sip:10.42.0.3:5060;lr
 
 # System-status dashboard. The health probes were written for the
 # all-in-one docker-compose stack; components NOT present in this

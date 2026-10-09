@@ -2,14 +2,12 @@
 {{/*
 LiveKit — WebRTC media server for AI agent voice sessions.
 
-Cluster-internal only. External SIP traffic enters via
-the rtpengine edge (NOT through this LiveKit pod), then hops
-to LiveKit-SIP, which bridges into LiveKit. Operator browsers
-connecting for in-room observation go through the ingress.
-
-Phase 2 dropped the wide RTP port range (50000-60000) that the
-docker-compose setup used — rtpengine owns RTP at the edge, so
-internal LiveKit only needs its API port and a small ICE-mux range.
+External SIP traffic enters via the rtpengine edge (NOT through
+this LiveKit pod), then hops to LiveKit-SIP, which bridges into
+LiveKit. By default LiveKit is cluster-internal with a small ICE
+range. With livekit.public on, browsers outside the cluster join
+rooms: signaling via the ingress, media on the node's public IP
+(node network, wide UDP range + TCP fallback).
 */}}
 apiVersion: apps/v1
 kind: Deployment
@@ -27,8 +25,22 @@ spec:
       labels:
         {{- include "orbital.componentLabels" (list . "livekit") | nindent 8 }}
     spec:
+      {{- if .Values.livekit.public.enabled }}
+      # Node network so ICE candidates are the node's addresses. One per
+      # node: replicas would collide on the RTC ports.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  {{- include "orbital.selectorLabels" (list . "livekit") | nindent 18 }}
+      {{- else }}
       {{/* Keep replicas on separate nodes — see the helper. */}}
       {{- include "orbital.topologySpread" (list . "livekit") | nindent 6 }}
+      {{- end }}
       containers:
         - name: livekit
           image: {{ include "orbital.thirdPartyImage" .Values.livekit.image }}
@@ -65,9 +77,18 @@ spec:
               value: |
                 port: 7880
                 rtc:
+                  {{- if .Values.livekit.public.enabled }}
+                  port_range_start: {{ .Values.livekit.public.udpPortStart }}
+                  port_range_end: {{ .Values.livekit.public.udpPortEnd }}
+                  tcp_port: {{ .Values.livekit.public.tcpPort }}
+                  # Advertise the node's public IP (found via STUN) as well
+                  # as its local addresses, so browsers and pods both connect.
+                  use_external_ip: true
+                  {{- else }}
                   port_range_start: 50000
                   port_range_end: 50100
                   tcp_port: 7881
+                  {{- end }}
                   use_ice_lite: true
                 redis:
                   address: {{ if .Values.valkey.external.enabled }}{{ .Values.valkey.external.host }}:{{ .Values.valkey.external.port }}{{ else }}{{ include "orbital.componentName" (list . "valkey") }}:6379{{ end }}

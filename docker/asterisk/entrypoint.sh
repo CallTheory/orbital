@@ -99,6 +99,23 @@ if [ -n "${ASTERISK_EXTERNAL_ADDRESS:-}" ]; then
         /etc/asterisk/pjsip.conf
     echo "[orbital-asterisk] external address = ${ASTERISK_EXTERNAL_ADDRESS}"
 fi
+# ── Node-network mode (Kubernetes hostNetwork) ─────────────────
+# On Kubernetes, Asterisk shares its node's network so the SIP edge VMs
+# can reach it, and ASTERISK_BIND_ADDRESS is the node's private IP.
+# Binding SIP and HTTP/WSS to it keeps them off the node's public
+# interface and makes pjsip advertise that address in Contact/SDP —
+# reachable from the edge VMs and from pods alike. AMI stays on all
+# addresses (the config-sync sidecar uses 127.0.0.1) but only private
+# sources may log in. RTP binds wide; the node firewall covers it.
+if [ -n "${ASTERISK_BIND_ADDRESS:-}" ]; then
+    sed -i "s/^bind = 0\.0\.0\.0:/bind = ${ASTERISK_BIND_ADDRESS}:/" /etc/asterisk/pjsip.conf
+    sed -i -e "s/^bindaddr = 0\.0\.0\.0/bindaddr = ${ASTERISK_BIND_ADDRESS}/" \
+           -e "s/^tlsbindaddr = 0\.0\.0\.0:/tlsbindaddr = ${ASTERISK_BIND_ADDRESS}:/" \
+        /etc/asterisk/http.conf
+    sed -i "s|^permit = 0\.0\.0\.0/0\.0\.0\.0|permit = 127.0.0.0/255.0.0.0\npermit = 10.0.0.0/255.0.0.0\npermit = 172.16.0.0/255.240.0.0\npermit = 192.168.0.0/255.255.0.0|" \
+        /etc/asterisk/manager.conf
+    echo "[orbital-asterisk] SIP/HTTP bound to ${ASTERISK_BIND_ADDRESS}; AMI limited to private sources"
+fi
 if [ -n "${ASTERISK_RTP_START:-}" ] && [ -n "${ASTERISK_RTP_END:-}" ]; then
     sed -i -e "s/^rtpstart = .*/rtpstart = ${ASTERISK_RTP_START}/" \
            -e "s/^rtpend = .*/rtpend = ${ASTERISK_RTP_END}/" \

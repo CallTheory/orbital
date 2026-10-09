@@ -109,6 +109,17 @@ backups:
 # PVC. No longhorn / NFS class needed. Scaled to 2 for HA.
 asterisk:
   replicas: 2
+  # SIP edge VMs reach Asterisk at its node's VPC IP (orbital-setup puts
+  # nodes and edges on one private network). One Asterisk per node.
+  hostNetwork:
+    enabled: true
+
+# Operators' browsers join LiveKit rooms: signaling at
+# wss://livekit.<domain> (needs a DNS record at the ingress LB), media
+# on the nodes' public IPs (orbital-setup opens the node firewall).
+livekit:
+  public:
+    enabled: true
 
 horizon:
   replicas: 1

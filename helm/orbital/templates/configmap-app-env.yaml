@@ -88,6 +88,8 @@ data:
   # Telephony — internal hostnames the Filament admin reaches
   ASTERISK_AMI_HOST: {{ include "orbital.componentName" (list . "asterisk-headless") }}
   ASTERISK_AMI_PORT: "5038"
+  # The edge VMs' dispatcher list (/api/edge/dispatcher) is this name's A records.
+  ASTERISK_DISCOVERY_HOST: {{ include "orbital.componentName" (list . "asterisk-headless") }}
   ASTERISK_AMI_USERNAME: orbital
   {{- if .Values.telephony.kamailio.enabled }}
   # Off-cluster Kamailio edge (VMs in prod; host-published in local test).
@@ -96,8 +98,15 @@ data:
   # Single URL is the health probe's target; the list is what gets drained/reloaded.
   KAMAILIO_JSONRPC_URL: {{ first $edges | default "" | quote }}
   KAMAILIO_JSONRPC_URLS: {{ join "," $edges | quote }}
+  {{- with .Values.telephony.kamailio.outboundProxy }}
+  TELEPHONY_OUTBOUND_PROXY: {{ . | quote }}
+  {{- end }}
   {{- end }}
   LIVEKIT_URL: "ws://{{ include "orbital.componentName" (list . "livekit") }}:{{ .Values.livekit.service.port }}"
+  {{- if .Values.livekit.public.enabled }}
+  # What browsers connect to; the internal URL above is for server-side use.
+  LIVEKIT_PUBLIC_URL: "wss://{{ include "orbital.livekitPublicHost" . }}"
+  {{- end }}
   LIVEKIT_SIP_HOST: {{ include "orbital.componentName" (list . "livekit-sip") }}
   LIVEKIT_SIP_PORT: {{ .Values.livekitSip.service.sipPort | quote }}
 

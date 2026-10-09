@@ -191,12 +191,16 @@ VKE ships no ingress controller. Install one, plus cert-manager for
 Let's Encrypt certificates.
 
 ```bash
-helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo add traefik https://traefik.github.io/charts
 helm repo add jetstack https://charts.jetstack.io
 helm repo update
 
-helm install ingress-nginx ingress-nginx/ingress-nginx \
-  --namespace ingress-nginx --create-namespace
+helm install traefik traefik/traefik \
+  --namespace traefik --create-namespace \
+  --set ports.web.http.redirections.entryPoint.to=websecure \
+  --set ports.web.http.redirections.entryPoint.scheme=https \
+  --set ports.web.allowACMEByPass=true \
+  --set ports.websecure.transport.respondingTimeouts.readTimeout=300s
 
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager --create-namespace \
@@ -206,7 +210,7 @@ helm install cert-manager jetstack/cert-manager \
 Wait for Vultr to allocate a load balancer — this takes a minute or two:
 
 ```bash
-kubectl get svc -n ingress-nginx -w
+kubectl get svc -n traefik -w
 ```
 
 **You want an `EXTERNAL-IP` that is a real address, not `<pending>`.**
@@ -229,7 +233,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: traefik
 EOF
 ```
 
@@ -276,7 +280,7 @@ kubectl create secret docker-registry orbital-registry-creds \
 **7b. Generate a backup encryption key.**
 
 ```bash
-docker run --rm <your-registry-host>/orbital/laravel:0.1.0 \
+docker run --rm <your-registry-host>/orbital/laravel:<version> \
   php artisan orbital:backup --generate-key
 ```
 
@@ -334,8 +338,8 @@ re-use for every upgrade.
 ```yaml
 global:
   domain: orbital.yourcompany.com
-  image:
-    tag: "0.1.0"                    # pin a real release, never :dev
+  # No image tag: the chart deploys the images of its own release, so
+  # `--version` on helm install/upgrade is the one version knob.
 
 postgres:
   external:
@@ -369,6 +373,7 @@ If pgvector wasn't available in Part 3, drop the whole `postgres:` block
 
 ```bash
 helm install orbital oci://<your-registry-host>/orbital/charts/orbital \
+  --version <version> \
   --namespace orbital \
   -f helm/orbital/values-vultr-vke.yaml \
   -f orbital-values.yaml
@@ -497,14 +502,15 @@ Kubernetes load balancer.
 
 ## Upgrading later
 
-Same command, `upgrade` instead of `install`, with a new image tag:
+Same command, `upgrade` instead of `install`, with the new chart version
+(the images follow it):
 
 ```bash
 helm upgrade orbital oci://<your-registry-host>/orbital/charts/orbital \
   --namespace orbital \
   -f helm/orbital/values-vultr-vke.yaml \
   -f orbital-values.yaml \
-  --set global.image.tag=0.2.0
+  --version <new-version>
 ```
 
 Migrations run automatically **before** the new pods roll, so no pod

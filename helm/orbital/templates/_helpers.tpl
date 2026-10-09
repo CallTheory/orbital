@@ -66,15 +66,40 @@ app.kubernetes.io/component: {{ $component }}
 {{- end -}}
 
 {{/*
+Release tag for first-party Orbital images: global.image.tag if set,
+otherwise the chart's appVersion. CI packages each release with
+appVersion = the release version (X.Y.Z, no "v"), which is also the
+image tag it publishes, so a published chart deploys its own images
+without any --set.
+*/}}
+{{- define "orbital.imageTag" -}}
+{{- .Values.global.image.tag | default .Chart.AppVersion -}}
+{{- end -}}
+
+{{/*
+Public hostname for LiveKit signaling when livekit.public is on.
+*/}}
+{{- define "orbital.livekitPublicHost" -}}
+{{- .Values.livekit.public.host | default (printf "livekit.%s" .Values.global.domain) -}}
+{{- end -}}
+
+{{/*
+Public hostname for LiveKit's TURN/TLS when livekit.public.turn is on.
+*/}}
+{{- define "orbital.livekitTurnHost" -}}
+{{- .Values.livekit.public.turn.host | default (printf "turn.%s" .Values.global.domain) -}}
+{{- end -}}
+
+{{/*
 Build a fully-qualified image reference for a first-party Orbital
 image (Laravel, Asterisk, agent-worker). Honors per-component tag
-override; falls back to global tag.
+override; falls back to orbital.imageTag.
   {{ include "orbital.image" (dict "ctx" . "name" "laravel" "tag" .Values.laravel.image.tag) }}
 */}}
 {{- define "orbital.image" -}}
 {{- $registry := .ctx.Values.global.image.registry -}}
 {{- $repository := .ctx.Values.global.image.repository -}}
-{{- $tag := .tag | default .ctx.Values.global.image.tag -}}
+{{- $tag := .tag | default (include "orbital.imageTag" .ctx) -}}
 {{- printf "%s/%s/%s:%s" $registry $repository .name $tag -}}
 {{- end -}}
 

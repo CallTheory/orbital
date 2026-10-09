@@ -42,6 +42,13 @@ class AsteriskDispatcherWriter
      */
     public function regenerate(): array
     {
+        // On Kubernetes the SIP edge VMs pull their list from
+        // /api/edge/dispatcher; there's no shared file to write, and a
+        // reload would only make them re-read what they already have.
+        if ((string) config('telephony.kamailio.asterisk_discovery_host', '') !== '') {
+            return ['wrote' => false, 'reloaded' => []];
+        }
+
         $contents = $this->render();
         $wrote = @file_put_contents($this->path, $contents) !== false;
 

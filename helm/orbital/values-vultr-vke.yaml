@@ -2,7 +2,7 @@
 #
 # This is the first production environment overlay. It assumes the cluster
 # and the SIP edge VMs were already provisioned by the orbital-setup repo
-# (terraform/vultr/managed-vke/), which also installs ingress-nginx +
+# (terraform/vultr/managed-vke/), whose install script also installs Traefik +
 # cert-manager before this chart goes in.
 #
 # Apply with (see "Production" in README.md for the full flow):
@@ -10,14 +10,14 @@
 #     -f ./helm/orbital/values-vultr-vke.yaml \
 #     --set global.domain=orbital.your-company.com \
 #     --set global.image.tag=<released-version> \
-#     --set telephony.kamailio.jsonrpcUrl=http://<edge-vm-ip>:8090/jsonrpc \
+#     --set 'telephony.kamailio.jsonrpcUrls={http://<edge-1-ip>:8090/jsonrpc,http://<edge-2-ip>:8090/jsonrpc}' \
 #     --set agentWorker.token=<strong-random-token>
 #
 # VKE ships:
 # - vultr-block-storage CSI driver (RWO)
 # - Vultr cloud controller (managed LB for Service type=LoadBalancer)
 # - NO ingress controller by default — the OpenTofu VKE module
-#   installs ingress-nginx + cert-manager via separate Helm releases
+#   install script installs Traefik + cert-manager via separate Helm releases
 #   before this chart goes in.
 
 global:
@@ -28,11 +28,10 @@ global:
     pullPolicy: IfNotPresent
 
 ingress:
-  className: "nginx"
-  annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: "100m"     # large for media uploads
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"   # WSS keepalive
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+  # Traefik has no request-body cap by default, and established WSS
+  # connections aren't subject to its read timeout; orbital-setup raises
+  # the websecure entrypoint's readTimeout to 300s for slow uploads.
+  className: "traefik"
   # Real TLS in prod: cert-manager issues a Let's Encrypt cert for the
   # ingress host. Requires DNS pointing at the Vultr LB first (the
   # ACME HTTP-01 challenge fails otherwise).
@@ -40,17 +39,19 @@ ingress:
     enabled: true
   tlsAnnotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    traefik.ingress.kubernetes.io/router.entrypoints: "websecure"
+    traefik.ingress.kubernetes.io/router.tls: "true"
 
 # SIP edge (Kamailio + rtpengine) runs on dedicated VMs OUTSIDE the
 # cluster — provisioned by orbital-setup, never in-cluster in prod. The
 # in-cluster app reaches Kamailio's JSON-RPC to reload the dispatcher and
-# read edge health. The VM IP is deploy-specific: set jsonrpcUrl via
+# read edge health. The VM IPs are deploy-specific: set jsonrpcUrls via
 # --set (or a private per-customer values file) — leave it here so the
 # chart default (false) doesn't silently ship with the edge card red.
 telephony:
   kamailio:
     enabled: true
-    # jsonrpcUrl: "http://<edge-vm-ip>:8090/jsonrpc"   # set per deploy
+    # jsonrpcUrls: ["http://<edge-1-ip>:8090/jsonrpc", "http://<edge-2-ip>:8090/jsonrpc"]   # set per deploy
 
 # Once the observability stack (Grafana/Prometheus/Loki/Promtail) is
 # confirmed reachable and TLS is issued, drop those keys + `tls` from this
@@ -108,6 +109,21 @@ backups:
 # PVC. No longhorn / NFS class needed. Scaled to 2 for HA.
 asterisk:
   replicas: 2
+  # SIP edge VMs reach Asterisk at its node's VPC IP (orbital-setup puts
+  # nodes and edges on one private network). One Asterisk per node.
+  hostNetwork:
+    enabled: true
+
+# Operators' browsers join LiveKit rooms: signaling at
+# wss://livekit.<domain> (needs a DNS record at the ingress LB), media
+# on the nodes' public IPs (orbital-setup opens the node firewall).
+livekit:
+  public:
+    enabled: true
+    # TURN/TLS at turn.<domain>:443 (needs a DNS record at the ingress
+    # LB) for networks that block the media ports.
+    turn:
+      enabled: true
 
 horizon:
   replicas: 1

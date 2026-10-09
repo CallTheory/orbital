@@ -8,7 +8,7 @@ provisioned secret; toggle with ingress.tls.enabled.
 
 The provider-specific ingressClassName comes from values:
   values-vultr-k3s.yaml → traefik
-  values-vultr-vke.yaml → nginx (VKE default)
+  values-vultr-vke.yaml → traefik (installed by orbital-setup)
   values-onprem-k3s.yaml → traefik
 */}}
 {{- $host := .Values.global.domain -}}
@@ -38,6 +38,13 @@ spec:
   tls:
     - hosts:
         - {{ $host | quote }}
+        {{- if and .Values.livekit.enabled .Values.livekit.public.enabled }}
+        - {{ include "orbital.livekitPublicHost" . | quote }}
+        {{- if .Values.livekit.public.turn.enabled }}
+        {{- /* On the shared cert for the TURN IngressRouteTCP; no HTTP rule needed. */}}
+        - {{ include "orbital.livekitTurnHost" . | quote }}
+        {{- end }}
+        {{- end }}
       secretName: {{ $tlsSecret | quote }}
   {{- end }}
   rules:
@@ -53,4 +60,17 @@ spec:
                 port:
                   number: {{ if eq .service "reverb" }}{{ $.Values.reverb.service.port }}{{ else }}{{ $.Values.laravel.service.port }}{{ end }}
           {{- end }}
+    {{- if and .Values.livekit.enabled .Values.livekit.public.enabled }}
+    # LiveKit signaling (WSS) for browsers; media bypasses the ingress.
+    - host: {{ include "orbital.livekitPublicHost" . | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "orbital.componentName" (list . "livekit") }}
+                port:
+                  number: {{ .Values.livekit.service.port }}
+    {{- end }}
 {{- end }}

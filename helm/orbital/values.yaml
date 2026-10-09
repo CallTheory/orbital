@@ -13,7 +13,10 @@ global:
   image:
     registry: cr.calltheory.com
     repository: orbital
-    tag: 0.1.0
+    # Blank = the chart's appVersion, i.e. the images built for this
+    # chart release. Set it only to run different images than the chart
+    # was released with.
+    tag: ""
     pullPolicy: IfNotPresent
 
   # Pull-secret name(s) every Pod attaches. Customers create the secret
@@ -124,6 +127,16 @@ asterisk:
     resources:
       requests: {cpu: "25m", memory: "32Mi"}
       limits: {cpu: "100m", memory: "128Mi"}
+  # Run Asterisk on its node's network, for SIP edge VMs outside the
+  # cluster (values-vultr-vke.yaml turns this on). SIP binds to the
+  # node's private IP and RTP uses the range below on the node, so the
+  # edge's rtpengine relays media straight to it; the edge VMs learn
+  # the Asterisk addresses from /api/edge/dispatcher. At most one
+  # Asterisk per node, so keep asterisk.replicas <= node count.
+  hostNetwork:
+    enabled: false
+    rtpStart: 10000
+    rtpEnd: 10999
   # LOCAL-EDGE TEST ONLY. Exposes Asterisk SIP + a bounded RTP range via
   # NodePort so an OFF-cluster rtpengine (local/edge/) can relay media
   # into the pod, and makes pjsip advertise a reachable address. NEVER
@@ -140,11 +153,8 @@ asterisk:
 livekit:
   enabled: true
   replicas: 1
-  # Public API-key half. MUST match LIVEKIT_API_KEY in the app-secrets
-  # Secret. Used for webhook signature verification against the Laravel
-  # app. This is a public identifier (not sensitive); the secret half
-  # never leaves the Secret and reaches the pod via LIVEKIT_KEYS env.
-  apiKey: "APIorbitaldev"
+  # The API key pair (LIVEKIT_API_KEY / LIVEKIT_API_SECRET) comes from
+  # the app-secrets Secret and also signs LiveKit's webhooks to Laravel.
   # Third-party image. Defaults to docker.io; override if mirrored.
   image:
     registry: docker.io
@@ -156,6 +166,28 @@ livekit:
     limits: {cpu: "2000m", memory: "2Gi"}
   service:
     port: 7880
+  # Reachable from browsers outside the cluster (operators joining
+  # rooms). Signaling goes through the ingress at wss://<host>; media
+  # needs the node's public IP, so LiveKit moves onto the node network
+  # (one per node) with this UDP range plus a TCP fallback, which the
+  # node firewall must allow. Off = cluster-internal only.
+  public:
+    enabled: false
+    host: ""            # blank = livekit.<global.domain>
+    udpPortStart: 50000
+    udpPortEnd: 60000
+    tcpPort: 7881
+    # TURN over TLS on 443 for browsers whose network blocks the media
+    # ports above. Traefik terminates TLS for <host> (on the ingress
+    # certificate) and passes plain TCP to LiveKit's TURN listener, so
+    # this needs the Traefik ingress class (IngressRouteTCP CRD).
+    turn:
+      enabled: false
+      host: ""          # blank = turn.<global.domain>
+      # Relay sockets toward the SFU, on the node. Kept clear of
+      # Asterisk's RTP (10000-10999) and LiveKit media (above).
+      relayPortStart: 20000
+      relayPortEnd: 29999
 
 livekitSip:
   enabled: true
@@ -192,7 +224,24 @@ agentWorker:
 telephony:
   kamailio:
     enabled: false
+    # Private IPs of the SIP edge VMs. Publishes them as the
+    # <release>-orbital-sip-edge Service (SRV _sip._udp records), which
+    # Asterisk uses as its outbound proxy with DNS failover between
+    # edges, and derives jsonrpcUrls when those aren't set explicitly.
+    edgeAddresses: []   # e.g. [10.42.0.3, 10.42.0.4]
+    # Public SIP hostname of the edge VMs (their TLS certificate's name).
+    # Set = operator softphones register over wss://<sipDomain>:<wssPort>/
+    # through Kamailio, which hands Asterisk plain SIP/RTP.
+    sipDomain: ""       # e.g. sip.orbital.example.com
+    wssPort: 7443
+    # Every edge VM's JSON-RPC endpoint; the app drains/reloads all of
+    # them. jsonrpcUrl (single) is still honoured for older values files.
+    jsonrpcUrls: []  # e.g. [http://10.1.96.3:8090/jsonrpc, http://10.1.96.4:8090/jsonrpc]
     jsonrpcUrl: ""   # e.g. http://host.k3d.internal:8090/jsonrpc
+    # SIP URI Asterisk sends outbound trunk calls through. Blank = the
+    # sip-edge Service when edgeAddresses is set, else the app default
+    # (sip:kamailio:5060;lr).
+    outboundProxy: ""   # e.g. sip:10.42.0.3:5060;lr
 
 # System-status dashboard. The health probes were written for the
 # all-in-one docker-compose stack; components NOT present in this

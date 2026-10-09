@@ -10,8 +10,9 @@ description: |-
   services (Vultr Managed Postgres, AWS RDS, ElastiCache, S3, etc.).
 
 type: application
-# version + appVersion are sentinels — publish-helm.yml overrides both
-# with the git tag at package time. Local `helm install ./helm/orbital`
+# version + appVersion are sentinels — the publish-helm job in
+# application-tests.yml overrides both with the git tag at package time.
+# appVersion is also the default first-party image tag (orbital.imageTag). Local `helm install ./helm/orbital`
 # shows 0.0.0-dev so it's visibly distinct from a Harbor-published release.
 version: 0.0.0-dev
 appVersion: 0.0.0-dev

@@ -749,7 +749,7 @@ jobs:
           matching public release (no auth required, signed by the same
           Cosign key as everything above):
 
-          <https://git.calltheory.com/actions/orbital-setup/releases/tag/${TAG_NAME}>
+          <https://git.calltheory.com/calltheory/orbital-setup/releases/tag/${TAG_NAME}>
           EOF
           )
           BODY_JSON=$(jq -Rs . <<<"$BODY")

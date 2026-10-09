@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Telephony;
 
 use App\Events\AsteriskDrainInitiated;
+use App\Models\AsteriskBackend;
 use App\Models\Extension;
 use App\Models\User;
 use App\Services\HighAvailability\HAProxyStatsClient;
@@ -61,11 +62,9 @@ class AsteriskDrainService
             "{$backend}:5060",
             'drain',
         );
+        $this->recordState($backend, 'drain');
 
-        [$haproxyOk] = $this->haproxy->disableServer(
-            self::HAPROXY_WSS_BACKEND,
-            $backend,
-        );
+        $haproxyOk = $this->haproxyAction('disableServer', $backend);
 
         // Find users whose softphone is registered on the draining
         // Asterisk and broadcast a Filament toast directly to each
@@ -76,7 +75,7 @@ class AsteriskDrainService
         // sessions exclusively, and the notification stack
         // auto-subscribes whenever the user is logged in.
         $affectedEndpoints = DB::table('ps_contacts')
-            ->where('reg_server', $backend)
+            ->whereIn('reg_server', $this->nodeNames($backend))
             ->pluck('endpoint')
             ->filter()
             ->unique()
@@ -108,13 +107,57 @@ class AsteriskDrainService
             "{$backend}:5060",
             'active',
         );
+        $this->recordState($backend, 'active');
 
-        [$haproxyOk] = $this->haproxy->enableServer(
-            self::HAPROXY_WSS_BACKEND,
-            $backend,
-        );
+        $haproxyOk = $this->haproxyAction('enableServer', $backend);
 
         return ['kamailio' => $kamailioOk, 'haproxy' => $haproxyOk];
+    }
+
+    /**
+     * The SIP edge setup (Kubernetes) has no HAProxy: softphones reach
+     * Asterisk through Kamailio, so the dispatcher state covers them.
+     * There the HAProxy step is skipped and counts as done.
+     */
+    protected function edgeMode(): bool
+    {
+        return (string) config('telephony.kamailio.asterisk_discovery_host', '') !== '';
+    }
+
+    protected function haproxyAction(string $method, string $backend): bool
+    {
+        if ($this->edgeMode()) {
+            return true;
+        }
+
+        [$ok] = $this->haproxy->{$method}(self::HAPROXY_WSS_BACKEND, $backend);
+
+        return $ok;
+    }
+
+    /**
+     * Remember the operator's choice so the edges' dispatcher list
+     * (/api/edge/dispatcher) keeps it across reloads.
+     */
+    protected function recordState(string $backend, string $state): void
+    {
+        AsteriskBackend::query()
+            ->where('hostname', $backend)
+            ->update(['dispatch_state' => $state]);
+    }
+
+    /**
+     * reg_server values that mean "registered on this backend": the
+     * address it's drained by, plus its systemname when that differs
+     * (discovered pods are keyed by IP but stamp the pod name).
+     *
+     * @return list<string>
+     */
+    protected function nodeNames(string $backend): array
+    {
+        $nodeName = AsteriskBackend::query()->where('hostname', $backend)->value('node_name');
+
+        return array_values(array_unique(array_filter([$backend, $nodeName])));
     }
 
     /**
@@ -162,11 +205,9 @@ class AsteriskDrainService
             "{$backend}:5060",
             'disable',
         );
+        $this->recordState($backend, 'disable');
 
-        [$haproxyOk] = $this->haproxy->disableServer(
-            self::HAPROXY_WSS_BACKEND,
-            $backend,
-        );
+        $haproxyOk = $this->haproxyAction('disableServer', $backend);
 
         return ['kamailio' => $kamailioOk, 'haproxy' => $haproxyOk];
     }

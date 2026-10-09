@@ -168,6 +168,24 @@ return [
                 'http://kamailio:8090/jsonrpc,http://kamailio-2:8090/jsonrpc'
             ))
         ))),
+        // Hostname whose A records are the ready Asterisks; the edge
+        // VMs poll /api/edge/dispatcher for them. The chart points this
+        // at the headless Asterisk Service.
+        'asterisk_discovery_host' => env('ASTERISK_DISCOVERY_HOST', ''),
+        // The Asterisk StatefulSet and its size, for naming individual
+        // pods (<statefulset>-<n>.<discovery host>).
+        'asterisk_statefulset' => env('ASTERISK_STATEFULSET', ''),
+        'asterisk_replicas' => (int) env('ASTERISK_REPLICAS', 0),
+        'dispatcher_set_id' => (int) env('KAMAILIO_DISPATCHER_SET_ID', 1),
     ],
+
+    // Where Asterisk sends outbound trunk calls so they traverse the
+    // SIP edge (Kamailio + rtpengine). Written onto every trunk
+    // endpoint by TrunkSyncer and checked by OutboundTrunkAuditor.
+    'outbound_proxy' => env('TELEPHONY_OUTBOUND_PROXY', 'sip:kamailio:5060;lr'),
+
+    // Softphones reach Asterisk through the SIP edge (Kamailio WSS +
+    // rtpengine), which handles WebRTC; Asterisk sees plain SIP/RTP.
+    'webrtc_via_edge' => (bool) env('WEBRTC_VIA_EDGE', false),
 
 ];

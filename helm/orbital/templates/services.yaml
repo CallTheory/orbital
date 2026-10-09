@@ -89,6 +89,12 @@ spec:
       targetPort: api
       protocol: TCP
       name: api
+    {{- if and .Values.livekit.public.enabled .Values.livekit.public.turn.enabled }}
+    - port: 443
+      targetPort: turn
+      protocol: TCP
+      name: turn
+    {{- end }}
   selector:
     {{- include "orbital.selectorLabels" (list . "livekit") | nindent 4 }}
 {{- end }}

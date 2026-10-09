@@ -5,9 +5,8 @@ name: Application Tests
 # v* tag push (or manual dispatch with a version), the publish jobs
 # downstream of the tests fire in sequence:
 #
-#   php + frontend  →  tag  →  publish-images
-#                              publish-helm
-#                              publish-archives  (needs both above)
+#   php + frontend  →  tag  →  publish-images  →  scan-images  →  publish-helm
+#                              publish-archives  (needs images + helm)
 #
 # Why one workflow instead of four cross-workflow workflow_run chains:
 # Forgejo's workflow_run dispatch was unreliable for tag pushes —
@@ -328,8 +327,83 @@ jobs:
       extra-tags: ${{ needs.tag.outputs.extra }}
     secrets: inherit
 
+  scan-images:
+    # Release gate: scan each just-pushed image for leaked credentials
+    # (keys, tokens, passwords baked into layers). publish-helm needs
+    # this job, so a HIGH/CRITICAL finding stops the chart — and with it
+    # the release archives and orbital-setup installs of this version.
+    # Lower severities are listed in the log but don't fail the release.
+    # Vetted false positives go in .trivyignore.yaml at the repo root.
+    needs: [tag, publish-images]
+    if: |
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'workflow_dispatch' && needs.tag.outputs.version != '')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [laravel, asterisk, agent-worker, asterisk-config-sync]
+    env:
+      TRIVY_VERSION: "0.75.0"
+
+    steps:
+      - name: Checkout
+        uses: https://git.calltheory.com/actions/checkout@v7
+
+      - name: Install Trivy
+        # Release tarball verified against its published checksums,
+        # rather than a third-party install action or script.
+        run: |
+          set -euo pipefail
+          base="https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}"
+          tarball="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          cd /tmp
+          curl -fsSLO "${base}/${tarball}"
+          curl -fsSLO "${base}/trivy_${TRIVY_VERSION}_checksums.txt"
+          grep " ${tarball}\$" "trivy_${TRIVY_VERSION}_checksums.txt" | sha256sum -c -
+          tar -xzf "$tarball" trivy
+          sudo install -m 0755 trivy /usr/local/bin/trivy
+          trivy --version
+
+      - name: Scan for secrets
+        env:
+          HARBOR_REGISTRY: ${{ secrets.HARBOR_REGISTRY }}
+          TRIVY_USERNAME: ${{ secrets.HARBOR_USERNAME }}
+          TRIVY_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
+          VERSION: ${{ needs.tag.outputs.version }}
+          IMAGE: ${{ matrix.image }}
+        run: |
+          set -euo pipefail
+          ref="${HARBOR_REGISTRY}/orbital/${IMAGE}:${VERSION}"
+          ignore=()
+          [[ -f .trivyignore.yaml ]] && ignore=(--ignorefile .trivyignore.yaml)
+          echo "==> Scanning ${ref}"
+          # --scanners secret needs no vulnerability DB download.
+          trivy image --quiet --scanners secret --format json \
+              ${ignore[@]+"${ignore[@]}"} --output /tmp/secrets.json "$ref"
+
+          jq -r '.Results[]? | .Target as $t | .Secrets[]?
+                 | "\(.Severity)\t\(.RuleID)\t\($t):\(.StartLine)"' /tmp/secrets.json \
+              | sort | uniq -c | sort -rn > /tmp/summary.txt
+          if [[ -s /tmp/summary.txt ]]; then
+              echo "Findings (count, severity, rule, file:line):"
+              cat /tmp/summary.txt
+          else
+              echo "No secrets found."
+          fi
+
+          blocking=$(jq '[.Results[]?.Secrets[]? | select(.Severity == "HIGH" or .Severity == "CRITICAL")] | length' /tmp/secrets.json)
+          if (( blocking > 0 )); then
+              echo "::error::${blocking} HIGH/CRITICAL secret finding(s) in ${ref}; release blocked." >&2
+              echo "Rotate any real credential, rebuild without it, and re-tag. A vetted" >&2
+              echo "false positive can be listed in .trivyignore.yaml." >&2
+              exit 1
+          fi
+
   publish-helm:
-    needs: tag
+    needs: [tag, scan-images]
     # Helm chart only publishes on actual versioned releases. main
     # pushes don't emit a chart — only image :latest moves.
     if: |

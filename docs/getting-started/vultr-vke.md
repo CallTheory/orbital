@@ -27,9 +27,9 @@ with either.
 path if you are self-hosting independently, and it means you are not
 dependent on anyone else's registry.
 
-**Pull prebuilt images.** Call Theory hosting and support customers get
-credentials to a registry carrying released images and the Helm chart, which
-saves maintaining a build pipeline.
+**Pull prebuilt images.** Released images and the Helm chart are public at
+`cr.calltheory.com/orbital`, no account needed, which saves maintaining a
+build pipeline.
 
 Wherever `<your-registry-host>` appears below, substitute whichever you are
 using.
@@ -40,7 +40,7 @@ using.
 |---|---|
 | A Vultr account with billing | VKE control plane is free; you pay for worker nodes |
 | A domain you control | You'll point a record at a load balancer |
-| Container images | Either credentials for a registry that has them, or images you built yourself — see [Where the images come from](#where-the-images-come-from) |
+| Container images | The public registry, or images you built yourself — see [Where the images come from](#where-the-images-come-from) |
 | A terminal | `kubectl` and `helm`, installed below |
 
 Budget roughly 45–90 minutes for a first run, most of it waiting for
@@ -261,9 +261,10 @@ dig +short orbital.yourcompany.com
 
 Three secrets. Nothing here goes in a values file or in git.
 
-**7a. Registry credentials** — without this every pod sits in
-`ImagePullBackOff`. Skip it if your images are somewhere the cluster can
-already read.
+**7a. Registry credentials** — only for a private registry (your own
+build or mirror). Skip this for the public `cr.calltheory.com` images.
+Without it, pods from a private registry sit in `ImagePullBackOff`; add
+the secret to the chart with `--set 'global.imagePullSecrets[0].name=orbital-registry-creds'`.
 
 ```bash
 kubectl create secret docker-registry orbital-registry-creds \
@@ -409,7 +410,7 @@ kubectl describe pod -n orbital <pod-name> | tail -30
 
 | Symptom | Almost always |
 |---|---|
-| `ImagePullBackOff` | The registry secret from 7a — wrong name, or the `$` in the username got eaten |
+| `ImagePullBackOff` | Private registry: the secret from 7a — wrong name, not listed in `global.imagePullSecrets`, or the `$` in the username got eaten |
 | `CrashLoopBackOff` on laravel | Can't reach the database — check host, port, and the DB firewall |
 | Migrate job failed | Read its logs; usually pgvector or database credentials |
 | Pod `Pending` forever | Not enough room on 3 nodes — scale the node plan up |

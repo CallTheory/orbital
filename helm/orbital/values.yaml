@@ -7,9 +7,9 @@
 # without any external service dependencies.
 
 global:
-  # Image registry. Defaults to Patrick's Harbor; per-customer values
-  # files override. The chart concatenates {registry}/{repository}/<image>
-  # for every Pod's image reference.
+  # Image registry. Defaults to Call Theory's public registry; point it
+  # at a mirror to pull from your own. The chart concatenates
+  # {registry}/{repository}/<image> for every Pod's image reference.
   image:
     registry: cr.calltheory.com
     repository: orbital
@@ -19,15 +19,17 @@ global:
     tag: ""
     pullPolicy: IfNotPresent
 
-  # Pull-secret name(s) every Pod attaches. Customers create the secret
-  # themselves with their per-customer Harbor robot-account credentials:
+  # Pull-secret name(s) every Pod attaches. None needed for the public
+  # registry; for a private mirror, create one and list it here:
   #
   #   kubectl create secret docker-registry orbital-registry-creds \
-  #     --docker-server=cr.calltheory.com \
-  #     --docker-username='robot$<customer>-pull' \
+  #     --docker-server=<your-registry> \
+  #     --docker-username='<username>' \
   #     --docker-password='<token>'
-  imagePullSecrets:
-    - name: orbital-registry-creds
+  #
+  #   imagePullSecrets:
+  #     - name: orbital-registry-creds
+  imagePullSecrets: []
 
   # Customer-facing domain. Sub-resources derive from it (admin, sip,
   # webhook, etc.). The ingress host is always this value.

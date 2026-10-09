@@ -205,18 +205,15 @@ git tag v0.1.0 && git push forgejo v0.1.0    # → CI publishes signed images + 
 (Manual fallback when you need images without cutting a tag —
 `HARBOR_USERNAME='robot$ci' HARBOR_TOKEN='<token>' ./scripts/build-and-push.sh --tag=v0.1.0`.)
 
-**b. Create the in-cluster secrets** (pull secret + app secrets). The
+**b. Create the in-cluster secrets.** The images are public, so no pull
+secret is needed (add one under `global.imagePullSecrets` only for a
+private mirror). The
 chart never renders secret material — you create it once per cluster,
 following the recipes in
 [`helm/orbital/templates/secrets.example.yaml`](helm/orbital/templates/secrets.example.yaml):
 
 ```bash
 kubectl create namespace orbital
-
-kubectl -n orbital create secret docker-registry orbital-registry-creds \
-  --docker-server=cr.calltheory.com \
-  --docker-username='robot$<customer>-pull' \
-  --docker-password='<token>'
 
 kubectl -n orbital create secret generic orbital-orbital-app-secrets \
   --from-literal=APP_KEY="base64:$(php artisan key:generate --show)" \

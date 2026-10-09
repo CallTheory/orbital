@@ -120,6 +120,10 @@ asterisk:
 livekit:
   public:
     enabled: true
+    # TURN/TLS at turn.<domain>:443 (needs a DNS record at the ingress
+    # LB) for networks that block the media ports.
+    turn:
+      enabled: true
 
 horizon:
   replicas: 1

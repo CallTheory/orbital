@@ -177,6 +177,17 @@ livekit:
     udpPortStart: 50000
     udpPortEnd: 60000
     tcpPort: 7881
+    # TURN over TLS on 443 for browsers whose network blocks the media
+    # ports above. Traefik terminates TLS for <host> (on the ingress
+    # certificate) and passes plain TCP to LiveKit's TURN listener, so
+    # this needs the Traefik ingress class (IngressRouteTCP CRD).
+    turn:
+      enabled: false
+      host: ""          # blank = turn.<global.domain>
+      # Relay sockets toward the SFU, on the node. Kept clear of
+      # Asterisk's RTP (10000-10999) and LiveKit media (above).
+      relayPortStart: 20000
+      relayPortEnd: 29999
 
 livekitSip:
   enabled: true

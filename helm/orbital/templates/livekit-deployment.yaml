@@ -49,6 +49,11 @@ spec:
             - name: api
               containerPort: 7880
               protocol: TCP
+            {{- if and .Values.livekit.public.enabled .Values.livekit.public.turn.enabled }}
+            - name: turn
+              containerPort: 443
+              protocol: TCP
+            {{- end }}
           env:
             # LiveKit config is injected wholesale via LIVEKIT_CONFIG (not a
             # mounted file) so secrets — the API key/secret AND the Valkey
@@ -90,6 +95,18 @@ spec:
                   tcp_port: 7881
                   {{- end }}
                   use_ice_lite: true
+                {{- if and .Values.livekit.public.enabled .Values.livekit.public.turn.enabled }}
+                # TURN/TLS, advertised as turns:<host>:443. Traefik terminates
+                # TLS (external_tls), so LiveKit listens for plain TCP on 443.
+                turn:
+                  enabled: true
+                  domain: {{ include "orbital.livekitTurnHost" . }}
+                  tls_port: 443
+                  external_tls: true
+                  udp_port: 0
+                  relay_range_start: {{ .Values.livekit.public.turn.relayPortStart }}
+                  relay_range_end: {{ .Values.livekit.public.turn.relayPortEnd }}
+                {{- end }}
                 redis:
                   address: {{ if .Values.valkey.external.enabled }}{{ .Values.valkey.external.host }}:{{ .Values.valkey.external.port }}{{ else }}{{ include "orbital.componentName" (list . "valkey") }}:6379{{ end }}
                   password: $(REDIS_PASSWORD)

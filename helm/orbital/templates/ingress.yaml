@@ -40,6 +40,10 @@ spec:
         - {{ $host | quote }}
         {{- if and .Values.livekit.enabled .Values.livekit.public.enabled }}
         - {{ include "orbital.livekitPublicHost" . | quote }}
+        {{- if .Values.livekit.public.turn.enabled }}
+        {{- /* On the shared cert for the TURN IngressRouteTCP; no HTTP rule needed. */}}
+        - {{ include "orbital.livekitTurnHost" . | quote }}
+        {{- end }}
         {{- end }}
       secretName: {{ $tlsSecret | quote }}
   {{- end }}

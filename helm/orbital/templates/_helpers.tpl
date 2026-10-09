@@ -84,6 +84,13 @@ Public hostname for LiveKit signaling when livekit.public is on.
 {{- end -}}
 
 {{/*
+Public hostname for LiveKit's TURN/TLS when livekit.public.turn is on.
+*/}}
+{{- define "orbital.livekitTurnHost" -}}
+{{- .Values.livekit.public.turn.host | default (printf "turn.%s" .Values.global.domain) -}}
+{{- end -}}
+
+{{/*
 Build a fully-qualified image reference for a first-party Orbital
 image (Laravel, Asterisk, agent-worker). Honors per-component tag
 override; falls back to orbital.imageTag.

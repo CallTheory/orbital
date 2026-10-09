@@ -104,6 +104,12 @@ data:
   # Single URL is the health probe's target; the list is what gets drained/reloaded.
   KAMAILIO_JSONRPC_URL: {{ first $edges | default "" | quote }}
   KAMAILIO_JSONRPC_URLS: {{ join "," $edges | quote }}
+  {{- with .Values.telephony.kamailio.sipDomain }}
+  # Softphones register through the edge's Kamailio WSS.
+  WEBRTC_VIA_EDGE: "true"
+  SIP_EDGE_WSS_URL: "wss://{{ . }}:{{ $.Values.telephony.kamailio.wssPort }}/"
+  ASTERISK_SIP_DOMAIN: {{ . | quote }}
+  {{- end }}
   {{- $proxy := .Values.telephony.kamailio.outboundProxy }}
   {{- if and (not $proxy) .Values.telephony.kamailio.edgeAddresses }}
   {{- /* No port: Asterisk looks up _sip._udp SRV and fails over between edges. */}}

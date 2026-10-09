@@ -184,4 +184,8 @@ return [
     // endpoint by TrunkSyncer and checked by OutboundTrunkAuditor.
     'outbound_proxy' => env('TELEPHONY_OUTBOUND_PROXY', 'sip:kamailio:5060;lr'),
 
+    // Softphones reach Asterisk through the SIP edge (Kamailio WSS +
+    // rtpengine), which handles WebRTC; Asterisk sees plain SIP/RTP.
+    'webrtc_via_edge' => (bool) env('WEBRTC_VIA_EDGE', false),
+
 ];

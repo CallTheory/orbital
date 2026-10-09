@@ -53,6 +53,12 @@ class EndpointSyncer
         $endpointId = $extension->realtimeEndpointId();
         $isWebrtc = in_array($extension->type, ['webrtc', 'webrtc_client', 'staff_softphone'], true);
         $isAiAgent = $extension->type === 'ai_agent';
+        // Behind the SIP edge, Kamailio + rtpengine terminate the
+        // browser's WebRTC (DTLS-SRTP, ICE, AVPF) and hand Asterisk
+        // plain RTP, which is also what lets rtpengine record operator
+        // calls. Asterisk then treats softphones as ordinary SIP
+        // endpoints reached through the edge (Path).
+        $webrtcViaEdge = $isWebrtc && (bool) config('telephony.webrtc_via_edge', false);
         $context = $extension->team_id
             ? 'tenant_'.$extension->team_id
             : ($extension->context ?: 'default');
@@ -80,16 +86,26 @@ class EndpointSyncer
             'allow' => $isWebrtc ? 'opus,ulaw' : 'ulaw,alaw,g722,opus',
             'direct_media' => 'no',
             'force_rport' => 'yes',
-            'rewrite_contact' => 'yes',
+            // Via the edge the Contact must stay the browser's own: the
+            // edge maps it back to the WebSocket connection.
+            'rewrite_contact' => $webrtcViaEdge ? 'no' : 'yes',
             'rtp_symmetric' => 'yes',
             'trust_id_inbound' => 'yes',
             'device_state_busy_at' => '1',
             'dtmf_mode' => 'rfc4733',
             'callerid' => '"'.($extension->label ?? 'Ext '.$extension->number).'" <'.$extension->number.'>',
-            'webrtc' => $isWebrtc ? 'yes' : 'no',
+            'webrtc' => $isWebrtc && ! $webrtcViaEdge ? 'yes' : 'no',
         ];
 
-        if ($isWebrtc) {
+        if ($webrtcViaEdge) {
+            // Explicit, so an endpoint first written in direct mode
+            // doesn't keep its DTLS/ICE settings after an update.
+            $endpointRow['media_encryption'] = 'no';
+            $endpointRow['ice_support'] = 'no';
+            $endpointRow['use_avpf'] = 'no';
+            $endpointRow['rtcp_mux'] = 'no';
+            $endpointRow['media_use_received_transport'] = 'no';
+        } elseif ($isWebrtc) {
             $endpointRow['media_encryption'] = 'dtls';
             $endpointRow['dtls_verify'] = 'fingerprint';
             $endpointRow['dtls_setup'] = 'actpass';

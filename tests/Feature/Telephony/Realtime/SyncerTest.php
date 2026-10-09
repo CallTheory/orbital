@@ -79,6 +79,34 @@ class SyncerTest extends TestCase
         ]);
     }
 
+    public function test_webrtc_endpoints_are_plain_sip_behind_the_edge(): void
+    {
+        $team = $this->makeTeam();
+        $extension = Extension::create([
+            'team_id' => $team->id,
+            'number' => '301',
+            'type' => 'webrtc_client',
+            'sip_username' => 'wrtc',
+            'sip_password' => 'secret',
+            'is_active' => true,
+        ]);
+
+        // Written in direct mode first: the edge-mode update must clear it.
+        $this->assertSame('dtls', DB::table('ps_endpoints')->where('id', "t{$team->id}_301")->value('media_encryption'));
+
+        config(['telephony.webrtc_via_edge' => true]);
+        app(EndpointSyncer::class)->sync($extension->fresh());
+
+        $row = DB::table('ps_endpoints')->where('id', "t{$team->id}_301")->first();
+        $this->assertSame('no', $row->webrtc);
+        $this->assertSame('no', $row->media_encryption);
+        $this->assertSame('no', $row->ice_support);
+        $this->assertSame('no', $row->use_avpf);
+        $this->assertSame('no', $row->rewrite_contact);
+        $this->assertSame('opus,ulaw', $row->allow);
+        $this->assertSame('yes', DB::table('ps_aors')->where('id', "t{$team->id}_301")->value('support_path'));
+    }
+
     public function test_endpoint_syncer_marks_webrtc_endpoints_with_dtls_settings(): void
     {
         $team = $this->makeTeam();

@@ -229,6 +229,11 @@ telephony:
     # Asterisk uses as its outbound proxy with DNS failover between
     # edges, and derives jsonrpcUrls when those aren't set explicitly.
     edgeAddresses: []   # e.g. [10.42.0.3, 10.42.0.4]
+    # Public SIP hostname of the edge VMs (their TLS certificate's name).
+    # Set = operator softphones register over wss://<sipDomain>:<wssPort>/
+    # through Kamailio, which hands Asterisk plain SIP/RTP.
+    sipDomain: ""       # e.g. sip.orbital.example.com
+    wssPort: 7443
     # Every edge VM's JSON-RPC endpoint; the app drains/reloads all of
     # them. jsonrpcUrl (single) is still honoured for older values files.
     jsonrpcUrls: []  # e.g. [http://10.1.96.3:8090/jsonrpc, http://10.1.96.4:8090/jsonrpc]

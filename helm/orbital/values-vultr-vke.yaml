@@ -10,7 +10,7 @@
 #     -f ./helm/orbital/values-vultr-vke.yaml \
 #     --set global.domain=orbital.your-company.com \
 #     --set global.image.tag=<released-version> \
-#     --set telephony.kamailio.jsonrpcUrl=http://<edge-vm-ip>:8090/jsonrpc \
+#     --set 'telephony.kamailio.jsonrpcUrls={http://<edge-1-ip>:8090/jsonrpc,http://<edge-2-ip>:8090/jsonrpc}' \
 #     --set agentWorker.token=<strong-random-token>
 #
 # VKE ships:
@@ -44,13 +44,13 @@ ingress:
 # SIP edge (Kamailio + rtpengine) runs on dedicated VMs OUTSIDE the
 # cluster — provisioned by orbital-setup, never in-cluster in prod. The
 # in-cluster app reaches Kamailio's JSON-RPC to reload the dispatcher and
-# read edge health. The VM IP is deploy-specific: set jsonrpcUrl via
+# read edge health. The VM IPs are deploy-specific: set jsonrpcUrls via
 # --set (or a private per-customer values file) — leave it here so the
 # chart default (false) doesn't silently ship with the edge card red.
 telephony:
   kamailio:
     enabled: true
-    # jsonrpcUrl: "http://<edge-vm-ip>:8090/jsonrpc"   # set per deploy
+    # jsonrpcUrls: ["http://<edge-1-ip>:8090/jsonrpc", "http://<edge-2-ip>:8090/jsonrpc"]   # set per deploy
 
 # Once the observability stack (Grafana/Prometheus/Loki/Promtail) is
 # confirmed reachable and TLS is issued, drop those keys + `tls` from this

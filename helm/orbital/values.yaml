@@ -143,11 +143,8 @@ asterisk:
 livekit:
   enabled: true
   replicas: 1
-  # Public API-key half. MUST match LIVEKIT_API_KEY in the app-secrets
-  # Secret. Used for webhook signature verification against the Laravel
-  # app. This is a public identifier (not sensitive); the secret half
-  # never leaves the Secret and reaches the pod via LIVEKIT_KEYS env.
-  apiKey: "APIorbitaldev"
+  # The API key pair (LIVEKIT_API_KEY / LIVEKIT_API_SECRET) comes from
+  # the app-secrets Secret and also signs LiveKit's webhooks to Laravel.
   # Third-party image. Defaults to docker.io; override if mirrored.
   image:
     registry: docker.io
@@ -195,6 +192,9 @@ agentWorker:
 telephony:
   kamailio:
     enabled: false
+    # Every edge VM's JSON-RPC endpoint; the app drains/reloads all of
+    # them. jsonrpcUrl (single) is still honoured for older values files.
+    jsonrpcUrls: []  # e.g. [http://10.1.96.3:8090/jsonrpc, http://10.1.96.4:8090/jsonrpc]
     jsonrpcUrl: ""   # e.g. http://host.k3d.internal:8090/jsonrpc
 
 # System-status dashboard. The health probes were written for the

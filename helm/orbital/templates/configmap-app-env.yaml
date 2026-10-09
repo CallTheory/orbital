@@ -92,8 +92,10 @@ data:
   {{- if .Values.telephony.kamailio.enabled }}
   # Off-cluster Kamailio edge (VMs in prod; host-published in local test).
   KAMAILIO_ENABLED: "true"
-  KAMAILIO_JSONRPC_URL: {{ .Values.telephony.kamailio.jsonrpcUrl | quote }}
-  KAMAILIO_JSONRPC_URLS: {{ .Values.telephony.kamailio.jsonrpcUrl | quote }}
+  {{- $edges := .Values.telephony.kamailio.jsonrpcUrls | default (compact (list .Values.telephony.kamailio.jsonrpcUrl)) }}
+  # Single URL is the health probe's target; the list is what gets drained/reloaded.
+  KAMAILIO_JSONRPC_URL: {{ first $edges | default "" | quote }}
+  KAMAILIO_JSONRPC_URLS: {{ join "," $edges | quote }}
   {{- end }}
   LIVEKIT_URL: "ws://{{ include "orbital.componentName" (list . "livekit") }}:{{ .Values.livekit.service.port }}"
   LIVEKIT_SIP_HOST: {{ include "orbital.componentName" (list . "livekit-sip") }}

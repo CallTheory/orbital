@@ -79,7 +79,8 @@ spec:
                   empty_timeout: 300
                   departure_timeout: 20
                 webhook:
-                  api_key: {{ .Values.livekit.apiKey | quote }}
+                  # Must be a key in LIVEKIT_KEYS, i.e. the Secret's key.
+                  api_key: $(LIVEKIT_API_KEY)
                   urls:
                     - http://{{ include "orbital.componentName" (list . "laravel") }}:{{ .Values.laravel.service.port }}/api/livekit/webhook
           resources:

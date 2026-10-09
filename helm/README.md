@@ -92,18 +92,10 @@ Apply with `-f values-<provider>-<flavor>.yaml`. Mix overrides freely: a custome
 
 ## Image registry contract
 
-Orbital images live in **Patrick's private Harbor** at `cr.calltheory.com` (URL set via `global.image.registry`). Customers receive **per-customer Harbor robot accounts** with pull-only access. To install:
+Orbital's images and chart are public at `cr.calltheory.com/orbital` (set via `global.image.registry` / `global.image.repository`); no credentials are needed. To install:
 
 ```bash
-# 1. Operator hands customer their robot username + token
-kubectl create secret docker-registry orbital-registry-creds \
-    --namespace orbital \
-    --docker-server=cr.calltheory.com \
-    --docker-username='robot$<customer>-pull' \
-    --docker-password='<token>'
-
-# 2. Helm install pulls images from Harbor with that secret.
-#    Customers without source access install from Harbor's OCI registry:
+# Customers without source access install from the OCI registry:
 helm install orbital oci://cr.calltheory.com/orbital/charts/orbital \
     --version 0.1.1 \
     -n orbital --create-namespace \
@@ -115,7 +107,7 @@ helm install orbital ./helm/orbital \
     -f values-vultr-k3s.yaml
 ```
 
-Revoking access = deleting the robot account in Harbor; existing pods stay up until they roll.
+To pull from a private mirror instead, point `global.image.registry` / `global.image.repository` at it, create a `docker-registry` secret, and list it in `global.imagePullSecrets`.
 
 Third-party images (LiveKit, Postgres, Valkey, SeaweedFS) pull from `docker.io` directly. Each component's `image.registry` in values is overridable per install for air-gapped or mirror setups.
 

@@ -1,0 +1,44 @@
+{{- if .Values.telephony.kamailio.edgeAddresses -}}
+{{/*
+The SIP edge VMs as an in-cluster DNS name. Headless and selector-less,
+with hand-written endpoints for the edges' private IPs, so CoreDNS
+publishes A records and the RFC 3263 SRV record
+_sip._udp.<name>.<ns>.svc.cluster.local. Asterisk's outbound proxy
+points here without a port, so it resolves SRV and fails over to the
+next edge on timeout, transport error or 503.
+*/}}
+{{- $name := include "orbital.componentName" (list . "sip-edge") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "orbital.componentLabels" (list . "sip-edge") | nindent 4 }}
+spec:
+  clusterIP: None
+  ports:
+    - name: sip
+      port: 5060
+      protocol: UDP
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "orbital.componentLabels" (list . "sip-edge") | nindent 4 }}
+    kubernetes.io/service-name: {{ $name }}
+    # Not the EndpointSlice controller's value, so it leaves this alone.
+    endpointslice.kubernetes.io/managed-by: helm
+addressType: IPv4
+ports:
+  - name: sip
+    port: 5060
+    protocol: UDP
+endpoints:
+  {{- range .Values.telephony.kamailio.edgeAddresses }}
+  - addresses: [{{ . | quote }}]
+    conditions:
+      ready: true
+  {{- end }}
+{{- end }}

@@ -213,12 +213,18 @@ agentWorker:
 telephony:
   kamailio:
     enabled: false
+    # Private IPs of the SIP edge VMs. Publishes them as the
+    # <release>-orbital-sip-edge Service (SRV _sip._udp records), which
+    # Asterisk uses as its outbound proxy with DNS failover between
+    # edges, and derives jsonrpcUrls when those aren't set explicitly.
+    edgeAddresses: []   # e.g. [10.42.0.3, 10.42.0.4]
     # Every edge VM's JSON-RPC endpoint; the app drains/reloads all of
     # them. jsonrpcUrl (single) is still honoured for older values files.
     jsonrpcUrls: []  # e.g. [http://10.1.96.3:8090/jsonrpc, http://10.1.96.4:8090/jsonrpc]
     jsonrpcUrl: ""   # e.g. http://host.k3d.internal:8090/jsonrpc
-    # SIP URI Asterisk sends outbound trunk calls through (the edge's
-    # private address). Blank = the app default, sip:kamailio:5060;lr.
+    # SIP URI Asterisk sends outbound trunk calls through. Blank = the
+    # sip-edge Service when edgeAddresses is set, else the app default
+    # (sip:kamailio:5060;lr).
     outboundProxy: ""   # e.g. sip:10.42.0.3:5060;lr
 
 # System-status dashboard. The health probes were written for the

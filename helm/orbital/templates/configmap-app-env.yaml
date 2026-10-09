@@ -94,11 +94,20 @@ data:
   {{- if .Values.telephony.kamailio.enabled }}
   # Off-cluster Kamailio edge (VMs in prod; host-published in local test).
   KAMAILIO_ENABLED: "true"
-  {{- $edges := .Values.telephony.kamailio.jsonrpcUrls | default (compact (list .Values.telephony.kamailio.jsonrpcUrl)) }}
+  {{- $derived := list }}
+  {{- range .Values.telephony.kamailio.edgeAddresses }}
+  {{- $derived = append $derived (printf "http://%s:8090/jsonrpc" .) }}
+  {{- end }}
+  {{- $edges := .Values.telephony.kamailio.jsonrpcUrls | default (compact (list .Values.telephony.kamailio.jsonrpcUrl)) | default $derived }}
   # Single URL is the health probe's target; the list is what gets drained/reloaded.
   KAMAILIO_JSONRPC_URL: {{ first $edges | default "" | quote }}
   KAMAILIO_JSONRPC_URLS: {{ join "," $edges | quote }}
-  {{- with .Values.telephony.kamailio.outboundProxy }}
+  {{- $proxy := .Values.telephony.kamailio.outboundProxy }}
+  {{- if and (not $proxy) .Values.telephony.kamailio.edgeAddresses }}
+  {{- /* No port: Asterisk looks up _sip._udp SRV and fails over between edges. */}}
+  {{- $proxy = printf "sip:%s.%s.svc.cluster.local;lr" (include "orbital.componentName" (list . "sip-edge")) .Release.Namespace }}
+  {{- end }}
+  {{- with $proxy }}
   TELEPHONY_OUTBOUND_PROXY: {{ . | quote }}
   {{- end }}
   {{- end }}

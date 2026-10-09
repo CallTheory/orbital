@@ -114,6 +114,12 @@ if [ -n "${ASTERISK_BIND_ADDRESS:-}" ]; then
         /etc/asterisk/http.conf
     sed -i "s|^permit = 0\.0\.0\.0/0\.0\.0\.0|permit = 127.0.0.0/255.0.0.0\npermit = 10.0.0.0/255.0.0.0\npermit = 172.16.0.0/255.240.0.0\npermit = 192.168.0.0/255.255.0.0|" \
         /etc/asterisk/manager.conf
+    # Outbound calls go to the SIP edge through a DNS name with one SRV
+    # target per edge VM. On UDP a dead edge only shows as Timer B
+    # expiring (32s by default) before pjsip fails over. Kamailio sends
+    # 100 Trying at once, so a live edge never gets near it; 8s (with
+    # T1 kept at B/64 per RFC 3261) makes a failover land in time.
+    printf '\n[system]\ntype = system\ntimer_t1 = 125\ntimer_b = 8000\n' >> /etc/asterisk/pjsip.conf
     echo "[orbital-asterisk] SIP/HTTP bound to ${ASTERISK_BIND_ADDRESS}; AMI limited to private sources"
 fi
 if [ -n "${ASTERISK_RTP_START:-}" ] && [ -n "${ASTERISK_RTP_END:-}" ]; then

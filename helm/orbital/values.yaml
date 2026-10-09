@@ -13,7 +13,10 @@ global:
   image:
     registry: cr.calltheory.com
     repository: orbital
-    tag: 0.1.0
+    # Blank = the chart's appVersion, i.e. the images built for this
+    # chart release. Set it only to run different images than the chart
+    # was released with.
+    tag: ""
     pullPolicy: IfNotPresent
 
   # Pull-secret name(s) every Pod attaches. Customers create the secret

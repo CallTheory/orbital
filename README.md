@@ -237,7 +237,9 @@ kubectl -n orbital create secret generic orbital-orbital-app-secrets \
 deployment host pulls the signed chart from Harbor — it never needs read
 access to this private app repo (this is exactly how orbital-setup drives
 it). Fill the per-deploy knobs — your domain, the released version, the
-edge VMs' Kamailio endpoint, and a strong agent-worker token:
+edge VMs' Kamailio endpoint, and a strong agent-worker token. The chart
+deploys the images of its own release (`--version 0.1.0` → `:0.1.0`), so
+there is no image tag to set:
 
 ```bash
 helm install orbital oci://cr.calltheory.com/orbital/charts/orbital \
@@ -245,7 +247,6 @@ helm install orbital oci://cr.calltheory.com/orbital/charts/orbital \
   --namespace orbital \
   -f ./helm/orbital/values-vultr-vke.yaml \
   --set global.domain=orbital.your-company.com \
-  --set global.image.tag=v0.1.0 \
   --set telephony.kamailio.jsonrpcUrl=http://<edge-vm-ip>:8090/jsonrpc \
   --set agentWorker.token="$(openssl rand -hex 32)"
 ```
@@ -274,7 +275,7 @@ and `tls`) and `helm upgrade` so those dashboard cards go green instead
 of showing "not deployed".
 
 Ship a new version later by rebuilding at a new tag (step a) and
-`helm upgrade … --set global.image.tag=<new>`.
+`helm upgrade … --version <new>`.
 
 ## Conventions
 

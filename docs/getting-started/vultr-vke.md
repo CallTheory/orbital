@@ -276,7 +276,7 @@ kubectl create secret docker-registry orbital-registry-creds \
 **7b. Generate a backup encryption key.**
 
 ```bash
-docker run --rm <your-registry-host>/orbital/laravel:0.1.0 \
+docker run --rm <your-registry-host>/orbital/laravel:<version> \
   php artisan orbital:backup --generate-key
 ```
 
@@ -334,8 +334,8 @@ re-use for every upgrade.
 ```yaml
 global:
   domain: orbital.yourcompany.com
-  image:
-    tag: "0.1.0"                    # pin a real release, never :dev
+  # No image tag: the chart deploys the images of its own release, so
+  # `--version` on helm install/upgrade is the one version knob.
 
 postgres:
   external:
@@ -369,6 +369,7 @@ If pgvector wasn't available in Part 3, drop the whole `postgres:` block
 
 ```bash
 helm install orbital oci://<your-registry-host>/orbital/charts/orbital \
+  --version <version> \
   --namespace orbital \
   -f helm/orbital/values-vultr-vke.yaml \
   -f orbital-values.yaml
@@ -497,14 +498,15 @@ Kubernetes load balancer.
 
 ## Upgrading later
 
-Same command, `upgrade` instead of `install`, with a new image tag:
+Same command, `upgrade` instead of `install`, with the new chart version
+(the images follow it):
 
 ```bash
 helm upgrade orbital oci://<your-registry-host>/orbital/charts/orbital \
   --namespace orbital \
   -f helm/orbital/values-vultr-vke.yaml \
   -f orbital-values.yaml \
-  --set global.image.tag=0.2.0
+  --version <new-version>
 ```
 
 Migrations run automatically **before** the new pods roll, so no pod

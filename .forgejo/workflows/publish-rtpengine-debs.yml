@@ -10,7 +10,7 @@ name: Build + publish rtpengine .debs to orbital-setup
 #   add 5-10 min to first-boot, drag build-essential + kernel headers
 #   onto production VMs, and make per-VM rtpengine binaries non-
 #   reproducible. Build once here in CI; consume there.
-# - Co-locates with publish-images.yml + publish-helm.yml so all of
+# - Co-locates with the image + chart publish jobs so all of
 #   "what gets shipped" lives in one CI tree.
 #
 # Why orbital-setup's PUBLIC release (not orbital private):

@@ -109,7 +109,7 @@ data:
   # About page all resolve from it, so leaving it aimed upstream sends
   # your users to source that isn't what they're running.
   ORBITAL_SOURCE_URL: {{ .Values.licensing.sourceUrl | quote }}
-  ORBITAL_VERSION: {{ .Values.global.image.tag | quote }}
+  ORBITAL_VERSION: {{ include "orbital.imageTag" . | quote }}
   ORBITAL_RELEASE_CHANNEL: {{ .Values.licensing.releaseChannel | quote }}
 
   # Metrics. /metrics is per-pod (HTTP counters keyed by METRICS_INSTANCE,

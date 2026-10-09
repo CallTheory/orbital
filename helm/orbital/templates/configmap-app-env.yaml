@@ -90,6 +90,8 @@ data:
   ASTERISK_AMI_PORT: "5038"
   # The edge VMs' dispatcher list (/api/edge/dispatcher) is this name's A records.
   ASTERISK_DISCOVERY_HOST: {{ include "orbital.componentName" (list . "asterisk-headless") }}
+  ASTERISK_STATEFULSET: {{ include "orbital.componentName" (list . "asterisk") }}
+  ASTERISK_REPLICAS: {{ .Values.asterisk.replicas | quote }}
   ASTERISK_AMI_USERNAME: orbital
   {{- if .Values.telephony.kamailio.enabled }}
   # Off-cluster Kamailio edge (VMs in prod; host-published in local test).

@@ -97,3 +97,12 @@ Schedule::command('orbital:upload-recordings')
     ->name('upload-rtpengine-recordings')
     ->withoutOverlapping()
     ->onOneServer();
+
+// Kubernetes only: keep the Asterisk backend registry in step with the
+// Asterisk pods so the SIP Proxy page drains and counts the real nodes.
+Schedule::command('orbital:sync-asterisk-backends')
+    ->everyMinute()
+    ->name('sync-asterisk-backends')
+    ->withoutOverlapping()
+    ->onOneServer()
+    ->when(fn (): bool => (string) config('telephony.kamailio.asterisk_discovery_host', '') !== '');

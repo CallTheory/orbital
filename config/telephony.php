@@ -172,6 +172,10 @@ return [
         // VMs poll /api/edge/dispatcher for them. The chart points this
         // at the headless Asterisk Service.
         'asterisk_discovery_host' => env('ASTERISK_DISCOVERY_HOST', ''),
+        // The Asterisk StatefulSet and its size, for naming individual
+        // pods (<statefulset>-<n>.<discovery host>).
+        'asterisk_statefulset' => env('ASTERISK_STATEFULSET', ''),
+        'asterisk_replicas' => (int) env('ASTERISK_REPLICAS', 0),
         'dispatcher_set_id' => (int) env('KAMAILIO_DISPATCHER_SET_ID', 1),
     ],
 

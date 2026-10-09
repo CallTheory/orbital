@@ -33,4 +33,33 @@ class AsteriskPeerResolver
 
         return $ips;
     }
+
+    /**
+     * Each Asterisk pod's name and node IP, from the StatefulSet's
+     * per-pod DNS records (<statefulset>-<n>.<discovery host>). Pods that
+     * don't resolve (not scheduled yet) are left out.
+     *
+     * @return array<string, string> pod name => IPv4
+     */
+    public function pods(): array
+    {
+        $host = (string) config('telephony.kamailio.asterisk_discovery_host', '');
+        $statefulSet = (string) config('telephony.kamailio.asterisk_statefulset', '');
+        $replicas = (int) config('telephony.kamailio.asterisk_replicas', 0);
+        if ($host === '' || $statefulSet === '' || $replicas < 1) {
+            return [];
+        }
+
+        $pods = [];
+        for ($i = 0; $i < $replicas; $i++) {
+            $name = "{$statefulSet}-{$i}";
+            $fqdn = "{$name}.{$host}";
+            $ip = gethostbyname($fqdn);
+            if ($ip !== $fqdn) {
+                $pods[$name] = $ip;
+            }
+        }
+
+        return $pods;
+    }
 }

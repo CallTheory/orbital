@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Telephony;
 
 use App\Services\Telephony\AsteriskPeerResolver;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
@@ -12,6 +13,8 @@ use Tests\TestCase;
  */
 class EdgeDispatcherTest extends TestCase
 {
+    use RefreshDatabase;
+
     /** @param list<string> $ips */
     private function fakePeers(array $ips): void
     {

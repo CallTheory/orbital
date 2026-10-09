@@ -52,7 +52,7 @@ class AsteriskClusterActivity
             $channels = $this->countChannelsViaAmi($backend->amiHost(), $backend->ami_port);
             $out[$backend->hostname] = [
                 'channels' => $channels['count'],
-                'registrations' => $registrations[$backend->hostname] ?? 0,
+                'registrations' => $registrations[$backend->nodeName()] ?? 0,
                 'reachable' => $channels['reachable'],
             ];
         }

@@ -22,11 +22,13 @@ class AsteriskBackend extends Model
 
     protected $fillable = [
         'hostname',
+        'node_name',
         'display_name',
         'sip_port',
         'ami_host',
         'ami_port',
         'is_active',
+        'dispatch_state',
         'sort_order',
     ];
 
@@ -47,6 +49,18 @@ class AsteriskBackend extends Model
     public function sipUri(): string
     {
         return "sip:{$this->hostname}:{$this->sip_port}";
+    }
+
+    /**
+     * Asterisk's systemname, which ps_contacts.reg_server is stamped
+     * with. Discovered pods record it separately (their hostname is the
+     * node IP); hand-registered backends use the hostname.
+     */
+    public function nodeName(): string
+    {
+        return $this->node_name !== null && $this->node_name !== ''
+            ? $this->node_name
+            : $this->hostname;
     }
 
     /**

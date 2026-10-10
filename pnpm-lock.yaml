@@ -171,7 +171,7 @@ importers:
         version: 1.7.0(svelte@5.57.2)
       laravel-echo:
         specifier: ^2.5.0
-        version: 2.5.0(pusher-js@8.6.0)
+        version: 2.6.1(pusher-js@8.6.0)
       pusher-js:
         specifier: ^8.6.0
         version: 8.6.0
@@ -180,11 +180,11 @@ importers:
         version: 0.21.2
       wavesurfer.js:
         specifier: ^8.0.0
-        version: 8.0.1
+        version: 8.0.2
     devDependencies:
       '@sveltejs/vite-plugin-svelte':
         specifier: ^7.0.0
-        version: 7.3.1(svelte@5.57.2)(vite@8.3.3(jiti@1.21.7))
+        version: 7.3.1(svelte@5.57.2)(vite@8.3.4(jiti@1.21.7))
       '@tailwindcss/forms':
         specifier: ^0.5.11
         version: 0.5.11(tailwindcss@3.4.19)
@@ -193,7 +193,7 @@ importers:
         version: 0.5.20(tailwindcss@3.4.19)
       '@tailwindcss/vite':
         specifier: ^4.3.3
-        version: 4.3.3(vite@8.3.3(jiti@1.21.7))
+        version: 4.3.3(vite@8.3.4(jiti@1.21.7))
       autoprefixer:
         specifier: ^10.6.1
         version: 10.6.1(postcss@8.5.29)
@@ -202,10 +202,10 @@ importers:
         version: 1.20.0(debug@4.4.3(supports-color@10.2.2))(supports-color@10.2.2)
       concurrently:
         specifier: ^10.0.0
-        version: 10.0.5
+        version: 10.0.6
       laravel-vite-plugin:
         specifier: ^3.0.0
-        version: 3.2.0(vite@8.3.3(jiti@1.21.7))
+        version: 3.2.0(vite@8.3.4(jiti@1.21.7))
       postcss:
         specifier: ^8.5.28
         version: 8.5.29
@@ -217,7 +217,7 @@ importers:
         version: 3.4.19
       vite:
         specifier: ^8.0.0
-        version: 8.3.3(jiti@1.21.7)
+        version: 8.3.4(jiti@1.21.7)
 
 packages:
 
@@ -606,8 +606,8 @@ packages:
     resolution: {integrity: sha512-NOKm8xhkzAjzFx8B2v5OAHT+u5pRQc2UCa2Vq9jYL/31o2wi9mxBA7LIFs3sV5VSC49z6pEhfbMULvShKj26WA==}
     engines: {node: '>= 6'}
 
-  concurrently@10.0.5:
-    resolution: {integrity: sha512-JaP/CoftUrCcAFW/g//RbgEGwlelnEae6cfBLgH6ZdO6s8jPkn6p9SB9u6pdVxYXoiSnFqseOlHfrEfF82TVOg==}
+  concurrently@10.0.6:
+    resolution: {integrity: sha512-qgICXXFp2/3nAebRLmxcINKEXM1mLK3ij/y31P02VTs/KIkddIeC05n73DxOXsXMB9LFSqNU1/na3lDlOhcbIw==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -851,8 +851,8 @@ packages:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
     hasBin: true
 
-  laravel-echo@2.5.0:
-    resolution: {integrity: sha512-h/4iS6lyxbLRJOteLEg9yodFT0xyK1e2N7tknKFwHdPhIsLdUl6uGGXptio8ugtIUKrmlEazW3/04iU+iVJYWg==}
+  laravel-echo@2.6.1:
+    resolution: {integrity: sha512-hKqIqy4Bl2HRdJsGzN8DbzcON7+09TNr8r5dCNZHNORZ78FUNoFbsy0cUGhYRAMei/yr8IQvCZ1ozJ8LTzzueQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
     peerDependencies:
       pusher-js: '*'
@@ -1199,8 +1199,8 @@ packages:
   rxjs@7.8.2:
     resolution: {integrity: sha512-dhKf903U/PQZY6boNNtAGdWbG85WAbjT/1xYoZIC7FAY0yWapOBQVsVrDl58W86//e1VpMNBtRV4MaXfdMySFA==}
 
-  shell-quote@1.9.0:
-    resolution: {integrity: sha512-Iov+JwFv/2HcTpcwNMKd8+IWNb8tboQJNQTkAY/LLVK7gGH9jy+LGkVqPxfekHl+yMmiqXszdGWXgkfml7hjqA==}
+  shell-quote@1.12.0:
+    resolution: {integrity: sha512-PcByqNyT/38F2kDNi006HAMRJaULuBzq/FOsw3qdZvX/GA9W/jamDaRskgHjubHiftXK5sIFxLNkvrXUwcof6Q==}
     engines: {node: '>= 0.4'}
 
   sip.js@0.21.2:
@@ -1288,8 +1288,8 @@ packages:
   vite-plugin-full-reload@1.2.0:
     resolution: {integrity: sha512-kz18NW79x0IHbxRSHm0jttP4zoO9P9gXh+n6UTwlNKnviTTEpOlum6oS9SmecrTtSr+muHEn5TUuC75UovQzcA==}
 
-  vite@8.3.3:
-    resolution: {integrity: sha512-cTAldKPImjg6c+gk48U19POPn3GCBzZwpdsN8ZMEEcbpes+6/wvfqUd0C2y3qYY4wsj8PwgFwrZ/1jBPVttMSg==}
+  vite@8.3.4:
+    resolution: {integrity: sha512-IftLE8phJhdNRIGNEV4JCCvfNScoZQVfcXaN8TQropWGJtOHcu+iAB9pHcuGvmEb/kddw0LBe/jS8ztdC6xdiQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
     peerDependencies:
@@ -1339,8 +1339,8 @@ packages:
       vite:
         optional: true
 
-  wavesurfer.js@8.0.1:
-    resolution: {integrity: sha512-h0OnRWSVTqIYLSw3/IVrBtsun/xw9L5u4FA3bjfSDTFMX/xswVWS1JwK4fFu3ulmxRUSHg8zQORl6zENG983eg==}
+  wavesurfer.js@8.0.2:
+    resolution: {integrity: sha512-REv2U0DvZIm/i4K61qA7OZ3dGjFNtZFbh0PGRJ4EPcCU3Vs2tiPzIVFw1jipapIQnib76OPH2T8ARNSW47jN+w==}
 
   wrap-ansi@9.0.2:
     resolution: {integrity: sha512-42AtmgqjV+X1VpdOfyTGOYRi0/zsoLqtXQckTmqTeybT+BDIbM/Guxo7x3pE2vtpr1ok6xRqM9OpBe+Jyoqyww==}
@@ -1453,14 +1453,14 @@ snapshots:
     dependencies:
       acorn: 8.18.0
 
-  '@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.2)(vite@8.3.3(jiti@1.21.7))':
+  '@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.2)(vite@8.3.4(jiti@1.21.7))':
     dependencies:
       deepmerge: 4.3.1
       magic-string: 1.4.2
       obug: 2.2.1
       svelte: 5.57.2
-      vite: 8.3.3(jiti@1.21.7)
-      vitefu: 1.1.3(vite@8.3.3(jiti@1.21.7))
+      vite: 8.3.4(jiti@1.21.7)
+      vitefu: 1.1.3(vite@8.3.4(jiti@1.21.7))
 
   '@tailwindcss/forms@0.5.11(tailwindcss@3.4.19)':
     dependencies:
@@ -1533,12 +1533,12 @@ snapshots:
       postcss-selector-parser: 6.0.10
       tailwindcss: 3.4.19
 
-  '@tailwindcss/vite@4.3.3(vite@8.3.3(jiti@1.21.7))':
+  '@tailwindcss/vite@4.3.3(vite@8.3.4(jiti@1.21.7))':
     dependencies:
       '@tailwindcss/node': 4.3.3
       '@tailwindcss/oxide': 4.3.3
       tailwindcss: 4.3.3
-      vite: 8.3.3(jiti@1.21.7)
+      vite: 8.3.4(jiti@1.21.7)
 
   '@types/d3-color@3.1.3': {}
 
@@ -1680,11 +1680,11 @@ snapshots:
 
   commander@4.1.1: {}
 
-  concurrently@10.0.5:
+  concurrently@10.0.6:
     dependencies:
       chalk: 5.6.2
       rxjs: 7.8.2
-      shell-quote: 1.9.0
+      shell-quote: 1.12.0
       supports-color: 10.2.2
       tree-kill: 1.2.2
       yargs: 18.0.0
@@ -1897,15 +1897,15 @@ snapshots:
 
   jiti@2.7.0: {}
 
-  laravel-echo@2.5.0(pusher-js@8.6.0):
+  laravel-echo@2.6.1(pusher-js@8.6.0):
     optionalDependencies:
       pusher-js: 8.6.0
 
-  laravel-vite-plugin@3.2.0(vite@8.3.3(jiti@1.21.7)):
+  laravel-vite-plugin@3.2.0(vite@8.3.4(jiti@1.21.7)):
     dependencies:
       picocolors: 1.1.1
       tinyglobby: 0.2.17
-      vite: 8.3.3(jiti@1.21.7)
+      vite: 8.3.4(jiti@1.21.7)
       vite-plugin-full-reload: 1.2.0
 
   lightningcss-android-arm64@1.32.0:
@@ -2161,7 +2161,7 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  shell-quote@1.9.0: {}
+  shell-quote@1.12.0: {}
 
   sip.js@0.21.2: {}
 
@@ -2281,7 +2281,7 @@ snapshots:
       picocolors: 1.1.1
       picomatch: 2.3.2
 
-  vite@8.3.3(jiti@1.21.7):
+  vite@8.3.4(jiti@1.21.7):
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.7
@@ -2292,11 +2292,11 @@ snapshots:
       fsevents: 2.3.3
       jiti: 1.21.7
 
-  vitefu@1.1.3(vite@8.3.3(jiti@1.21.7)):
+  vitefu@1.1.3(vite@8.3.4(jiti@1.21.7)):
     optionalDependencies:
-      vite: 8.3.3(jiti@1.21.7)
+      vite: 8.3.4(jiti@1.21.7)
 
-  wavesurfer.js@8.0.1: {}
+  wavesurfer.js@8.0.2: {}
 
   wrap-ansi@9.0.2:
     dependencies:

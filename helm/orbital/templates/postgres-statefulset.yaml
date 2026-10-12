@@ -74,7 +74,7 @@ spec:
         {{- include "orbital.storageClass" . | nindent 8 }}
         resources:
           requests:
-            storage: {{ .Values.postgres.inCluster.persistence.size }}
+            storage: {{ include "orbital.volumeSize" (list . .Values.postgres.inCluster.persistence.size) }}
 ---
 apiVersion: v1
 kind: Service

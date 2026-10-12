@@ -72,7 +72,7 @@ spec:
         {{- include "orbital.storageClass" . | nindent 8 }}
         resources:
           requests:
-            storage: {{ .Values.valkey.inCluster.persistence.size }}
+            storage: {{ include "orbital.volumeSize" (list . .Values.valkey.inCluster.persistence.size) }}
 ---
 apiVersion: v1
 kind: Service

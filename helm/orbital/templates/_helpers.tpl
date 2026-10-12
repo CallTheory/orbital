@@ -144,6 +144,24 @@ cluster
 {{- end -}}
 
 {{/*
+A PVC size, raised to global.minVolumeGi when it's smaller. Block
+storage often has a floor (Vultr: 10 GB NVMe, 40 GB HDD) and rejects
+anything under it, so a 5Gi request just stays Pending. Sizes not in
+whole Gi pass through unchanged.
+  {{ include "orbital.volumeSize" (list . .Values.asterisk.persistence.size) }}
+*/}}
+{{- define "orbital.volumeSize" -}}
+{{- $ctx := index . 0 -}}
+{{- $size := index . 1 | toString -}}
+{{- $min := $ctx.Values.global.minVolumeGi | default 0 | int -}}
+{{- if and (gt $min 0) (regexMatch "^[0-9]+Gi$" $size) (lt (regexFind "^[0-9]+" $size | int) $min) -}}
+{{- printf "%dGi" $min -}}
+{{- else -}}
+{{- $size -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Storage class to use for a PVC. Empty values.global.storageClass means
 "use cluster default" — emit nothing so the K8s default applies.
 */}}

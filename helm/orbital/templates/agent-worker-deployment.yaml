@@ -18,6 +18,7 @@ metadata:
     {{- include "orbital.componentLabels" (list . "agent-worker") | nindent 4 }}
 spec:
   replicas: {{ .Values.agentWorker.replicas }}
+  {{- include "orbital.rollingUpdate" . | nindent 2 }}
   selector:
     matchLabels:
       {{- include "orbital.selectorLabels" (list . "agent-worker") | nindent 6 }}

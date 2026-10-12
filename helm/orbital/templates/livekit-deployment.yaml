@@ -23,6 +23,8 @@ spec:
   # so a rolling update would stall. Stop the old pod first.
   strategy:
     type: Recreate
+  {{- else }}
+  {{- include "orbital.rollingUpdate" . | nindent 2 }}
   {{- end }}
   selector:
     matchLabels:

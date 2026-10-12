@@ -16,6 +16,7 @@ metadata:
     {{- include "orbital.componentLabels" (list . "livekit-sip") | nindent 4 }}
 spec:
   replicas: {{ .Values.livekitSip.replicas }}
+  {{- include "orbital.rollingUpdate" . | nindent 2 }}
   selector:
     matchLabels:
       {{- include "orbital.selectorLabels" (list . "livekit-sip") | nindent 6 }}

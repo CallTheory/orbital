@@ -48,6 +48,14 @@ global:
   # Vultr: 10 for NVMe (vultr-block-storage), 40 for HDD
   # (vultr-block-storage-hdd).
   minVolumeGi: 0
+  # How multi-pod Deployments replace pods on an upgrade. The default
+  # starts each new pod before stopping an old one, which needs spare
+  # CPU on some node; a small cluster may have none, and the upgrade
+  # then waits forever. maxSurge 0 / maxUnavailable 1 stops one first
+  # (briefly one fewer pod) and needs no spare room.
+  rollingUpdate:
+    maxSurge: "25%"
+    maxUnavailable: "25%"
 
 # ============================================================================
 # Application tier — Orbital-specific code

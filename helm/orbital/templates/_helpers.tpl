@@ -77,6 +77,18 @@ without any --set.
 {{- end -}}
 
 {{/*
+Update strategy for Deployments that roll (see global.rollingUpdate).
+  {{- include "orbital.rollingUpdate" . | nindent 2 }}
+*/}}
+{{- define "orbital.rollingUpdate" -}}
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: {{ .Values.global.rollingUpdate.maxSurge }}
+    maxUnavailable: {{ .Values.global.rollingUpdate.maxUnavailable }}
+{{- end -}}
+
+{{/*
 Public hostname for LiveKit signaling when livekit.public is on.
 */}}
 {{- define "orbital.livekitPublicHost" -}}

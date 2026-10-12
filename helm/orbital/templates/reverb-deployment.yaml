@@ -17,6 +17,7 @@ metadata:
     {{- include "orbital.componentLabels" (list . "reverb") | nindent 4 }}
 spec:
   replicas: {{ .Values.reverb.replicas }}
+  {{- include "orbital.rollingUpdate" . | nindent 2 }}
   selector:
     matchLabels:
       {{- include "orbital.selectorLabels" (list . "reverb") | nindent 6 }}

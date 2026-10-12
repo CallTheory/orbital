@@ -104,6 +104,10 @@ data:
   # Single URL is the health probe's target; the list is what gets drained/reloaded.
   KAMAILIO_JSONRPC_URL: {{ first $edges | default "" | quote }}
   KAMAILIO_JSONRPC_URLS: {{ join "," $edges | quote }}
+  {{- if .Values.telephony.kamailio.edgeAddresses }}
+  # rtpengine's NG control is loopback-only on the edges; check it via Kamailio.
+  RTPENGINE_VIA_KAMAILIO: "true"
+  {{- end }}
   {{- with .Values.telephony.kamailio.sipDomain }}
   # Softphones register through the edge's Kamailio WSS.
   WEBRTC_VIA_EDGE: "true"

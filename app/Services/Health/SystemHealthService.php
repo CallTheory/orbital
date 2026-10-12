@@ -9,6 +9,7 @@ use App\Models\HealthCheckAcknowledgment;
 use App\Models\RtpengineNode;
 use App\Models\SipTrunk;
 use App\Services\CertificateService;
+use App\Services\Telephony\KamailioService;
 use App\Services\Telephony\Realtime\OutboundTrunkAuditor;
 use App\Services\Telephony\RtpengineService;
 use Carbon\Carbon;
@@ -384,6 +385,10 @@ class SystemHealthService
      */
     private function checkRtpengine(): HealthCheck
     {
+        if (config('telephony.rtpengine_via_kamailio')) {
+            return $this->checkEdgeRtpengines();
+        }
+
         try {
             $totalActive = RtpengineNode::active()->count();
 
@@ -422,6 +427,70 @@ class SystemHealthService
                 message: $message,
                 metrics: [
                     'Active nodes' => (string) $totalActive,
+                    'Responding' => (string) $up,
+                ],
+                icon: 'heroicon-o-signal',
+            );
+        } catch (Throwable $e) {
+            return new HealthCheck(
+                key: 'rtpengine',
+                name: 'rtpengine',
+                category: 'Telephony',
+                status: HealthCheck::DOWN,
+                message: $e->getMessage(),
+                icon: 'heroicon-o-signal',
+            );
+        }
+    }
+
+    /**
+     * rtpengine on the SIP edge VMs, one per edge, asked through each
+     * edge's Kamailio JSON-RPC (`rtpengine.ping`). The node registry
+     * isn't used: it holds NG addresses the app can't reach here.
+     */
+    private function checkEdgeRtpengines(): HealthCheck
+    {
+        try {
+            $results = app(KamailioService::class)->pingRtpengines();
+            $total = count($results);
+            $up = count(array_filter($results));
+
+            if ($total === 0) {
+                return new HealthCheck(
+                    key: 'rtpengine',
+                    name: 'rtpengine',
+                    category: 'Telephony',
+                    status: HealthCheck::WARN,
+                    message: 'No SIP edges configured (KAMAILIO_JSONRPC_URLS).',
+                    icon: 'heroicon-o-signal',
+                );
+            }
+
+            $status = match (true) {
+                $up === 0 => HealthCheck::DOWN,
+                $up < $total => HealthCheck::WARN,
+                default => HealthCheck::OK,
+            };
+
+            $down = array_map(
+                fn (string $url) => parse_url($url, PHP_URL_HOST) ?: $url,
+                array_keys(array_filter($results, fn (bool $ok) => ! $ok)),
+            );
+
+            $message = match ($status) {
+                HealthCheck::OK => 'Media relay responding on every SIP edge.',
+                HealthCheck::DOWN => 'No SIP edge reports a responding rtpengine.',
+                default => 'rtpengine not responding on edge '.implode(', ', $down).'.',
+            };
+
+            return new HealthCheck(
+                key: 'rtpengine',
+                name: 'rtpengine',
+                category: 'Telephony',
+                status: $status,
+                message: $message,
+                metrics: [
+                    'SIP edges' => (string) $total,
                     'Responding' => (string) $up,
                 ],
                 icon: 'heroicon-o-signal',

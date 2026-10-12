@@ -7,6 +7,8 @@ namespace App\Console\Commands;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
+use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 
 class CreateAdminUser extends Command
@@ -35,6 +37,27 @@ class CreateAdminUser extends Command
 
             return self::FAILURE;
         }
+
+        // Checked first, and everything below is one transaction: without
+        // the role a half-created user would be left behind and a retry
+        // would only report that the email is taken.
+        if (! Role::where(['name' => 'super_admin', 'guard_name' => 'web', 'team_id' => null])->exists()) {
+            $this->error('The super_admin role does not exist: this database has not been seeded.');
+            $this->line('Run `php artisan db:seed --force` (or `php artisan orbital:seed-if-empty`), then try again.');
+
+            return self::FAILURE;
+        }
+
+        DB::transaction(fn () => $this->createAdmin($name, $email, $password));
+
+        $this->info("Super-admin created: {$name} <{$email}>");
+        $this->info('Login at: '.config('app.url').'/admin');
+
+        return self::SUCCESS;
+    }
+
+    private function createAdmin(string $name, string $email, string $password): void
+    {
 
         // The User model's `hashed` cast auto-hashes plain passwords on save.
         $user = User::create([
@@ -66,10 +89,5 @@ class CreateAdminUser extends Command
             $registrar->setPermissionsTeamId($originalTeamId);
             $registrar->forgetCachedPermissions();
         }
-
-        $this->info("Super-admin created: {$name} <{$email}>");
-        $this->info('Login at: '.config('app.url').'/admin');
-
-        return self::SUCCESS;
     }
 }

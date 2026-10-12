@@ -17,6 +17,7 @@ metadata:
     {{- include "orbital.componentLabels" (list . "laravel") | nindent 4 }}
 spec:
   replicas: {{ .Values.laravel.replicas }}
+  {{- include "orbital.rollingUpdate" . | nindent 2 }}
   selector:
     matchLabels:
       {{- include "orbital.selectorLabels" (list . "laravel") | nindent 6 }}

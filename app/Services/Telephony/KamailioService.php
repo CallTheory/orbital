@@ -235,6 +235,25 @@ class KamailioService
     }
 
     /**
+     * Ping the rtpengine behind each Kamailio node (`rtpengine.ping`).
+     * On the SIP edge VMs rtpengine's NG control is loopback-only, so
+     * the app can only reach it through the Kamailio next to it.
+     * Returns `[jsonrpc url => bool]`.
+     *
+     * @return array<string, bool>
+     */
+    public function pingRtpengines(): array
+    {
+        $results = [];
+        foreach ($this->jsonrpcUrls as $url) {
+            $result = $this->rpcAt($url, 'rtpengine.ping', ['all']);
+            $results[$url] = ($result['status'] ?? null) === 'success';
+        }
+
+        return $results;
+    }
+
+    /**
      * Read calls: try each Kamailio in turn, return the first
      * successful result. Dispatcher/dialog state mirrors closely
      * enough across nodes that whichever answers is representative.

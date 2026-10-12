@@ -188,4 +188,9 @@ return [
     // rtpengine), which handles WebRTC; Asterisk sees plain SIP/RTP.
     'webrtc_via_edge' => (bool) env('WEBRTC_VIA_EDGE', false),
 
+    // rtpengine runs on the edge VMs with NG control on loopback, so
+    // health checks ask each edge's Kamailio instead of pinging the
+    // rtpengine node registry directly.
+    'rtpengine_via_kamailio' => (bool) env('RTPENGINE_VIA_KAMAILIO', false),
+
 ];

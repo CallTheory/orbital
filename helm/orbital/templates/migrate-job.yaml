@@ -115,21 +115,22 @@ spec:
             - |
               set -e
               php artisan migrate --force
-              {{- if and .Release.IsInstall .Values.migrations.seedOnInstall }}
+              {{- if .Values.migrations.seedOnInstall }}
               {{/*
-                Seeded on FIRST INSTALL ONLY. A fresh database is not a
-                working install: the permission catalogue, the roles, the
-                first super admin, hold-music classes and the intake-goal
-                library all come from seeders, and without them the panel
-                loads into a state nobody can log in to and administer.
+                Seeded ONCE, when the database has no roles yet. A fresh
+                database is not a working install: the permission
+                catalogue, the roles, the first super admin, hold-music
+                classes and the intake-goal library all come from seeders,
+                and without them nobody can log in and administer.
 
-                Never on upgrade. DatabaseSeeder guards demo data behind
-                the `local` environment so it is safe in production, but
-                re-running it on every release would fight an operator's
-                own edits to that same reference data.
+                Keyed on the data, not on Helm's first install: a first
+                install that fails or times out never runs its
+                post-install hook, and every later run is an upgrade, so
+                an install-only seed left the database empty for good.
+                A seeded database is never re-seeded — that would fight
+                an operator's own edits to the same reference data.
               */}}
-              echo "fresh install — seeding reference data"
-              php artisan db:seed --force
+              php artisan orbital:seed-if-empty
               {{- end }}
           resources:
             {{- toYaml .Values.migrations.resources | nindent 12 }}

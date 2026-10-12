@@ -347,13 +347,13 @@ backups:
 migrations:
   enabled: true
 
-  # Seed reference data on the FIRST install only — permissions, roles,
-  # the first super admin, hold-music classes, the intake-goal library.
-  # A migrated-but-unseeded database loads a panel nobody can log in to
-  # and administer. Never re-run on upgrade: DatabaseSeeder is safe in
-  # production (demo data is gated behind the `local` environment) but
-  # re-seeding every release would fight an operator's own edits to the
-  # same reference rows.
+  # Seed reference data once — permissions, roles, the first super
+  # admin, hold-music classes, the intake-goal library — on the first run
+  # that finds no roles (orbital:seed-if-empty), so a first install that
+  # failed is finished by the next upgrade. A migrated-but-unseeded
+  # database loads a panel nobody can log in to and administer. Never
+  # re-run once seeded: re-seeding would fight an operator's own edits
+  # to the same reference rows. (Name kept for existing values files.)
   seedOnInstall: true
 
   # How long the init container waits for Postgres to accept

@@ -43,6 +43,11 @@ global:
   # Storage class for PVCs. Empty = use cluster default. Provider
   # overrides set this explicitly (vultr-block-storage, gp3, etc.).
   storageClass: ""
+  # Smallest volume the storage class accepts, in Gi; smaller PVC
+  # sizes below are raised to it (larger ones are kept). 0 = no floor.
+  # Vultr: 10 for NVMe (vultr-block-storage), 40 for HDD
+  # (vultr-block-storage-hdd).
+  minVolumeGi: 0
 
 # ============================================================================
 # Application tier — Orbital-specific code

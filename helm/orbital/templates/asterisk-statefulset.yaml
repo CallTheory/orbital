@@ -198,6 +198,6 @@ spec:
         {{- include "orbital.storageClass" . | nindent 8 }}
         resources:
           requests:
-            storage: {{ .Values.asterisk.persistence.size }}
+            storage: {{ include "orbital.volumeSize" (list . .Values.asterisk.persistence.size) }}
   {{- end }}
 {{- end }}

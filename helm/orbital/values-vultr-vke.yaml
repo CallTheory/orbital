@@ -21,7 +21,13 @@
 #   before this chart goes in.
 
 global:
-  storageClass: "vultr-block-storage"
+  # Vultr offers NVMe block storage (vultr-block-storage, 10 GB minimum)
+  # in some regions and HDD (vultr-block-storage-hdd, 40 GB minimum) in
+  # most; asking for one a region lacks leaves every volume Pending.
+  # orbital-setup picks per region. Without it: the cluster's default
+  # class (HDD on VKE) with HDD's floor.
+  storageClass: ""
+  minVolumeGi: 40
   # Immutable version tags in prod (not :dev) — IfNotPresent is correct,
   # every release is a distinct tag so nodes never serve a stale layer.
   image:

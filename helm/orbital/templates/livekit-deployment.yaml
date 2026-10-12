@@ -17,6 +17,13 @@ metadata:
     {{- include "orbital.componentLabels" (list . "livekit") | nindent 4 }}
 spec:
   replicas: {{ .Values.livekit.replicas }}
+  {{- if .Values.livekit.public.enabled }}
+  # On the node network the replacement pod can't start beside the old
+  # one (same ports), and on a busy cluster no other node may have room,
+  # so a rolling update would stall. Stop the old pod first.
+  strategy:
+    type: Recreate
+  {{- end }}
   selector:
     matchLabels:
       {{- include "orbital.selectorLabels" (list . "livekit") | nindent 6 }}

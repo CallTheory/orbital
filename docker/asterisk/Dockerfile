@@ -47,8 +47,14 @@ RUN ./configure \
 # queue_log all live in PostgreSQL and Asterisk pulls them per-call
 # via res_sorcery_realtime + res_config_odbc against the `orbital`
 # ODBC connection (configured in res_odbc.conf).
+#
+# BUILD_NATIVE (on by default) compiles with -march=native: for the CPU of
+# whatever machine builds the image. Run on an older CPU, that binary dies
+# with SIGILL (exit 132) as soon as it starts — VKE pools land on several
+# CPU generations (Broadwell in dfw). Build for baseline x86-64 instead.
 RUN make menuselect.makeopts \
     && menuselect/menuselect \
+        --disable BUILD_NATIVE \
         --enable res_pjsip \
         --enable res_pjsip_session \
         --enable res_pjsip_registrar \
@@ -102,6 +108,9 @@ RUN make menuselect.makeopts \
         --enable bridge_native_rtp \
         --enable chan_bridge_media \
         menuselect.makeopts
+
+RUN ! grep -q '^MENUSELECT_CFLAGS=.*BUILD_NATIVE' menuselect.makeopts \
+    || { echo "BUILD_NATIVE is still enabled" >&2; exit 1; }
 
 RUN make -j$(nproc) && make install && make samples
 

@@ -94,6 +94,11 @@ class Team extends JetstreamTeam
         return $this->hasMany(ClientSlot::class)->orderBy('name');
     }
 
+    public function apiKeys(): HasMany
+    {
+        return $this->hasMany(TeamApiKey::class);
+    }
+
     public function intakeFlows(): HasMany
     {
         return $this->hasMany(IntakeFlow::class);

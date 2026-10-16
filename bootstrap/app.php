@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\AppendOidcIdToken;
 use App\Http\Middleware\ApplyUserPreferences;
+use App\Http\Middleware\AuthenticateTeamApiKey;
 use App\Http\Middleware\CheckRole;
 use App\Http\Middleware\CheckToolPermission;
 use App\Http\Middleware\PanelRedirect;
@@ -99,6 +100,8 @@ return Application::configure(basePath: dirname(__DIR__))
             // Gates the SSO entry points on the tooling.* permission
             // pattern shared with `AdminPanelProvider::userCanAccessTool`.
             'tool' => CheckToolPermission::class,
+            // Per-client API key auth for the public v1 API.
+            'team.api-key' => AuthenticateTeamApiKey::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -43,7 +43,15 @@ class Orchestration extends Model
         'team_id',
         'name',
         'description',
+        'default_slots',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'default_slots' => 'array',
+        ];
+    }
 
     public function team(): BelongsTo
     {
@@ -146,7 +154,8 @@ class Orchestration extends Model
     /**
      * Deep-clone this orchestration: copies flows + steps +
      * transitions + rules + bindings. Slots remain team-scoped
-     * (shared, not cloned). The returned orchestration has no queue
+     * (existing ones are shared, not cloned); any `default_slots` the
+     * template declares are created on the target team if missing. The returned orchestration has no queue
      * assignments — it's a draft until an author assigns it.
      *
      * Optional `$targetTeam` reparents the clone into a specific
@@ -243,9 +252,45 @@ class Orchestration extends Model
             }
 
             $this->cloneBindings($copy, $targetTeamId);
+            $this->seedDefaultSlots($targetTeamId);
 
             return $copy->fresh();
         });
+    }
+
+    /**
+     * Create this template's default slots on the target team. Existing
+     * slots (matched by name) are never touched, so a client's own
+     * labels and descriptions survive a re-duplicate.
+     */
+    protected function seedDefaultSlots(?int $targetTeamId): void
+    {
+        if (! $targetTeamId || empty($this->default_slots)) {
+            return;
+        }
+
+        $existing = ClientSlot::query()
+            ->withoutGlobalScope('team')
+            ->where('team_id', $targetTeamId)
+            ->pluck('name')
+            ->all();
+
+        foreach ($this->default_slots as $def) {
+            $name = $def['name'] ?? null;
+            if (! is_string($name) || $name === '' || in_array($name, $existing, true)) {
+                continue;
+            }
+
+            ClientSlot::create([
+                'team_id' => $targetTeamId,
+                'name' => $name,
+                'label' => $def['label'] ?? null,
+                'type' => $def['type'] ?? 'string',
+                'choices' => $def['choices'] ?? null,
+                'description' => $def['description'] ?? null,
+            ]);
+            $existing[] = $name;
+        }
     }
 
     /**

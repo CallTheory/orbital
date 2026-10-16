@@ -112,6 +112,9 @@ class LiveKitConfigService
                     'name' => 'Asterisk',
                     'numbers' => [],
                     'allowed_addresses' => ['0.0.0.0/0'],
+                    // X-Orbital-DID (the number the caller dialled) reaches
+                    // the worker as a participant attribute.
+                    'include_headers' => 'SIP_X_HEADERS',
                 ],
             ]);
 

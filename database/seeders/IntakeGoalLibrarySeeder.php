@@ -755,14 +755,14 @@ class IntakeGoalLibrarySeeder extends Seeder
                 'category' => 'action',
                 'exits' => [], // terminal — call leaves this flow on transfer
                 'icon' => 'heroicon-o-arrow-right-circle',
-                'description' => 'Transfer the live caller to an extension, a DID, or a queue.',
+                'description' => 'Transfer the live caller to an extension, a DID, a queue, or an outside live operator (external phone number). An external handoff records the call so the operator\'s system can fetch what was collected through the handoff API.',
                 'talking_points' => [
                     'Tell the caller who you\'re transferring them to before bridging.',
                     'Perform the configured transfer.',
                 ],
                 'data_fields' => [
-                    ['key' => 'destination_type', 'label' => 'Destination type', 'type' => 'select', 'required' => true, 'options' => ['extension', 'did', 'queue']],
-                    ['key' => 'destination', 'label' => 'Destination', 'type' => 'string', 'required' => true, 'hint' => 'Extension number, DID, or queue name.'],
+                    ['key' => 'destination_type', 'label' => 'Destination type', 'type' => 'select', 'required' => true, 'options' => ['extension', 'did', 'queue', 'external']],
+                    ['key' => 'destination', 'label' => 'Destination', 'type' => 'string', 'required' => true, 'hint' => 'Extension number, DID, or queue name; for external, the operator\'s phone number in E.164 (+15551234567).'],
                     ['key' => 'mode', 'label' => 'Mode', 'type' => 'select', 'required' => false, 'options' => ['cold', 'warm'], 'hint' => 'Default: cold.'],
                 ],
                 'completion' => ['type' => 'node_completed'],

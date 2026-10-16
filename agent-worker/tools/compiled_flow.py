@@ -21,6 +21,8 @@ import requests
 from livekit.agents.llm import function_tool
 from livekit.agents.voice.events import RunContext
 
+from tools.handoff import make_transfer_to_operator_tool
+
 logger = logging.getLogger("orbital-compiled-flow")
 
 
@@ -72,6 +74,11 @@ def build_dynamic_tools(
             # machine-readable trail of state-machine progression
             # we can surface in Grafana and later act on.
             tools.append(_make_transition_to_flow_tool(schema, session_key))
+        elif name == "transfer_to_operator":
+            tools.append(make_transfer_to_operator_tool(
+                schema.get("description", "Hand the caller off to the live operator."),
+                api_base_url, api_headers, session_key, extension,
+            ))
         # transfer_call is handled by the static import in agent.py — skip here
         # to avoid double-registering.
         elif name == "transfer_call":

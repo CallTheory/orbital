@@ -131,6 +131,10 @@ Route::get('/call-sessions/{sessionKey}', [CallSessionController::class, 'show']
     ->middleware('auth:sanctum');
 Route::post('/call-sessions/{sessionKey}/field', [CallSessionController::class, 'captureField']);
 Route::post('/call-sessions/{sessionKey}/advance', [CallSessionController::class, 'advance']);
+// Caller and dialled number, reported by the worker at call start.
+Route::post('/call-sessions/{sessionKey}/context', [CallSessionController::class, 'context']);
+// AI handing the caller to the client's outside operator; returns the REFER target.
+Route::post('/call-sessions/{sessionKey}/handoff', [CallSessionController::class, 'handoff']);
 // Call over. Finalises the session and, for clients whose policy keeps
 // them, writes whatever was collected as a partial message.
 Route::post('/call-sessions/{sessionKey}/end', [CallSessionController::class, 'end']);

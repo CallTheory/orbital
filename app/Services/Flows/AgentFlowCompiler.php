@@ -510,6 +510,10 @@ class AgentFlowCompiler
             $hint = ' → slot `'.$params['slot'].'`';
         } elseif (! empty($params['include_slots']) && is_array($params['include_slots'])) {
             $hint = ' → include: '.implode(', ', $params['include_slots']);
+        } elseif (($params['destination_type'] ?? null) === 'external') {
+            // Never put the operator's number in front of the LLM: it
+            // might read it out, and it doesn't choose it anyway.
+            $hint = ' → the live operator';
         } elseif (! empty($params['destination'])) {
             $hint = ' → '.$params['destination'];
         }
@@ -540,6 +544,9 @@ class AgentFlowCompiler
     private function typeHintFor(string $key, array $params): string
     {
         return match ($key) {
+            'transfer_call' => ($params['destination_type'] ?? null) === 'external'
+                ? 'once the details are collected, tell the caller you are connecting them to a live operator, then call the `transfer_to_operator` tool (it takes no number).'
+                : '',
             'call_action_group' => $this->actionGroupHint($params),
             'send_email' => $this->sendHint('email', $params, 'subject', 'body'),
             'send_sms' => $this->sendHint('SMS', $params, null, 'body'),
@@ -885,6 +892,18 @@ class AgentFlowCompiler
                 ],
             ],
         ];
+
+        // An external handoff step gets the no-argument handoff tool; the
+        // server decides the number (HandoffDestinations).
+        $hasExternalHandoff = $goals->contains(fn (array $goal) => ($goal['key'] ?? null) === 'transfer_call'
+            && (($goal['step_params'] ?? [])['destination_type'] ?? null) === 'external');
+        if ($hasExternalHandoff) {
+            $schemas[] = [
+                'name' => 'transfer_to_operator',
+                'description' => 'Hand the caller off to the client\'s live operator, passing along everything you collected. Tell the caller you are connecting them first. Takes no arguments.',
+                'parameters' => ['type' => 'object', 'properties' => (object) []],
+            ];
+        }
 
         // Goal-level tool bindings.
         $seen = [];

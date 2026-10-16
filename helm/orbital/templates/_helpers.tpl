@@ -211,6 +211,11 @@ topologySpreadConstraints:
   - maxSkew: 1
     topologyKey: kubernetes.io/hostname
     whenUnsatisfiable: {{ if $ctx.Values.spreadPods.required }}DoNotSchedule{{ else }}ScheduleAnyway{{ end }}
+    # Count only nodes the pod could run on. Otherwise a cordoned node
+    # (e.g. the one-node built-in pool left by a VKE resize) is a domain
+    # holding 0 pods, and with DoNotSchedule no other node may take a
+    # second replica: 4 agent workers on 3 schedulable nodes never fit.
+    nodeTaintsPolicy: Honor
     labelSelector:
       matchLabels:
         {{- include "orbital.selectorLabels" (list $ctx $component) | nindent 8 }}

@@ -103,8 +103,8 @@ Route::post('/voicemail/received', [VoicemailWebhookController::class, 'store'])
 // controller acts on `egress_ended` to register CallRecording rows.
 Route::post('/livekit/webhook', LivekitWebhookController::class);
 
-// Agent worker API (Sanctum token auth)
-Route::middleware('auth:sanctum')->group(function () {
+// Agent worker API (worker shared secret, or a Sanctum token)
+Route::middleware('agent-worker')->group(function () {
     Route::get('/agent-personas/{agentPersona}', [AgentPersonaController::class, 'show']);
     Route::get('/agent-personas/by-extension/{extension}', [AgentPersonaController::class, 'byExtension']);
     Route::get('/extensions', [ExtensionController::class, 'index']);

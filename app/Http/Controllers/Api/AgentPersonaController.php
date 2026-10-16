@@ -9,6 +9,7 @@ use App\Models\AgentPersona;
 use App\Models\Extension;
 use App\Services\Flows\AgentFlowCompiler;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class AgentPersonaController extends Controller
 {
@@ -25,7 +26,7 @@ class AgentPersonaController extends Controller
         ]);
     }
 
-    public function byExtension(string $extension, AgentFlowCompiler $compiler): JsonResponse
+    public function byExtension(Request $request, string $extension, AgentFlowCompiler $compiler): JsonResponse
     {
         $ext = Extension::withoutGlobalScopes()
             ->where('number', $extension)
@@ -55,6 +56,27 @@ class AgentPersonaController extends Controller
                 'tools_config',
             ]),
             'compiled_flow' => $compiled->toArray(),
+            'provider_keys' => $request->attributes->get('agent_worker') ? $this->providerKeys() : [],
         ]);
+    }
+
+    /**
+     * AI provider keys as saved in Platform Settings (or the environment),
+     * so the worker uses what the admin entered rather than only its own
+     * env. Empty keys are left out and the worker falls back to its env.
+     *
+     * @return array<string, string>
+     */
+    protected function providerKeys(): array
+    {
+        $keys = [];
+        foreach (['anthropic', 'openai', 'openrouter', 'elevenlabs', 'deepgram'] as $provider) {
+            $value = (string) config("services.{$provider}.api_key");
+            if ($value !== '') {
+                $keys[$provider] = $value;
+            }
+        }
+
+        return $keys;
     }
 }

@@ -41,6 +41,7 @@ class PersonalityLoader:
                 return {
                     "persona": body.get("data") or {},
                     "compiled_flow": body.get("compiled_flow") or {},
+                    "provider_keys": body.get("provider_keys") or {},
                 }
             elif response.status_code == 404:
                 logger.warning(f"No persona found for extension {extension}")

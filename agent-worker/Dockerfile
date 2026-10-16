@@ -75,6 +75,6 @@ USER agent
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD curl -fsS -X POST \
         -H "Authorization: Bearer ${ORBITAL_API_TOKEN}" \
-        "${ORBITAL_API_URL%/}/api/agent-worker/heartbeat" >/dev/null || exit 1
+        "${ORBITAL_API_URL%/}/agent-worker/heartbeat" >/dev/null || exit 1
 
 CMD ["python", "agent.py", "start"]

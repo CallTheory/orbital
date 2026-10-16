@@ -84,6 +84,9 @@ async def entrypoint(ctx: JobContext) -> None:
 
     persona = envelope.get("persona") or {}
     compiled_flow = envelope.get("compiled_flow") or {}
+    # Keys saved in Platform Settings; anything missing falls back to the
+    # plugin's own environment variable.
+    keys = envelope.get("provider_keys") or {}
 
     # Build system prompt. The compiled flow's `llm_instructions` already
     # includes personality + system_prompt + any flow instructions, but
@@ -114,9 +117,9 @@ async def entrypoint(ctx: JobContext) -> None:
     voice_id = persona.get("voice_id")
 
     # Import the appropriate providers
-    llm = _create_llm(llm_provider, llm_model)
-    tts = _create_tts(tts_provider, voice_id)
-    stt = _create_stt(stt_provider)
+    llm = _create_llm(llm_provider, llm_model, keys)
+    tts = _create_tts(tts_provider, voice_id, keys)
+    stt = _create_stt(stt_provider, keys)
 
     session = AgentSession(
         stt=stt,
@@ -259,52 +262,56 @@ async def _start_track_egress(ctx: JobContext, room_name: str) -> None:
         await lk.aclose()
 
 
-def _create_llm(provider: str, model: str):
+def _key(keys: dict, provider: str) -> dict:
+    """api_key kwarg for a plugin, or nothing so it reads its env var."""
+    value = (keys or {}).get(provider)
+    return {"api_key": value} if value else {}
+
+
+def _create_llm(provider: str, model: str, keys: dict | None = None):
     """Create LLM instance based on provider configuration."""
     if provider == "anthropic":
         from livekit.plugins import anthropic
-        return anthropic.LLM(model=model, _strict_tool_schema=False)
+        return anthropic.LLM(model=model, _strict_tool_schema=False, **_key(keys, "anthropic"))
     elif provider in ("openai", "openrouter", "local"):
         from livekit.plugins import openai
         kwargs = {"model": model}
         if provider == "openrouter":
             kwargs["base_url"] = "https://openrouter.ai/api/v1"
-            kwargs["api_key"] = os.environ.get("OPENROUTER_API_KEY", "")
+            kwargs["api_key"] = (keys or {}).get("openrouter") or os.environ.get("OPENROUTER_API_KEY", "")
         elif provider == "local":
             kwargs["base_url"] = os.environ.get("LOCAL_LLM_URL", "http://localhost:11434/v1")
+        else:
+            kwargs.update(_key(keys, "openai"))
         return openai.LLM(**kwargs)
     else:
         from livekit.plugins import anthropic
-        return anthropic.LLM(model=model)
+        return anthropic.LLM(model=model, **_key(keys, "anthropic"))
 
 
-def _create_tts(provider: str, voice_id: str | None = None):
+def _create_tts(provider: str, voice_id: str | None = None, keys: dict | None = None):
     """Create TTS instance based on provider configuration."""
     if provider == "elevenlabs":
         from livekit.plugins import elevenlabs
-        kwargs = {"model": "eleven_turbo_v2_5"}
+        kwargs = {"model": "eleven_turbo_v2_5", **_key(keys, "elevenlabs")}
         if voice_id:
             kwargs["voice_id"] = voice_id
         return elevenlabs.TTS(**kwargs)
     elif provider == "openai":
         from livekit.plugins import openai
-        return openai.TTS(voice=voice_id or "alloy")
+        return openai.TTS(voice=voice_id or "alloy", **_key(keys, "openai"))
     else:
         from livekit.plugins import elevenlabs
-        return elevenlabs.TTS(model="eleven_turbo_v2_5")
+        return elevenlabs.TTS(model="eleven_turbo_v2_5", **_key(keys, "elevenlabs"))
 
 
-def _create_stt(provider: str):
+def _create_stt(provider: str, keys: dict | None = None):
     """Create STT instance based on provider configuration."""
-    if provider == "elevenlabs":
-        from livekit.plugins import elevenlabs
-        return elevenlabs.STT(model_id="scribe_v2_realtime", sample_rate=16000)
-    elif provider == "deepgram":
+    if provider == "deepgram":
         from livekit.plugins import deepgram
-        return deepgram.STT()
-    else:
-        from livekit.plugins import elevenlabs
-        return elevenlabs.STT(model_id="scribe_v2_realtime", sample_rate=16000)
+        return deepgram.STT(**_key(keys, "deepgram"))
+    from livekit.plugins import elevenlabs
+    return elevenlabs.STT(model_id="scribe_v2_realtime", sample_rate=16000, **_key(keys, "elevenlabs"))
 
 
 if __name__ == "__main__":

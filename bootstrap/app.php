@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\AppendOidcIdToken;
 use App\Http\Middleware\ApplyUserPreferences;
+use App\Http\Middleware\AuthenticateAgentWorker;
 use App\Http\Middleware\AuthenticateTeamApiKey;
 use App\Http\Middleware\CheckRole;
 use App\Http\Middleware\CheckToolPermission;
@@ -102,6 +103,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'tool' => CheckToolPermission::class,
             // Per-client API key auth for the public v1 API.
             'team.api-key' => AuthenticateTeamApiKey::class,
+            // Agent worker shared secret, falling back to Sanctum.
+            'agent-worker' => AuthenticateAgentWorker::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

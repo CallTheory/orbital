@@ -544,6 +544,7 @@ class AgentFlowCompiler
     private function typeHintFor(string $key, array $params): string
     {
         return match ($key) {
+            'gather_intake_fields' => 'ask for every field in "Variables available during this call", one at a time, recording each with set_field; confirm spellings and read numbers back; skip any the caller already gave.',
             'transfer_call' => ($params['destination_type'] ?? null) === 'external'
                 ? 'once the details are collected, tell the caller you are connecting them to a live operator, then call the `transfer_to_operator` tool (it takes no number).'
                 : '',

@@ -363,6 +363,23 @@ class IntakeGoalLibrarySeeder extends Seeder
             ],
 
             [
+                'key' => 'gather_intake_fields',
+                'name' => 'Gather Intake Fields',
+                'category' => 'intake',
+                'icon' => 'heroicon-o-clipboard-document-list',
+                'description' => 'Collect every intake field this client defines (Clients → Intake Fields), one at a time. One step serves any client, so a shared flow works for all of them.',
+                'talking_points' => [
+                    'Ask for each field in "Variables available during this call", one at a time.',
+                    'Confirm the spelling of names and read numbers back.',
+                    'Skip any field the caller has already given.',
+                ],
+                'data_fields' => [
+                    ['key' => 'prompt', 'label' => 'How the AI opens', 'type' => 'template', 'required' => false, 'hint' => 'Optional, e.g. "I just need a few details so the operator can help you."'],
+                ],
+                'completion' => ['type' => 'node_completed'],
+            ],
+
+            [
                 'key' => 'identify_reason',
                 'name' => 'Identify Reason for Call',
                 'category' => 'intake',

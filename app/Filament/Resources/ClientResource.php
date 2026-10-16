@@ -471,6 +471,7 @@ class ClientResource extends Resource
             Pages\ManageClientUsers::class,
             Pages\ManageClientDirectory::class,
             Pages\ManageClientDirectoryFields::class,
+            Pages\ManageClientIntakeFields::class,
             Pages\ManageClientApiKeys::class,
         ]);
     }
@@ -495,6 +496,7 @@ class ClientResource extends Resource
             'users' => Pages\ManageClientUsers::route('/{record}/users'),
             'directory' => Pages\ManageClientDirectory::route('/{record}/directory'),
             'directory-fields' => Pages\ManageClientDirectoryFields::route('/{record}/directory-fields'),
+            'intake-fields' => Pages\ManageClientIntakeFields::route('/{record}/intake-fields'),
             'api-keys' => Pages\ManageClientApiKeys::route('/{record}/api-keys'),
             'smart-ingest' => Pages\SmartIngestClientDirectory::route('/{record}/smart-ingest'),
         ];

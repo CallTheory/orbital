@@ -7,6 +7,7 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToTeam;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
 
 /**
  * A declared variable in a client's intake-flow graph.
@@ -49,6 +50,7 @@ class ClientSlot extends Model
     protected $fillable = [
         'team_id',
         'name',
+        'label',
         'type',
         'choices',
         'description',
@@ -64,5 +66,11 @@ class ClientSlot extends Model
     public function team(): BelongsTo
     {
         return $this->belongsTo(Team::class);
+    }
+
+    /** Display name for people outside our UI (e.g. the handoff API). */
+    public function displayLabel(): string
+    {
+        return filled($this->label) ? $this->label : Str::headline($this->name);
     }
 }

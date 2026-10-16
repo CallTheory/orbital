@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Services\Telephony\LiveKitConfigService;
+use App\Services\Telephony\Realtime\InfrastructureEndpointSyncer;
 use Illuminate\Console\Command;
 
 /**
@@ -26,10 +27,15 @@ class SyncLiveKitSip extends Command
 {
     protected $signature = 'orbital:sync-livekit-sip';
 
-    protected $description = 'Provision LiveKit SIP trunk and dispatch rules for AI agent extensions.';
+    protected $description = 'Provision both ends of the Asterisk ↔ LiveKit SIP path: Asterisk\'s livekit endpoint, and LiveKit\'s inbound trunk and AI dispatch rule.';
 
-    public function handle(LiveKitConfigService $service): int
+    public function handle(LiveKitConfigService $service, InfrastructureEndpointSyncer $endpoints): int
     {
+        // Asterisk side first: it's only database rows, so it works even
+        // while LiveKit is still starting (e.g. on a first install).
+        $endpoints->sync();
+        $this->info('Asterisk: livekit endpoint and anonymous context ('.config('telephony.anonymous_context').') written.');
+
         $this->info('Syncing LiveKit SIP configuration...');
 
         try {

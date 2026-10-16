@@ -10,6 +10,8 @@ use App\Models\CallSessionState;
 use App\Models\Extension;
 use App\Services\Messages\PartialMessagePolicy;
 use App\Services\Messages\SessionMessageWriter;
+use App\Services\Telephony\HandoffDestinations;
+use App\Support\PhoneNumber;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -73,6 +75,62 @@ class CallSessionController extends Controller
         $this->maybePersistMessage($state->fresh());
 
         return response()->json(['data' => $this->serialize($state->fresh())]);
+    }
+
+    /**
+     * Who is calling and which number they dialled, reported by the
+     * worker from the SIP participant when the call starts. The handoff
+     * lookup API finds the session by caller_number.
+     */
+    public function context(Request $request, string $sessionKey): JsonResponse
+    {
+        if (! $this->isWorker($request)) {
+            abort(401);
+        }
+
+        $data = $request->validate([
+            'caller_number' => 'nullable|string|max:64',
+            'called_number' => 'nullable|string|max:64',
+            'extension' => 'nullable|string|max:32',
+        ]);
+
+        $state = $this->upsert($sessionKey, $data['extension'] ?? null);
+        $state->fill([
+            'caller_number' => PhoneNumber::toE164($data['caller_number'] ?? null) ?? $state->caller_number,
+            'called_number' => PhoneNumber::toE164($data['called_number'] ?? null) ?? $state->called_number,
+        ])->save();
+
+        return response()->json(['data' => $this->serialize($state->fresh())]);
+    }
+
+    /**
+     * The AI is handing the caller to the client's outside operator.
+     * Records the handoff (what the operator's system looks up) and
+     * returns where the worker REFERs the caller: the from-livekit
+     * dialplan entry for that client and number. The worker never
+     * chooses the number.
+     */
+    public function handoff(Request $request, string $sessionKey, HandoffDestinations $destinations): JsonResponse
+    {
+        if (! $this->isWorker($request)) {
+            abort(401);
+        }
+
+        $request->validate(['extension' => 'nullable|string|max:32']);
+
+        $state = $this->upsert($sessionKey, $request->input('extension'));
+        $number = $destinations->forSession($state);
+
+        if ($number === null) {
+            return response()->json(['message' => 'No handoff number is configured for this client.'], 422);
+        }
+
+        $state->forceFill(['handoff_number' => $number, 'handed_off_at' => now()])->save();
+
+        return response()->json(['data' => [
+            'number' => $number,
+            'transfer_to' => 'sip:'.$destinations->dialplanExtension((int) $state->team_id, $number).'@asterisk',
+        ]]);
     }
 
     /**
@@ -198,12 +256,16 @@ class CallSessionController extends Controller
             'session_key' => $state->session_key,
             'team_id' => $state->team_id,
             'agent_persona_id' => $state->agent_persona_id,
+            'caller_number' => $state->caller_number,
+            'called_number' => $state->called_number,
             'fields' => $state->fields ?? [],
             'active_step' => $state->active_step,
             'operator_owned' => $state->operator_owned,
             'last_field_at' => $state->last_field_at?->toIso8601String(),
             'ended_at' => $state->ended_at?->toIso8601String(),
             'end_reason' => $state->end_reason,
+            'handoff_number' => $state->handoff_number,
+            'handed_off_at' => $state->handed_off_at?->toIso8601String(),
         ];
     }
 }

@@ -363,6 +363,23 @@ class IntakeGoalLibrarySeeder extends Seeder
             ],
 
             [
+                'key' => 'gather_intake_fields',
+                'name' => 'Gather Intake Fields',
+                'category' => 'intake',
+                'icon' => 'heroicon-o-clipboard-document-list',
+                'description' => 'Collect every intake field this client defines (Clients → Intake Fields), one at a time. One step serves any client, so a shared flow works for all of them.',
+                'talking_points' => [
+                    'Ask for each field in "Variables available during this call", one at a time.',
+                    'Confirm the spelling of names and read numbers back.',
+                    'Skip any field the caller has already given.',
+                ],
+                'data_fields' => [
+                    ['key' => 'prompt', 'label' => 'How the AI opens', 'type' => 'template', 'required' => false, 'hint' => 'Optional, e.g. "I just need a few details so the operator can help you."'],
+                ],
+                'completion' => ['type' => 'node_completed'],
+            ],
+
+            [
                 'key' => 'identify_reason',
                 'name' => 'Identify Reason for Call',
                 'category' => 'intake',
@@ -755,14 +772,14 @@ class IntakeGoalLibrarySeeder extends Seeder
                 'category' => 'action',
                 'exits' => [], // terminal — call leaves this flow on transfer
                 'icon' => 'heroicon-o-arrow-right-circle',
-                'description' => 'Transfer the live caller to an extension, a DID, or a queue.',
+                'description' => 'Transfer the live caller to an extension, a DID, a queue, or an outside live operator (external phone number). An external handoff records the call so the operator\'s system can fetch what was collected through the handoff API.',
                 'talking_points' => [
                     'Tell the caller who you\'re transferring them to before bridging.',
                     'Perform the configured transfer.',
                 ],
                 'data_fields' => [
-                    ['key' => 'destination_type', 'label' => 'Destination type', 'type' => 'select', 'required' => true, 'options' => ['extension', 'did', 'queue']],
-                    ['key' => 'destination', 'label' => 'Destination', 'type' => 'string', 'required' => true, 'hint' => 'Extension number, DID, or queue name.'],
+                    ['key' => 'destination_type', 'label' => 'Destination type', 'type' => 'select', 'required' => true, 'options' => ['extension', 'did', 'queue', 'external']],
+                    ['key' => 'destination', 'label' => 'Destination', 'type' => 'string', 'required' => true, 'hint' => 'Extension number, DID, or queue name; for external, the operator\'s phone number in E.164 (+15551234567).'],
                     ['key' => 'mode', 'label' => 'Mode', 'type' => 'select', 'required' => false, 'options' => ['cold', 'warm'], 'hint' => 'Default: cold.'],
                 ],
                 'completion' => ['type' => 'node_completed'],

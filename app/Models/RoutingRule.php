@@ -16,6 +16,7 @@ class RoutingRule extends Model
 
     protected $fillable = [
         'team_id',
+        'client_did_id',
         'name',
         'sip_trunk_id',
         'match_type',

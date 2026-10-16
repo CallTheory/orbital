@@ -74,6 +74,35 @@ class AsteriskConfigService
     }
 
     /**
+     * from-livekit entries for AI handoffs to outside operators: one per
+     * configured (client, number), dialled out the client's trunk. A
+     * client with no trunk gets none (the handoff then fails cleanly).
+     *
+     * @return array<int, array{team_id: int, number: string, extension: string, dial: string, host: string}>
+     */
+    protected function handoffDialplanEntries(): array
+    {
+        $destinations = app(HandoffDestinations::class);
+
+        return $destinations->all()
+            ->map(function (array $handoff) use ($destinations) {
+                $trunk = $destinations->trunkFor($handoff['team_id']);
+
+                return $trunk ? [
+                    'team_id' => $handoff['team_id'],
+                    'number' => $handoff['number'],
+                    'extension' => $destinations->dialplanExtension($handoff['team_id'], $handoff['number']),
+                    // Built here: in Blade, `@{{` is an escaped literal.
+                    'dial' => 'PJSIP/'.$handoff['number'].'@trunk_'.$trunk->id,
+                    'host' => (string) $trunk->host,
+                ] : null;
+            })
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    /**
      * Render the inbound trunk dispatcher. Pulls every active
      * routing rule across all clients — the dispatcher is global
      * because trunks are shared infrastructure and the DID match
@@ -89,6 +118,7 @@ class AsteriskConfigService
 
         return View::make('asterisk.from-trunk', [
             'rules' => $rules,
+            'handoffs' => $this->handoffDialplanEntries(),
         ])->render();
     }
 

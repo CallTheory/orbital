@@ -1,8 +1,11 @@
 """Orbital Agent Worker — handles LiveKit AI agent sessions."""
 
+import asyncio
 import logging
 import os
 import re
+
+import requests
 
 from livekit.agents import (
     Agent,
@@ -149,10 +152,13 @@ async def entrypoint(ctx: JobContext) -> None:
 
     await session.start(agent, room=ctx.room)
 
+    # Record who's calling and the DID they dialled; the handoff lookup
+    # API finds this session by the caller's number.
+    asyncio.create_task(_report_call_context(ctx, config, room_name, extension))
+
     # Brief pause so the SIP bridge audio path is fully established
     # before the greeting plays — without this the first few hundred
     # milliseconds of TTS get swallowed while RTP is still negotiating.
-    import asyncio
     await asyncio.sleep(0.8)
 
     # Kick off per-participant TrackEgress for the recording surface 2
@@ -169,6 +175,39 @@ async def entrypoint(ctx: JobContext) -> None:
         logger.warning(f"egress start failed for {room_name}: {e}")
 
     await session.say(greeting)
+
+
+async def _report_call_context(ctx: JobContext, config: Config, room_name: str, extension: str) -> None:
+    """POST the caller's number and the dialled DID for this session.
+
+    LiveKit's SIP participant carries the caller as `sip.phoneNumber`;
+    the DID comes from the X-Orbital-DID header Asterisk adds (included
+    as a `sip.h.*` attribute). `sip.trunkPhoneNumber` is only the AI
+    extension Asterisk dialled, so it's the fallback.
+    """
+    try:
+        participant = await asyncio.wait_for(ctx.wait_for_participant(), timeout=10)
+    except Exception as e:
+        logger.warning(f"no SIP participant to read call context from: {e}")
+        return
+
+    attrs = dict(participant.attributes or {})
+    did = next((v for k, v in attrs.items() if k.lower().endswith("x-orbital-did")), None)
+    payload = {
+        "caller_number": attrs.get("sip.phoneNumber"),
+        "called_number": did or attrs.get("sip.trunkPhoneNumber"),
+        "extension": extension,
+    }
+    try:
+        await asyncio.to_thread(
+            requests.post,
+            f"{config.orbital_api_url}/call-sessions/{room_name}/context",
+            headers=config.api_headers,
+            json=payload,
+            timeout=5,
+        )
+    except requests.RequestException as e:
+        logger.warning(f"call context report failed: {e}")
 
 
 async def _start_track_egress(ctx: JobContext, room_name: str) -> None:

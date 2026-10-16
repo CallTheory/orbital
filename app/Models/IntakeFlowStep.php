@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Jobs\RegenerateTelephonyConfig;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -26,6 +27,24 @@ class IntakeFlowStep extends Model
         'position',
         'step_params',
     ];
+
+    protected static function booted(): void
+    {
+        // A Transfer Call step can carry an outside handoff number, which
+        // only becomes dialable once it's in the from-livekit dialplan.
+        $regenerate = function (IntakeFlowStep $step): void {
+            if ($step->intakeGoal()->value('key') !== 'transfer_call') {
+                return;
+            }
+            $teamId = IntakeFlow::withoutGlobalScopes()->whereKey($step->flow_id)->value('team_id');
+            if ($teamId) {
+                RegenerateTelephonyConfig::dispatch((int) $teamId);
+            }
+        };
+
+        static::saved($regenerate);
+        static::deleted($regenerate);
+    }
 
     protected function casts(): array
     {

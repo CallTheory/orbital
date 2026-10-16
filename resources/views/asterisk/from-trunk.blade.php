@@ -31,6 +31,7 @@
 @endphp
 ; Rule {{ $rule->id }}: {{ $rule->name ?? '(unnamed)' }} → {{ $tenantContext }}
 exten => {{ $pattern }},1,NoOp(Inbound {{ $pattern }} for client {{ $rule->team_id ?? 'platform' }} via rule {{ $rule->id }})
+ same => n,Set(__ORBITAL_DID=${EXTEN})
 @switch($rule->destination_type)
 @case('extension')
  same => n,Goto({{ $tenantContext }},{{ $rule->destination_id }},1)
@@ -83,5 +84,31 @@ exten => _X.,1,NoOp(Unmatched inbound DID ${EXTEN})
 ; ARA endpoint naming (t{team_id}_{number}), this stays a flat
 ; fallback — when a LiveKit return needs to land in a per-client
 ; context the worker should send the prefixed name.
+@foreach($handoffs as $handoff)
+; AI handoff: client {{ $handoff['team_id'] }} → {{ $handoff['number'] }}. The caller keeps
+; their own caller ID; orbital-handoff-headers adds a Diversion header with
+; the DID they dialled so the carrier accepts presenting it.
+exten => {{ $handoff['extension'] }},1,NoOp(AI handoff for client {{ $handoff['team_id'] }} to {{ $handoff['number'] }})
+ same => n,Set(_ORBITAL_DIVERSION_HOST={{ $handoff['host'] }})
+ same => n,Dial({{ $handoff['dial'] }},60,rb(orbital-handoff-headers^s^1))
+ same => n,Hangup()
+
+@endforeach
 exten => _X.,1,NoOp(From LiveKit: ${EXTEN})
  same => n,Goto(default,${EXTEN},1)
+
+
+[orbital-ai-headers]
+
+; Pre-dial handler on the AI leg (Dial(...@livekit,...,b(...))): tells
+; LiveKit which DID the caller dialled; the worker records it.
+exten => s,1,GotoIf($["${ORBITAL_DID}" = ""]?done)
+ same => n,Set(PJSIP_HEADER(add,X-Orbital-DID)=${ORBITAL_DID})
+ same => n(done),Return()
+
+
+[orbital-handoff-headers]
+
+exten => s,1,GotoIf($["${ORBITAL_DID}" = ""]?done)
+ same => n,Set(PJSIP_HEADER(add,Diversion)=<sip:${ORBITAL_DID}@${ORBITAL_DIVERSION_HOST}>\;reason=unconditional)
+ same => n(done),Return()

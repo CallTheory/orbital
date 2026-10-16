@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Services\Telephony\ClientDidRouting;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -22,11 +23,19 @@ class ClientDid extends Model
     protected $fillable = [
         'team_id',
         'sip_trunk_id',
+        'destination_type',
+        'destination_id',
         'number',
         'label',
         'is_active',
         'notes',
     ];
+
+    protected static function booted(): void
+    {
+        static::saved(fn (ClientDid $did) => app(ClientDidRouting::class)->sync($did));
+        static::deleted(fn (ClientDid $did) => app(ClientDidRouting::class)->remove($did));
+    }
 
     protected function casts(): array
     {

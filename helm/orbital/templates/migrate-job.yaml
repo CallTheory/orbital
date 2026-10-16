@@ -102,6 +102,13 @@ spec:
           imagePullPolicy: {{ .Values.global.image.pullPolicy }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- if .Values.telephony.kamailio.edgeAddresses }}
+          # Pre-upgrade, this job still sees the previous release's
+          # ConfigMap; give it the edge setting it writes to Asterisk.
+          env:
+            - name: ASTERISK_ANONYMOUS_CONTEXT
+              value: "from-trunk"
+          {{- end }}
           envFrom:
             - configMapRef:
                 name: {{ include "orbital.componentName" (list . "failover-tiers") }}
@@ -132,6 +139,15 @@ spec:
               */}}
               php artisan orbital:seed-if-empty
               {{- end }}
+              {{/*
+                Both ends of the Asterisk ↔ LiveKit SIP path (Asterisk's
+                livekit endpoint rows, LiveKit's trunk and AI dispatch
+                rule). The Asterisk half is database rows and always lands;
+                LiveKit may still be starting on a first install, so a
+                failure there only waits for the next deploy (or for
+                `php artisan orbital:sync-livekit-sip`).
+              */}}
+              php artisan orbital:sync-livekit-sip || echo "LiveKit SIP sync incomplete; it runs again on the next deploy."
           resources:
             {{- toYaml .Values.migrations.resources | nindent 12 }}
 {{- end }}

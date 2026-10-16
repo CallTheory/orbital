@@ -107,6 +107,9 @@ data:
   {{- if .Values.telephony.kamailio.edgeAddresses }}
   # rtpengine's NG control is loopback-only on the edges; check it via Kamailio.
   RTPENGINE_VIA_KAMAILIO: "true"
+  # Carrier calls reach Asterisk relayed by the edges, which it can't
+  # match to a trunk endpoint; send them to the DID router.
+  ASTERISK_ANONYMOUS_CONTEXT: "from-trunk"
   {{- end }}
   {{- with .Values.telephony.kamailio.sipDomain }}
   # Softphones register through the edge's Kamailio WSS.

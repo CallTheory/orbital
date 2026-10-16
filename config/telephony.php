@@ -76,9 +76,22 @@ return [
         ],
 
         'sip' => [
+            'host' => env('LIVEKIT_SIP_HOST', 'livekit-sip'),
             'port' => (int) env('LIVEKIT_SIP_PORT', 5069),
         ],
+
+        // The agent worker registers under this name (agent-worker/agent.py
+        // WorkerOptions.agent_name). A named worker is only sent to rooms
+        // that ask for it, so the SIP dispatch rule names it.
+        'agent_name' => env('LIVEKIT_AGENT_NAME', 'orbital-agent'),
     ],
+
+    // Dialplan context for SIP requests Asterisk can't match to an
+    // endpoint. Standalone installs reject them (unknown-reject). Behind
+    // the Kamailio edge every such request is a carrier call relayed by
+    // an edge VM — Asterisk listens only on the private network — so the
+    // chart sets from-trunk, where only configured DIDs connect.
+    'anonymous_context' => env('ASTERISK_ANONYMOUS_CONTEXT', 'unknown-reject'),
 
     /*
     |--------------------------------------------------------------------------

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Services\Telephony;
 
-use App\Models\Extension;
 use Firebase\JWT\JWT;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -24,7 +23,9 @@ class LiveKitConfigService
             config('telephony.livekit.local')
         );
 
-        $this->apiUrl = $config['url'] ?? '';
+        // The API is HTTP (Twirp) on the same port as the WebSocket the
+        // agents use; LIVEKIT_URL is often given as ws:// or wss://.
+        $this->apiUrl = preg_replace('#^ws(s?)://#', 'http$1://', (string) ($config['url'] ?? ''));
         $this->apiKey = $config['api_key'] ?? '';
         $this->apiSecret = $config['api_secret'] ?? '';
     }
@@ -42,34 +43,37 @@ class LiveKitConfigService
     }
 
     /**
-     * Build SIP dispatch rules for AI agent extensions.
+     * The SIP dispatch rule for AI agent calls.
      *
-     * @return array<int, array{rule: array, agentName: string}>
+     * Every call Asterisk sends to LiveKit is an AI call
+     * (Dial(PJSIP/{ext}@livekit)), so one rule covers every extension:
+     * the room is named after the dialled extension — agent-{ext}_{random},
+     * which the worker parses — and the named agent worker is dispatched
+     * into it. (One rule per extension would overlap: rules with no trunk
+     * or number filter all match every call.) It doesn't depend on which
+     * extensions exist, so a new AI extension needs no re-sync.
+     *
+     * @return array<int, array<string, mixed>>
      */
-    public function buildDispatchRules(?int $teamId = null): array
+    public function buildDispatchRules(): array
     {
-        $aiExtensions = Extension::withoutGlobalScopes()
-            ->when($teamId, fn ($q) => $q->where('team_id', $teamId))
-            ->where('type', 'ai_agent')
-            ->where('is_active', true)
-            ->with('assignable')
-            ->get();
-
-        $rules = [];
-        foreach ($aiExtensions as $ext) {
-            $rules[] = [
-                'rule' => [
-                    'dispatchRuleCallee' => [
-                        'roomPrefix' => "agent-{$ext->number}_",
-                        'pin' => '',
-                    ],
+        return [[
+            'name' => 'orbital-ai-agents',
+            'rule' => [
+                'dispatchRuleCallee' => [
+                    'roomPrefix' => 'agent-',
+                    'pin' => '',
+                    'randomize' => true,
                 ],
-                'trunkIds' => [],
-                'hidePhoneNumber' => false,
-            ];
-        }
-
-        return $rules;
+            ],
+            'trunkIds' => [],
+            'hidePhoneNumber' => false,
+            'roomConfig' => [
+                'agents' => [
+                    ['agentName' => (string) config('telephony.livekit.agent_name', 'orbital-agent')],
+                ],
+            ],
+        ]];
     }
 
     /**

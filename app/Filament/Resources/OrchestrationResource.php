@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\OrchestrationResource\Pages;
+use App\Models\AgentPersona;
 use App\Models\Orchestration;
+use App\Models\Team;
+use App\Services\Flows\ApplyOrchestrationTemplate;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Actions\BulkAction;
@@ -13,6 +16,7 @@ use Filament\Actions\BulkActionGroup;
 use Filament\Forms;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
@@ -130,6 +134,7 @@ class OrchestrationResource extends Resource
                 Notification::make()->title('Saved')->success()->send();
             })
             ->extraModalFooterActions([
+                self::makeApplyToClientAction(),
                 Actions\Action::make('open-editor')
                     ->label('Open editor')
                     ->icon('heroicon-o-pencil-square')
@@ -147,6 +152,54 @@ class OrchestrationResource extends Resource
                 Actions\DeleteAction::make()
                     ->modalDescription('Deletes the platform orchestration and every flow / step / transition / rule inside it. Any queue (across any client) pointing at this orchestration has its assignment cleared.'),
             ]);
+    }
+
+    /**
+     * Apply this shared orchestration to a client: copy it with its
+     * default intake fields, set the client's handoff number, and point
+     * the client's AI persona at it (ApplyOrchestrationTemplate).
+     */
+    public static function makeApplyToClientAction(): Actions\Action
+    {
+        return Actions\Action::make('apply-to-client')
+            ->label('Apply to client')
+            ->icon('heroicon-o-arrow-down-on-square-stack')
+            ->modalHeading(fn (Orchestration $record) => 'Apply "'.$record->name.'" to a client')
+            ->modalDescription('Copies the flows and their default intake fields into the client. Edit the client\'s fields afterwards under Clients → Intake Fields.')
+            ->schema([
+                Forms\Components\Select::make('team_id')
+                    ->label('Client')
+                    ->options(fn () => Team::query()->where('personal_team', false)->orderBy('name')->pluck('name', 'id'))
+                    ->searchable()
+                    ->required()
+                    ->live(),
+                Forms\Components\Select::make('agent_persona_id')
+                    ->label('AI persona that answers')
+                    ->options(fn (Get $get) => $get('team_id')
+                        ? AgentPersona::withoutGlobalScopes()->where('team_id', $get('team_id'))->orderBy('name')->pluck('name', 'id')
+                        : [])
+                    ->helperText('Calls to this persona\'s AI extension will run the copied flow.')
+                    ->searchable(),
+                Forms\Components\TextInput::make('handoff_number')
+                    ->label('Live operator\'s phone number')
+                    ->placeholder('+15551234567')
+                    ->tel()
+                    ->helperText('Where the AI transfers callers once the fields are collected.'),
+            ])
+            ->action(function (Orchestration $record, array $data) {
+                $team = Team::findOrFail($data['team_id']);
+                $persona = filled($data['agent_persona_id'] ?? null)
+                    ? AgentPersona::withoutGlobalScopes()->where('team_id', $team->id)->findOrFail($data['agent_persona_id'])
+                    : null;
+
+                app(ApplyOrchestrationTemplate::class)->apply($record, $team, $persona, $data['handoff_number'] ?? null);
+
+                Notification::make()
+                    ->title('Applied to '.$team->name)
+                    ->body($persona ? $persona->name.' now runs it.' : 'Assign it to an AI persona to use it.')
+                    ->success()
+                    ->send();
+            });
     }
 
     public static function table(Table $table): Table
@@ -174,7 +227,7 @@ class OrchestrationResource extends Resource
             ])
             ->defaultSort('name')
             ->filters([])
-            ->actions([])
+            ->actions([self::makeApplyToClientAction()])
             ->bulkActions([
                 BulkActionGroup::make([
                     BulkAction::make('duplicate')

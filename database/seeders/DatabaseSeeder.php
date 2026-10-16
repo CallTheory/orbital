@@ -14,6 +14,7 @@ class DatabaseSeeder extends Seeder
             HoldMusicClassSeeder::class,
             PersonalityTemplateSeeder::class,
             IntakeGoalLibrarySeeder::class,
+            IntakeHandoffTemplateSeeder::class,
             QueueStrategyTemplateSeeder::class,
             SkillCatalogSeeder::class,
             AvailabilityReasonSeeder::class,

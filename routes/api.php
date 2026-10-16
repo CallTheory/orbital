@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\InboundMessageController;
 use App\Http\Controllers\Api\KnowledgeController;
 use App\Http\Controllers\Api\LivekitWebhookController;
 use App\Http\Controllers\Api\TlsRenewalWebhookController;
+use App\Http\Controllers\Api\V1\HandoffController;
 use App\Http\Controllers\Api\VoicemailWebhookController;
 use App\Support\Release;
 use Illuminate\Http\Request;
@@ -166,3 +167,15 @@ Route::post('/tls/renewed', TlsRenewalWebhookController::class);
  * (same edge token as /tls/renewed) and reload when it changes.
  */
 Route::get('/edge/dispatcher', EdgeDispatcherController::class);
+
+/**
+ * Public v1 API for clients' own systems. Authenticated by a per-client
+ * API key (Bearer orb_...); the key's team scopes every query.
+ *
+ * Handoff lookup: when an outside operator answers a transferred call,
+ * their system fetches what the AI collected, keyed by caller number.
+ */
+Route::prefix('v1')->middleware(['team.api-key', 'throttle:120,1'])->group(function () {
+    Route::get('/handoffs/lookup', [HandoffController::class, 'lookup'])->name('api.v1.handoffs.lookup');
+    Route::get('/handoffs/{id}', [HandoffController::class, 'show'])->whereNumber('id')->name('api.v1.handoffs.show');
+});

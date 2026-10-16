@@ -133,8 +133,16 @@ livekit:
 
 horizon:
   replicas: 1
+# AI calls: each runs in its own process on a worker (Silero VAD loaded
+# locally; STT, LLM and TTS are hosted), at roughly 150-250 MB apiece, so
+# the chart default (2 × 1 GB) holds only a handful of calls at once. Sized
+# for the production nodes (3 × 4 vCPU / 8 GB): about 30-60 concurrent AI
+# calls. orbital-setup puts small clusters back on the chart default.
 agentWorker:
-  replicas: 2
+  replicas: 4
+  resources:
+    requests: {cpu: "500m", memory: "1Gi"}
+    limits: {cpu: "2000m", memory: "2Gi"}
 
 # Single laravel block (merged): 2 replicas for HA, plus tighter
 # pod-level resource bounds for managed VKE — the control plane is

@@ -43,6 +43,10 @@ BREVITY_RULES = (
     "- Pause and let the caller talk. Do not monologue.\n"
     "- Never use markdown, bullet points, numbered lists, or any text formatting.\n"
     "- If you need to explain something complex, break it into back-and-forth exchanges.\n"
+    "- When you say a phone number or other digit string out loud, write it as words, "
+    "one digit at a time, grouped the way people say them: \"six one four, eight two two, "
+    "zero zero one nine\". Never read digits as amounts like \"six hundred fourteen\". "
+    "Tool arguments still use digits.\n"
     "- You have an end_call tool — use it to hang up if the caller is abusive, "
     "won't stop harassing you, or if the conversation is clearly over."
 )

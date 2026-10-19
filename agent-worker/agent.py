@@ -311,7 +311,15 @@ def _create_stt(provider: str, keys: dict | None = None):
         from livekit.plugins import deepgram
         return deepgram.STT(**_key(keys, "deepgram"))
     from livekit.plugins import elevenlabs
-    return elevenlabs.STT(model_id="scribe_v2_realtime", sample_rate=16000, **_key(keys, "elevenlabs"))
+    # Without server_vad, Scribe realtime waits for a manual commit that
+    # AgentSession never sends, so callers' turns never end and the agent
+    # goes silent after its greeting. Let ElevenLabs commit on silence.
+    return elevenlabs.STT(
+        model="scribe_v2_realtime",
+        sample_rate=16000,
+        server_vad={"vad_silence_threshold_secs": 0.8},
+        **_key(keys, "elevenlabs"),
+    )
 
 
 if __name__ == "__main__":

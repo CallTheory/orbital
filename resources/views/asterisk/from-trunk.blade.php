@@ -68,6 +68,10 @@ exten => {{ $pattern }},1,NoOp(Inbound {{ $pattern }} for client {{ $rule->team_
  same => n,Goto({{ $tenantContext }},{{ $rule->destination_id }},1)
 @endswitch
  same => n,Hangup()
+@foreach(\App\Services\Telephony\DidFormats::alternatives($pattern) as $alias)
+; Carriers often send {{ $pattern }} as {{ $alias }}
+exten => {{ $alias }},1,Goto(from-trunk,{{ $pattern }},1)
+@endforeach
 
 @endforeach
 

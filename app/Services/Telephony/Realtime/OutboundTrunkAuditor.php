@@ -74,7 +74,8 @@ class OutboundTrunkAuditor
             ->get();
 
         foreach ($rows as $row) {
-            $proxy = (string) ($row->outbound_proxy ?? '');
+            // Stored realtime-encoded (see RealtimeValue).
+            $proxy = (string) RealtimeValue::decode($row->outbound_proxy ?? '');
             if ($proxy === $expected) {
                 continue;
             }

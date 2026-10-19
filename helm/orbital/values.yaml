@@ -218,6 +218,11 @@ livekitSip:
   service:
     sipPort: 5069   # cluster-internal SIP only — no wide UDP RTP
                     # range; rtpengine at the edge owns RTP relay.
+  # How long a call may go without audio from the caller before LiveKit
+  # hangs up. Carriers stop sending audio while the caller is silent, so
+  # LiveKit's 15s default dropped callers who were listening to the AI.
+  # Hangups still arrive as SIP BYEs; this only catches lost ones.
+  mediaTimeout: 120s
 
 agentWorker:
   enabled: true

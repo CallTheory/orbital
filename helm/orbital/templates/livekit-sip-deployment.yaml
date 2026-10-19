@@ -65,6 +65,7 @@ spec:
                   address: {{ if .Values.valkey.external.enabled }}{{ .Values.valkey.external.host }}:{{ .Values.valkey.external.port }}{{ else }}{{ include "orbital.componentName" (list . "valkey") }}:6379{{ end }}
                   password: $(REDIS_PASSWORD)
                 sip_port: {{ .Values.livekitSip.service.sipPort }}
+                media_timeout: {{ .Values.livekitSip.mediaTimeout }}
           resources:
             {{- toYaml .Values.livekitSip.resources | nindent 12 }}
 {{- end }}

@@ -229,6 +229,11 @@ agentWorker:
   # API (which gates it on the same value). k8s ignores the image's
   # Docker HEALTHCHECK, so a readiness-probe exec posts it instead.
   token: "orbital-dev-agent-token"
+  # On SIGTERM (every deploy or config change) a worker stops taking new
+  # calls and waits for its live ones to finish. Kubernetes' default 30s
+  # would cut those calls; set this to the longest normal AI call plus a
+  # margin. Idle workers exit straight away, so it doesn't slow deploys.
+  terminationGracePeriodSeconds: 1800
   resources:
     requests: {cpu: "250m", memory: "512Mi"}
     limits: {cpu: "1000m", memory: "1Gi"}

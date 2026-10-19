@@ -127,24 +127,25 @@ class LiveKitConfigService
 
     /**
      * List existing SIP inbound trunks.
+     *
+     * Throws when LiveKit can't answer: treating a failed call as "none"
+     * is what made every sync create another trunk.
+     *
+     * @return array<int, array<string, mixed>>
      */
     public function listInboundTrunks(): array
     {
-        $response = Http::withToken($this->generateToken(), 'Bearer')
-            ->post("{$this->apiUrl}/twirp/livekit.SIP/ListSIPInboundTrunk", []);
-
-        return $response->successful() ? ($response->json('items') ?? []) : [];
+        return $this->twirp('ListSIPInboundTrunk')['items'] ?? [];
     }
 
     /**
      * List existing SIP dispatch rules.
+     *
+     * @return array<int, array<string, mixed>>
      */
     public function listDispatchRules(): array
     {
-        $response = Http::withToken($this->generateToken(), 'Bearer')
-            ->post("{$this->apiUrl}/twirp/livekit.SIP/ListSIPDispatchRule", []);
-
-        return $response->successful() ? ($response->json('items') ?? []) : [];
+        return $this->twirp('ListSIPDispatchRule')['items'] ?? [];
     }
 
     /**
@@ -167,41 +168,77 @@ class LiveKitConfigService
      */
     public function deleteDispatchRule(string $ruleId): void
     {
-        Http::withToken($this->generateToken(), 'Bearer')
-            ->post("{$this->apiUrl}/twirp/livekit.SIP/DeleteSIPDispatchRule", [
-                'sipDispatchRuleId' => $ruleId,
-            ]);
+        $this->twirp('DeleteSIPDispatchRule', ['sip_dispatch_rule_id' => $ruleId]);
+    }
+
+    /**
+     * Delete a SIP trunk (inbound or outbound) by ID.
+     */
+    public function deleteTrunk(string $trunkId): void
+    {
+        $this->twirp('DeleteSIPTrunk', ['sip_trunk_id' => $trunkId]);
     }
 
     /**
      * Sync all AI agent extensions as LiveKit SIP dispatch rules.
-     * Deletes existing rules and recreates from current DB state.
+     * Deletes existing rules and recreates from current DB state, and
+     * leaves exactly one inbound trunk for Asterisk.
      */
     public function syncDispatchRules(): array
     {
         // Delete existing rules.
-        $existing = $this->listDispatchRules();
-        foreach ($existing as $rule) {
-            $id = $rule['sipDispatchRuleId'] ?? null;
+        foreach ($this->listDispatchRules() as $rule) {
+            $id = $rule['sip_dispatch_rule_id'] ?? $rule['sipDispatchRuleId'] ?? null;
             if ($id) {
                 $this->deleteDispatchRule($id);
             }
         }
 
-        // Ensure at least one inbound trunk exists.
-        $trunks = $this->listInboundTrunks();
-        if (empty($trunks)) {
+        // Exactly one inbound trunk for Asterisk. Earlier syncs could add
+        // a duplicate each run; with two matching trunks LiveKit can't
+        // tell which one a call belongs to.
+        $asterisk = array_values(array_filter(
+            $this->listInboundTrunks(),
+            fn (array $trunk) => ($trunk['name'] ?? null) === 'Asterisk',
+        ));
+        if ($asterisk === []) {
             $this->createInboundTrunk();
+        }
+        foreach (array_slice($asterisk, 1) as $duplicate) {
+            $id = $duplicate['sip_trunk_id'] ?? $duplicate['sipTrunkId'] ?? null;
+            if ($id) {
+                $this->deleteTrunk($id);
+            }
         }
 
         // Create dispatch rules for each AI extension.
-        $rules = $this->buildDispatchRules();
         $created = [];
-        foreach ($rules as $rule) {
+        foreach ($this->buildDispatchRules() as $rule) {
             $created[] = $this->createDispatchRule($rule);
         }
 
         return $created;
+    }
+
+    /**
+     * Call a livekit.SIP Twirp method. The body is always a JSON object:
+     * Laravel encodes an empty array as `[]`, which Twirp rejects as
+     * malformed.
+     *
+     * @param  array<string, mixed>  $body
+     * @return array<string, mixed>
+     */
+    protected function twirp(string $method, array $body = []): array
+    {
+        $response = Http::withToken($this->generateToken(), 'Bearer')
+            ->withBody(json_encode((object) $body, JSON_THROW_ON_ERROR), 'application/json')
+            ->post("{$this->apiUrl}/twirp/livekit.SIP/{$method}");
+
+        if (! $response->successful()) {
+            throw new \RuntimeException("LiveKit {$method} failed ({$response->status()}): {$response->body()}");
+        }
+
+        return $response->json() ?? [];
     }
 
     /**

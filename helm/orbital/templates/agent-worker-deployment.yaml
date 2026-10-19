@@ -35,6 +35,8 @@ spec:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       {{/* Keep replicas on separate nodes — see the helper. */}}
       {{- include "orbital.topologySpread" (list . "agent-worker") | nindent 6 }}
+      # Let live AI calls finish while the worker drains (see values).
+      terminationGracePeriodSeconds: {{ .Values.agentWorker.terminationGracePeriodSeconds }}
       containers:
         - name: agent-worker
           image: {{ include "orbital.image" (dict "ctx" . "name" .Values.agentWorker.image.name "tag" .Values.agentWorker.image.tag) }}

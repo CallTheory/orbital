@@ -68,10 +68,11 @@ class TrunkSyncer
             // Configurable via `telephony.outbound_proxy` so single-
             // node and HA setups (Kamailio behind a VIP) can both
             // point trunks at the right edge.
-            'outbound_proxy' => (string) config(
+            // Encoded: the realtime driver would split the `;lr` off.
+            'outbound_proxy' => RealtimeValue::encode((string) config(
                 'telephony.outbound_proxy',
                 'sip:kamailio:5060;lr',
-            ),
+            )),
         ];
 
         $aorRow = [
@@ -97,7 +98,7 @@ class TrunkSyncer
                     'id' => $endpointId,
                     'auth_type' => 'userpass',
                     'username' => $trunk->username,
-                    'password' => $trunk->password ?: '',
+                    'password' => RealtimeValue::encode($trunk->password ?: ''),
                 ]);
             } else {
                 DB::table('ps_auths')->where('id', $endpointId)->delete();

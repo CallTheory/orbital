@@ -26,5 +26,5 @@
 #include "generated/extensions_generated.conf"
 
 @foreach($teamIds as $teamId)
-#include "generated/clients/{{ $teamId }}-dialplan.conf"
+#tryinclude "generated/clients/{{ $teamId }}-dialplan.conf"
 @endforeach

@@ -93,7 +93,7 @@ class EndpointSyncer
             'trust_id_inbound' => 'yes',
             'device_state_busy_at' => '1',
             'dtmf_mode' => 'rfc4733',
-            'callerid' => '"'.($extension->label ?? 'Ext '.$extension->number).'" <'.$extension->number.'>',
+            'callerid' => RealtimeValue::encode('"'.($extension->label ?? 'Ext '.$extension->number).'" <'.$extension->number.'>'),
             'webrtc' => $isWebrtc && ! $webrtcViaEdge ? 'yes' : 'no',
         ];
 
@@ -120,7 +120,7 @@ class EndpointSyncer
             'id' => $endpointId,
             'auth_type' => 'userpass',
             'username' => $extension->sip_username ?: $extension->number,
-            'password' => $extension->sip_password ?: 'changeme',
+            'password' => RealtimeValue::encode($extension->sip_password ?: 'changeme'),
         ];
 
         $aorRow = [

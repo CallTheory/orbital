@@ -185,9 +185,10 @@ class AsteriskConfigService
     /**
      * Write a single client's dialplan file plus the from-trunk
      * dispatcher (since that file references all clients and a
-     * client's own routing rules can change which DIDs land where).
-     * Does NOT touch the dialplan index — that's only regenerated
-     * when clients are created or deleted.
+     * client's own routing rules can change which DIDs land where),
+     * and the index. Nothing rewrites the index when a client is
+     * created, so without it a new client's file is never included
+     * and its calls hang up in from-trunk.
      */
     public function writeDialplanForTenant(int $teamId): void
     {
@@ -201,6 +202,11 @@ class AsteriskConfigService
         $disk->put(
             'from-trunk.conf',
             $this->generateFromTrunkDispatcher(),
+        );
+
+        $disk->put(
+            'dialplan_index.conf',
+            $this->generateDialplanIndex(),
         );
 
         $this->bumpVersion();

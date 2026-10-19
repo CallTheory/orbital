@@ -148,6 +148,13 @@ spec:
                 `php artisan orbital:sync-livekit-sip`).
               */}}
               php artisan orbital:sync-livekit-sip || echo "LiveKit SIP sync incomplete; it runs again on the next deploy."
+              {{/*
+                Rewrite the generated Asterisk dialplan with this release's
+                templates. The Asterisk pods pull it at start, so dialplan
+                fixes apply on upgrade rather than at the next DID or
+                extension save.
+              */}}
+              php artisan orbital:generate-config || echo "Dialplan regeneration failed; saving any DID or extension regenerates it."
           resources:
             {{- toYaml .Values.migrations.resources | nindent 12 }}
 {{- end }}

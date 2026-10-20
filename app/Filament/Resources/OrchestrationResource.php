@@ -6,6 +6,8 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\OrchestrationResource\Pages;
 use App\Models\AgentPersona;
+use App\Models\IntakeFlow;
+use App\Models\IntakeFlowStep;
 use App\Models\Orchestration;
 use App\Models\Team;
 use App\Services\Flows\ApplyOrchestrationTemplate;
@@ -155,9 +157,10 @@ class OrchestrationResource extends Resource
     }
 
     /**
-     * Apply this shared orchestration to a client: copy it with its
-     * default intake fields, set the client's handoff number, and point
-     * the client's AI persona at it (ApplyOrchestrationTemplate).
+     * Apply this shared orchestration to a client: add its flows and
+     * default intake fields to the client's Inbound Phone channel, set
+     * the client's handoff number, and point the client's AI persona at
+     * it (ApplyOrchestrationTemplate).
      */
     public static function makeApplyToClientAction(): Actions\Action
     {
@@ -165,7 +168,7 @@ class OrchestrationResource extends Resource
             ->label('Apply to client')
             ->icon('heroicon-o-arrow-down-on-square-stack')
             ->modalHeading(fn (Orchestration $record) => 'Apply "'.$record->name.'" to a client')
-            ->modalDescription('Copies the flows and their default intake fields into the client. Edit the client\'s fields afterwards under Clients → Intake Fields.')
+            ->modalDescription('Adds the flows and their default intake fields to the client\'s Default orchestration, connected to its Inbound Phone channel. Edit the client\'s fields afterwards under Clients → Intake Fields.')
             ->schema([
                 Forms\Components\Select::make('team_id')
                     ->label('Client')
@@ -178,13 +181,15 @@ class OrchestrationResource extends Resource
                     ->options(fn (Get $get) => $get('team_id')
                         ? AgentPersona::withoutGlobalScopes()->where('team_id', $get('team_id'))->orderBy('name')->pluck('name', 'id')
                         : [])
-                    ->helperText('Calls to this persona\'s AI extension will run the copied flow.')
+                    ->helperText('Calls to this persona\'s AI extension will run the added flow.')
                     ->searchable(),
                 Forms\Components\TextInput::make('handoff_number')
                     ->label('Live operator\'s phone number')
                     ->placeholder('+15551234567')
                     ->tel()
-                    ->helperText('Where the AI transfers callers once the fields are collected.'),
+                    ->helperText('Where the AI transfers callers once the fields are collected.')
+                    ->visible(fn (Orchestration $record) => self::transfersToExternalNumber($record))
+                    ->required(fn (Orchestration $record) => self::transfersToExternalNumber($record)),
             ])
             ->action(function (Orchestration $record, array $data) {
                 $team = Team::findOrFail($data['team_id']);
@@ -200,6 +205,16 @@ class OrchestrationResource extends Resource
                     ->success()
                     ->send();
             });
+    }
+
+    /** Whether the orchestration has a Transfer Call step to an outside number. */
+    private static function transfersToExternalNumber(Orchestration $orchestration): bool
+    {
+        return IntakeFlowStep::query()
+            ->whereIn('flow_id', IntakeFlow::withoutGlobalScope('team')->where('orchestration_id', $orchestration->id)->select('id'))
+            ->whereHas('intakeGoal', fn ($q) => $q->where('key', 'transfer_call'))
+            ->get()
+            ->contains(fn (IntakeFlowStep $step) => ($step->step_params['destination_type'] ?? null) === 'external');
     }
 
     public static function table(Table $table): Table

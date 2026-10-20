@@ -119,7 +119,7 @@ class OrchestrationController extends Controller
 
         // Backfill channel-trigger flows inside this orchestration.
         // No-op once all five exist.
-        $this->ensureOrchestrationHasChannelTriggers($orchestration);
+        app(ChannelTriggerSeeder::class)->ensureIn($orchestration);
 
         $flows = IntakeFlow::query()
             ->withoutGlobalScope('team')
@@ -362,50 +362,6 @@ class OrchestrationController extends Controller
         });
 
         return $this->show($orchestration);
-    }
-
-    /**
-     * Ensure this specific graph holds the five channel-trigger
-     * flows. Unlike `ChannelTriggerSeeder::ensureTriggersFor`, which
-     * operates on whichever graph already exists for the team, this
-     * plants the triggers inside the passed graph — useful when the
-     * editor opens a freshly-created draft graph that has no flows
-     * yet.
-     */
-    protected function ensureOrchestrationHasChannelTriggers(Orchestration $orchestration): void
-    {
-        $existing = IntakeFlow::withoutGlobalScope('team')
-            ->where('orchestration_id', $orchestration->id)
-            ->whereIn('trigger_type', IntakeFlow::CHANNEL_TRIGGERS)
-            ->pluck('trigger_type')
-            ->all();
-
-        $layout = [
-            IntakeFlow::TRIGGER_INBOUND_PHONE => ['Inbound Phone',   40,   40],
-            IntakeFlow::TRIGGER_INBOUND_EMAIL => ['Inbound Email',   340,  40],
-            IntakeFlow::TRIGGER_INBOUND_MESSAGE => ['Inbound Message', 640,  40],
-            IntakeFlow::TRIGGER_INBOUND_CHAT => ['Inbound Chat',    940,  40],
-            IntakeFlow::TRIGGER_OUTBOUND_PHONE => ['Outbound Phone', 1240, 40],
-        ];
-        $order = 0;
-        foreach ($layout as $triggerType => $meta) {
-            $order++;
-            if (in_array($triggerType, $existing, true)) {
-                continue;
-            }
-            [$name, $x, $y] = $meta;
-            IntakeFlow::create([
-                'team_id' => $orchestration->team_id,
-                'orchestration_id' => $orchestration->id,
-                'name' => $name,
-                'trigger_type' => $triggerType,
-                'kind' => IntakeFlow::KIND_CALL_FLOW,
-                'is_active' => false,
-                'display_order' => $order,
-                'canvas_x' => $x,
-                'canvas_y' => $y,
-            ]);
-        }
     }
 
     /**

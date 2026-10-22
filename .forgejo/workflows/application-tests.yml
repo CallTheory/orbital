@@ -59,6 +59,11 @@ jobs:
           extensions: bcmath, ctype, exif, fileinfo, gd, intl, mbstring, openssl, opcache, pdo, pdo_sqlite, redis, soap, tokenizer, xml
           coverage: none
           tools: composer:v2
+        env:
+          # Always the newest 8.4 patch, never a cached one: composer.json
+          # only accepts PHP releases with the PHP2Shell fixes, so
+          # `composer install` fails on anything older.
+          update: true
 
       - name: Cache Composer files
         uses: https://git.calltheory.com/actions/cache@v6
@@ -189,6 +194,11 @@ jobs:
           extensions: bcmath, ctype, exif, fileinfo, gd, intl, mbstring, openssl, opcache, pdo, pdo_sqlite, redis, soap, tokenizer, xml
           coverage: none
           tools: composer:v2
+        env:
+          # Always the newest 8.4 patch, never a cached one: composer.json
+          # only accepts PHP releases with the PHP2Shell fixes, so
+          # `composer install` fails on anything older.
+          update: true
 
       - name: Cache Composer files
         uses: https://git.calltheory.com/actions/cache@v6

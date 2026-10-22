@@ -1,0 +1,14 @@
+# Vetted false positives for the release secret scan (scan-images in
+# .forgejo/workflows/application-tests.yml). Keep each entry scoped to
+# one rule and the narrowest path that covers it.
+secrets:
+  # The anthropic Python SDK (pulled in by livekit-plugins-anthropic)
+  # documents `{"type": "service_account"}` as an agent execution
+  # identity in its docstrings, which matches the GCP service-account
+  # key pattern. There is no key: only that literal. Vetted against
+  # anthropic 2.1.0.
+  - id: gcp-service-account
+    paths:
+      - "opt/venv/lib/python3.*/site-packages/anthropic/**"
+      - "/opt/venv/lib/python3.*/site-packages/anthropic/**"
+    statement: "Docstring text in the anthropic SDK, not a credential"

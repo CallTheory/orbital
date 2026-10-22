@@ -3,10 +3,11 @@
 # one rule and the narrowest path that covers it.
 secrets:
   # The anthropic Python SDK (pulled in by livekit-plugins-anthropic)
-  # documents `{"type": "service_account"}` as an agent execution
-  # identity in its docstrings, which matches the GCP service-account
-  # key pattern. There is no key: only that literal. Vetted against
-  # anthropic 2.1.0.
+  # names a service-account execution identity for agents in its
+  # docstrings, written as JSON with a type key, which matches the GCP
+  # service-account key pattern. There is no key: only that example.
+  # Vetted against anthropic 2.1.0. Don't quote the matched text here:
+  # this comment would trip the same rule.
   - id: gcp-service-account
     paths:
       - "opt/venv/lib/python3.*/site-packages/anthropic/**"

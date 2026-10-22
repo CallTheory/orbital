@@ -4,6 +4,7 @@
 .forgejo
 .gitignore
 .gitattributes
+.trivyignore.yaml
 
 # IDE / editor
 .idea

@@ -39,6 +39,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && npm install -g pnpm \
     && apt-get -y autoremove && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
+# 8.4.27 fixes PHP2Shell (CVE-2026-109618, CVE-2026-109619). The PPA
+# always installs the newest 8.4, so a stale build cache is the risk:
+# rebuild with --no-cache if this fails.
+RUN php -r 'exit(PHP_VERSION_ID >= 80427 ? 0 : 1);' \
+    || { echo "PHP $(php -r 'echo PHP_VERSION;') is vulnerable to PHP2Shell; need >= 8.4.27" >&2; exit 1; }
+
 RUN setcap "cap_net_bind_service=+ep" /usr/bin/php8.4
 
 # Ubuntu 24.04 ships with a default `ubuntu` user at UID 1000 which collides

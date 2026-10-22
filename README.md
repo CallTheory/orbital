@@ -25,7 +25,7 @@ forever with no feature gates and no seat counting — see
 
 ## Stack
 
-- **Backend** — Laravel 12, PHP 8.4, Filament 5, Livewire 4
+- **Backend** — Laravel 12, PHP 8.4.27+ / 8.5.12+ (the PHP2Shell fixes), Filament 5, Livewire 4
 - **Database** — PostgreSQL 17 with pgvector for knowledge-base embeddings
 - **Cache / queues / sessions** — Valkey (Redis-compatible)
 - **Telephony** — Asterisk 22 (SIP, MixMonitor recording, AMI)

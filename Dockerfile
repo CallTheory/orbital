@@ -44,7 +44,14 @@ RUN composer install \
         --ignore-platform-reqs
 
 # ---------- Stage 3: production runtime ----------
-FROM php:8.5-fpm-alpine AS production
+# Pinned to a patch release, not the floating 8.5 tag, so a build can
+# never pick up a cached vulnerable base. 8.5.12 fixes PHP2Shell
+# (CVE-2026-109618, CVE-2026-109619); the check below fails the build
+# on anything older.
+FROM php:8.5.12-fpm-alpine AS production
+
+RUN php -r 'exit(PHP_VERSION_ID >= 80512 ? 0 : 1);' \
+    || { echo "PHP $(php -r 'echo PHP_VERSION;') is vulnerable to PHP2Shell; need >= 8.5.12" >&2; exit 1; }
 
 LABEL maintainer="Orbital"
 LABEL org.opencontainers.image.title="Orbital"

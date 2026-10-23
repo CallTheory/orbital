@@ -28,7 +28,7 @@
         "predis/predis": "^3.4",
         "sentry/sentry-laravel": "^4.27",
         "smalot/pdfparser": "^2.12",
-        "spatie/laravel-permission": "^6"
+        "spatie/laravel-permission": "^8"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",

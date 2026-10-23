@@ -36,6 +36,11 @@ class TypeHintForGathersTest extends TestCase
         $this->assertStringContainsString('E.164', $this->hint('gather_phone'));
     }
 
+    public function test_save_message_hint_reads_the_message_back(): void
+    {
+        $this->assertStringContainsString('read the message back', $this->hint('save_message', ['include_slots' => ['caller_name']]));
+    }
+
     public function test_email_hint(): void
     {
         $this->assertStringContainsString('valid email', $this->hint('gather_email'));

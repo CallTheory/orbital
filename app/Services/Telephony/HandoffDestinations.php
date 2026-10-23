@@ -53,9 +53,8 @@ class HandoffDestinations
     }
 
     /**
-     * The number a session hands off to: one configured in the same
-     * orchestration as the persona's flow when there is one, otherwise
-     * the client's first.
+     * The number a session hands off to: one configured in the persona's
+     * flow, else in that flow's orchestration, else the client's first.
      */
     public function forSession(CallSessionState $session): ?string
     {
@@ -72,9 +71,10 @@ class HandoffDestinations
             ? IntakeFlow::withoutGlobalScopes()->whereKey($flowId)->value('orchestration_id')
             : null;
 
-        $preferred = $orchestrationId
-            ? $candidates->firstWhere('orchestration_id', $orchestrationId)
-            : null;
+        // Templates applied to the same client share its Default
+        // orchestration, so the persona's own flow comes first.
+        $preferred = ($flowId ? $candidates->firstWhere('flow_id', (int) $flowId) : null)
+            ?? ($orchestrationId ? $candidates->firstWhere('orchestration_id', $orchestrationId) : null);
 
         return ($preferred ?? $candidates->first())['number'] ?? null;
     }

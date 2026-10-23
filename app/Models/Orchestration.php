@@ -259,6 +259,89 @@ class Orchestration extends Model
     }
 
     /**
+     * Copy this orchestration's flows into another one, leaving its
+     * channel triggers behind (the target has its own). Steps, rules and
+     * the transitions between copied flows come along, plus bindings and
+     * default slots for the target's team. Copied flows are moved down
+     * by $offsetY so they land below what's already on the canvas.
+     *
+     * Returns source flow ID => copied flow ID.
+     *
+     * @return array<int, int>
+     */
+    public function copyFlowsInto(self $target, int $offsetY = 0): array
+    {
+        return DB::transaction(function () use ($target, $offsetY) {
+            $flows = IntakeFlow::withoutGlobalScope('team')
+                ->where('orchestration_id', $this->id)
+                ->whereNotIn('trigger_type', IntakeFlow::CHANNEL_TRIGGERS)
+                ->with(['steps', 'rules', 'transitionsOut'])
+                ->orderBy('display_order')
+                ->orderBy('id')
+                ->get();
+
+            $idMap = [];
+            foreach ($flows as $flow) {
+                $newFlow = IntakeFlow::withoutGlobalScope('team')->create([
+                    'team_id' => $target->team_id,
+                    'orchestration_id' => $target->id,
+                    'name' => $flow->name,
+                    'description' => $flow->description,
+                    'trigger_type' => $flow->trigger_type,
+                    'kind' => $flow->kind,
+                    'is_active' => $flow->is_active,
+                    'display_order' => $flow->display_order,
+                    'canvas_x' => $flow->canvas_x,
+                    'canvas_y' => $flow->canvas_y === null ? null : $flow->canvas_y + $offsetY,
+                ]);
+                $idMap[$flow->id] = $newFlow->id;
+
+                foreach ($flow->steps as $step) {
+                    IntakeFlowStep::create([
+                        'flow_id' => $newFlow->id,
+                        'intake_goal_id' => $step->intake_goal_id,
+                        'position' => $step->position,
+                        'step_params' => $step->step_params,
+                    ]);
+                }
+
+                foreach ($flow->rules as $rule) {
+                    IntakeFlowRule::create([
+                        'flow_id' => $newFlow->id,
+                        'step_id' => null,
+                        'trigger_event' => $rule->trigger_event,
+                        'label' => $rule->label,
+                        'condition' => $rule->condition,
+                        'action_prompt' => $rule->action_prompt,
+                        'priority' => $rule->priority,
+                        'is_active' => $rule->is_active,
+                    ]);
+                }
+            }
+
+            foreach ($flows as $flow) {
+                foreach ($flow->transitionsOut as $t) {
+                    // A transition to a flow left behind would point back
+                    // into the template, so it ends the call instead.
+                    IntakeFlowTransition::create([
+                        'from_flow_id' => $idMap[$t->from_flow_id],
+                        'to_flow_id' => $t->to_flow_id ? ($idMap[$t->to_flow_id] ?? null) : null,
+                        'condition' => $t->condition,
+                        'description' => $t->description,
+                        'priority' => $t->priority,
+                        'source_handle' => $t->source_handle,
+                    ]);
+                }
+            }
+
+            $this->cloneBindings($target, $target->team_id);
+            $this->seedDefaultSlots($target->team_id);
+
+            return $idMap;
+        });
+    }
+
+    /**
      * Create this template's default slots on the target team. Existing
      * slots (matched by name) are never touched, so a client's own
      * labels and descriptions survive a re-duplicate.
@@ -327,8 +410,19 @@ class Orchestration extends Model
 
         $sameTeam = $this->team_id === $targetTeamId;
 
+        $alreadyOnCopy = OrchestrationBinding::query()
+            ->withoutGlobalScope('team')
+            ->where('orchestration_id', $copy->id)
+            ->pluck('binding_key')
+            ->all();
+
         foreach ($defs as $def) {
             $key = $def['binding_key'];
+            // Merging into an orchestration that already binds this key
+            // (copyFlowsInto): keep what the client set.
+            if (in_array($key, $alreadyOnCopy, true)) {
+                continue;
+            }
             $payload = [
                 'team_id' => $targetTeamId,
                 'orchestration_id' => $copy->id,

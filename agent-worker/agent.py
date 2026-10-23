@@ -31,6 +31,7 @@ ROOM_NAME_RE = re.compile(r"^agent-_?(\d+)_")
 
 END_CALL_EXTRA = (
     "ONLY use this if the caller explicitly says goodbye, "
+    "once the flow you are following says to end the call and you have said goodbye, "
     "or if they are being extremely abusive and you've warned them. "
     "Do NOT end the call just because there's a pause or silence. "
     "Do NOT end the call after answering a question — wait for the caller to respond."

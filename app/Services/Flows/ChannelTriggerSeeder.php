@@ -67,28 +67,35 @@ class ChannelTriggerSeeder
      */
     public function ensureTriggersFor(Team $team): array
     {
-        $orchestration = $this->ensureBootstrap($team);
+        return $this->ensureIn($this->ensureBootstrap($team));
+    }
 
-        $existing = IntakeFlow::query()
+    /**
+     * Plant any missing channel-trigger flows inside this orchestration,
+     * client or platform-shared. Returns the IDs of the flows created.
+     *
+     * @return array<int, int>
+     */
+    public function ensureIn(Orchestration $orchestration): array
+    {
+        $existing = IntakeFlow::withoutGlobalScope('team')
             ->where('orchestration_id', $orchestration->id)
             ->whereIn('trigger_type', array_keys(self::CHANNELS))
             ->pluck('trigger_type')
             ->all();
 
         $created = [];
-        $order = 0;
 
-        DB::transaction(function () use ($team, $orchestration, $existing, &$created, &$order) {
-            foreach (self::CHANNELS as $triggerType => $meta) {
+        DB::transaction(function () use ($orchestration, $existing, &$created) {
+            $order = 0;
+            foreach (self::CHANNELS as $triggerType => [$name, $x, $y]) {
                 $order++;
                 if (in_array($triggerType, $existing, true)) {
                     continue;
                 }
 
-                [$name, $x, $y] = $meta;
-
-                $flow = IntakeFlow::create([
-                    'team_id' => $team->id,
+                $created[] = IntakeFlow::withoutGlobalScope('team')->create([
+                    'team_id' => $orchestration->team_id,
                     'orchestration_id' => $orchestration->id,
                     'name' => $name,
                     'description' => null,
@@ -98,9 +105,7 @@ class ChannelTriggerSeeder
                     'display_order' => $order,
                     'canvas_x' => $x,
                     'canvas_y' => $y,
-                ]);
-
-                $created[] = $flow->id;
+                ])->id;
             }
         });
 

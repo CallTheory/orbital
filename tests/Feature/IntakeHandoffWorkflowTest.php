@@ -66,16 +66,17 @@ class IntakeHandoffWorkflowTest extends TestCase
             'assignable_type' => AgentPersona::class, 'assignable_id' => $persona->id, 'is_active' => true,
         ]);
 
-        // Apply: copies flows + default fields, sets the number, wires the persona.
-        $copy = app(ApplyOrchestrationTemplate::class)->apply($this->template(), $team, $persona, '(905) 555-0199');
+        // Apply: adds the flow + default fields to the client's Inbound
+        // Phone channel, sets the number, wires the persona.
+        $default = app(ApplyOrchestrationTemplate::class)->apply($this->template(), $team, $persona, '(905) 555-0199');
 
-        $this->assertSame($team->id, $copy->team_id);
-        $this->assertSame(IntakeHandoffTemplateSeeder::NAME, $copy->name);
+        $this->assertSame($team->id, $default->team_id);
+        $this->assertSame('Default', $default->name);
         $this->assertEqualsCanonicalizing(
             ['caller_name', 'callback_number', 'reason'],
             ClientSlot::withoutGlobalScopes()->where('team_id', $team->id)->pluck('name')->all(),
         );
-        $flow = IntakeFlow::withoutGlobalScopes()->where('orchestration_id', $copy->id)->sole();
+        $flow = IntakeFlow::withoutGlobalScopes()->where('orchestration_id', $default->id)->where('name', 'Intake & handoff')->sole();
         $this->assertSame($flow->id, $persona->fresh()->default_flow_id);
         $step = IntakeFlowStep::where('flow_id', $flow->id)->where('position', 2)->sole();
         $this->assertSame('+19055550199', $step->step_params['destination']);

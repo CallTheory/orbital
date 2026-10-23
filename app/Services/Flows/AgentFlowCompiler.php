@@ -548,6 +548,7 @@ class AgentFlowCompiler
             'transfer_call' => ($params['destination_type'] ?? null) === 'external'
                 ? 'once the details are collected, tell the caller you are connecting them to a live operator, then call the `transfer_to_operator` tool (it takes no number).'
                 : '',
+            'save_message' => 'read the message back so the caller can correct it (record corrections with set_field), then tell them it will be passed along.',
             'call_action_group' => $this->actionGroupHint($params),
             'send_email' => $this->sendHint('email', $params, 'subject', 'body'),
             'send_sms' => $this->sendHint('SMS', $params, null, 'body'),

@@ -156,6 +156,10 @@ Route::middleware(['web', 'auth'])->group(function () {
         ->name('api.admin.orchestrations.show');
     Route::put('/admin/orchestrations/{orchestration}', [OrchestrationController::class, 'update'])
         ->name('api.admin.orchestrations.update');
+    // Run one email / web-call step with sample values from the step editor.
+    Route::post('/admin/orchestrations/{orchestration}/test-step', [OrchestrationController::class, 'testStep'])
+        ->middleware('throttle:20,1')
+        ->name('api.admin.orchestrations.test-step');
 });
 
 /**

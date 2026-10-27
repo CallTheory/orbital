@@ -84,6 +84,40 @@ class PostCallActions
     }
 
     /**
+     * Run one step from the editor's Test button with sample field
+     * values, so an author can check it works before a client relies
+     * on it. Test emails are marked "[Test]" in the subject.
+     *
+     * @param  array<string, mixed>  $params
+     * @param  array<string, string>  $fields
+     * @return array{ok: bool, detail: string, preview: array<string, mixed>}
+     */
+    public function test(string $key, array $params, ?int $teamId, array $fields): array
+    {
+        $context = [
+            'slots' => $fields,
+            'context' => [
+                'now' => new DateTimeImmutable('now', new DateTimeZone(config('app.timezone') ?? 'UTC')),
+                'call' => [
+                    'caller_number' => $fields['caller_phone'] ?? '+15555550100',
+                    'called_number' => '+15555550199',
+                    'session_key' => 'test',
+                    'end_reason' => 'test',
+                ],
+            ],
+        ];
+        $preview = [];
+
+        try {
+            $detail = $this->perform($key, $params, $teamId, $context, $preview, test: true);
+
+            return ['ok' => true, 'detail' => $detail, 'preview' => $preview];
+        } catch (Throwable $e) {
+            return ['ok' => false, 'detail' => $e->getMessage(), 'preview' => $preview];
+        }
+    }
+
+    /**
      * The action steps on the path the call took, in order.
      *
      * @param  array<string, mixed>  $context
@@ -209,10 +243,8 @@ class PostCallActions
         $result = ['action' => $key, 'flow_id' => $step->flow_id, 'step_id' => $step->id];
 
         try {
-            $detail = match ($key) {
-                'send_email' => $this->sendEmail($params, $context),
-                'web_call' => $this->webCall($params, $state, $context),
-            };
+            $preview = [];
+            $detail = $this->perform($key, $params, $state->team_id, $context, $preview);
             $result += ['ok' => true, 'detail' => $detail];
             Log::info('post-call action ran', $result + ['session_key' => $state->session_key]);
         } catch (Throwable $e) {
@@ -226,20 +258,38 @@ class PostCallActions
     /**
      * @param  array<string, mixed>  $params
      * @param  array<string, mixed>  $context
+     * @param  array<string, mixed>  $preview  filled with what was sent
      */
-    private function sendEmail(array $params, array $context): string
+    private function perform(string $key, array $params, ?int $teamId, array $context, array &$preview, bool $test = false): string
+    {
+        return match ($key) {
+            'send_email' => $this->sendEmail($params, $context, $preview, $test),
+            'web_call' => $this->webCall($params, $teamId, $context, $preview),
+            default => throw new RuntimeException("{$key} isn't a post-call action"),
+        };
+    }
+
+    /**
+     * @param  array<string, mixed>  $params
+     * @param  array<string, mixed>  $context
+     * @param  array<string, mixed>  $preview
+     */
+    private function sendEmail(array $params, array $context, array &$preview, bool $test): string
     {
         $recipients = array_values(array_filter(
             preg_split('/[\s,;]+/', $this->templates->render((string) ($params['recipient'] ?? ''), $context)) ?: [],
         ));
         $invalid = array_filter($recipients, fn ($r) => filter_var($r, FILTER_VALIDATE_EMAIL) === false);
+        $preview = ['to' => $recipients];
         if ($recipients === [] || $invalid !== []) {
             throw new RuntimeException('No valid recipient: '.($invalid ? implode(', ', $invalid) : 'none given'));
         }
 
         // A header can't span lines.
         $subject = trim(preg_replace('/\s+/', ' ', $this->templates->render((string) ($params['subject'] ?? ''), $context)));
+        $subject = $test ? "[Test] {$subject}" : $subject;
         $body = $this->templates->render((string) ($params['body'] ?? ''), $context);
+        $preview = ['to' => $recipients, 'subject' => $subject, 'body' => $body, 'mailer' => config('mail.default')];
 
         Mail::raw($body, fn (Message $m) => $m->to($recipients)->subject($subject));
 
@@ -249,11 +299,12 @@ class PostCallActions
     /**
      * @param  array<string, mixed>  $params
      * @param  array<string, mixed>  $context
+     * @param  array<string, mixed>  $preview
      */
-    private function webCall(array $params, CallSessionState $state, array $context): string
+    private function webCall(array $params, ?int $teamId, array $context, array &$preview): string
     {
         $endpoint = ClientWebEndpoint::withoutGlobalScopes()
-            ->where('team_id', $state->team_id)
+            ->where('team_id', $teamId)
             ->where('name', (string) ($params['endpoint_name'] ?? ''))
             ->where('is_active', true)
             ->first();
@@ -283,6 +334,7 @@ class PostCallActions
             $request = $request->withQueryParameters($query);
         }
 
+        $preview = ['method' => $method, 'url' => $url, 'body' => null];
         $template = (string) ($params['body_template'] ?? '');
         if (trim($template) !== '') {
             // In a JSON body, captured values are escaped so a quote in
@@ -290,9 +342,12 @@ class PostCallActions
             $isJson = in_array(ltrim($template)[0], ['{', '['], true);
             $body = $this->templates->render($template, $isJson ? $this->jsonEscaped($context) : $context);
             $request = $request->withBody($body, $isJson ? 'application/json' : 'text/plain');
+            $preview['body'] = $body;
         }
 
-        $status = $request->send($method, $url)->status();
+        $response = $request->send($method, $url);
+        $status = $response->status();
+        $preview['response'] = ['status' => $status, 'body' => mb_strimwidth($response->body(), 0, 2000, '…')];
 
         $expected = array_map('intval', array_filter(array_map('trim', explode(',', (string) ($params['expected_status_codes'] ?? '')))));
         $ok = $expected !== [] ? in_array($status, $expected, true) : $status >= 200 && $status < 300;

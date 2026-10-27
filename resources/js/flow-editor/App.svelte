@@ -310,9 +310,10 @@
         if (exits === null) {
             // Unbounded: port per transition + "+" add port.
             const ports: PortDescriptor[] = flow.transitions_out.map((t, i) => ({
-                label: t.description ?? (t.condition ? 'condition' : 'fallback'),
+                label: (t.description ?? (t.condition ? 'condition' : 'fallback'))
+                    + (t.to_flow_client_id === null ? ' → end' : ''),
                 handle_id: `t${i}`,
-                is_connected: true,
+                is_connected: t.to_flow_client_id !== null,
                 is_fallback: !t.condition && !t.description,
                 is_add: false,
             }));
@@ -353,10 +354,14 @@
             );
             if (matchIdx >= 0) {
                 claimed.add(matchIdx);
+                // An exit wired to "end call" draws no edge, so it
+                // stays draggable: dropping it on a flow retargets
+                // that transition (see onConnect).
+                const endsCall = flow.transitions_out[matchIdx].to_flow_client_id === null;
                 ports.push({
-                    label: name,
+                    label: endsCall ? `${name} → end` : name,
                     handle_id: `t${matchIdx}`,
-                    is_connected: true,
+                    is_connected: !endsCall,
                     is_fallback: false,
                     is_add: false,
                 });
@@ -372,10 +377,12 @@
         });
         flow.transitions_out.forEach((t, i) => {
             if (claimed.has(i)) return;
+            const endsCall = t.to_flow_client_id === null;
+            const label = t.description ?? (t.condition ? 'condition' : '(unnamed)');
             ports.push({
-                label: t.description ?? (t.condition ? 'condition' : '(unnamed)'),
+                label: endsCall ? `${label} → end` : label,
                 handle_id: `t${i}`,
-                is_connected: true,
+                is_connected: !endsCall,
                 is_fallback: true,
                 is_add: false,
             });
@@ -483,7 +490,7 @@
                 f.is_active,
                 f.is_entry,
                 f.steps.map((s) => `${s.intake_goal_key}:${JSON.stringify(s.step_params ?? {})}`).join(';'),
-                f.transitions_out.length,
+                f.transitions_out.map((t) => t.to_flow_client_id ?? '-').join(','),
             ].join('|'),
         ).join('#');
         // Also re-evaluate when channel filter changes.
@@ -503,6 +510,12 @@
     function onConnect(detail: Connection) {
         if (!graph || !detail.source || !detail.target) return;
         if (!isValidConnection(detail)) return;
+        const ending = endCallTransition(detail.source, detail.sourceHandle);
+        if (ending) {
+            ending.to_flow_client_id = detail.target;
+            markDirty(graph);
+            return;
+        }
         const t = gAddTransition(graph, detail.source, detail.target);
         // If the drag originated from a named exit port (e.g. `e1`),
         // stamp the new transition with that exit's name so the edge
@@ -535,9 +548,13 @@
     function isValidConnection(conn: {
         source: string | null;
         target: string | null;
+        sourceHandle?: string | null;
     }): boolean {
         if (!conn.source || !conn.target) return false;
         if (conn.source === conn.target) return false;
+        // Retargeting an existing "end call" transition adds none, so
+        // the cap below doesn't apply.
+        if (endCallTransition(conn.source, conn.sourceHandle)) return true;
         // Enforce the source flow's max-transitions cap. At-cap flows
         // refuse new connections; `onReconnect` rechecks this so a
         // reconnect that would blow the cap also fails.
@@ -549,6 +566,17 @@
             }
         }
         return true;
+    }
+
+    /**
+     * The transition behind a `t${i}` port when it currently ends the
+     * call, else null. Those ports draw no edge, so dragging one out
+     * is how an author points it at a flow.
+     */
+    function endCallTransition(source: string, handle: string | null | undefined) {
+        if (!handle?.startsWith('t') || handle === 'tnew') return null;
+        const t = findFlowByClientId(source)?.transitions_out[Number(handle.slice(1))];
+        return t && t.to_flow_client_id === null ? t : null;
     }
 
     // Parse an edge id into (sourceClientId, transitionIndex). Edges

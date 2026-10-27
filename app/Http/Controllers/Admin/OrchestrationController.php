@@ -25,6 +25,7 @@ use App\Services\Flows\BindingResolver;
 use App\Services\Flows\ChannelTriggerSeeder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * JSON API for the Svelte Flow editor.
@@ -560,9 +561,15 @@ class OrchestrationController extends Controller
             if (! $fromId) {
                 continue;
             }
-            $toId = $row['to_flow_client_id']
-                ? ($clientIdToFlowId[$row['to_flow_client_id']] ?? null)
-                : null;
+            $toId = null;
+            if ($row['to_flow_client_id']) {
+                // A target we can't resolve must not quietly become
+                // "end the call"; refuse the save instead.
+                $toId = $clientIdToFlowId[$row['to_flow_client_id']]
+                    ?? throw ValidationException::withMessages([
+                        'transitions' => 'A connection points at a flow that is not in this orchestration. Reload the editor and reconnect it.',
+                    ]);
+            }
 
             $transition = ! empty($row['id'])
                 ? IntakeFlowTransition::find($row['id'])

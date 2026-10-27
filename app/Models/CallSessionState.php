@@ -43,6 +43,8 @@ class CallSessionState extends Model
             'operator_owned' => 'boolean',
             'last_field_at' => 'datetime',
             'ended_at' => 'datetime',
+            'post_call_actions_at' => 'datetime',
+            'post_call_actions' => 'array',
         ];
     }
 

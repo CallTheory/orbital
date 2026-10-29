@@ -42,6 +42,9 @@ class SaveOrchestrationRequest extends FormRequest
 
             'flows' => ['array'],
             'flows.*.id' => ['nullable', 'integer'],
+            // The editor's id for a flow created since the last save;
+            // transitions point at new flows by it.
+            'flows.*.client_id' => ['nullable', 'string', 'max:64'],
             'flows.*.name' => ['required', 'string', 'max:160'],
             'flows.*.description' => ['nullable', 'string'],
             'flows.*.is_active' => ['boolean'],

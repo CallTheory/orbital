@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\RunPostCallActionsJob;
 use App\Models\AgentPersona;
 use App\Models\CallSessionState;
 use App\Models\Extension;
@@ -187,6 +188,7 @@ class CallSessionController extends Controller
         $state->markEnded($data['reason'] ?? PartialMessagePolicy::REASON_CALLER_HUNG_UP);
 
         $this->maybePersistMessage($state->fresh());
+        RunPostCallActionsJob::dispatch($state->id);
 
         return response()->json(['data' => $this->serialize($state->fresh())]);
     }

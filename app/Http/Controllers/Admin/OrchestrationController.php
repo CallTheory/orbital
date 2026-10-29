@@ -23,8 +23,12 @@ use App\Models\OrchestrationBinding;
 use App\Models\Team;
 use App\Services\Flows\BindingResolver;
 use App\Services\Flows\ChannelTriggerSeeder;
+use App\Services\Flows\PostCallActions;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 /**
  * JSON API for the Svelte Flow editor.
@@ -365,6 +369,30 @@ class OrchestrationController extends Controller
     }
 
     /**
+     * The step editor's Test button: run one Send Email / Web Call step
+     * as configured (saved or not) with sample field values, against
+     * this orchestration's client.
+     */
+    public function testStep(Request $request, Orchestration $orchestration, PostCallActions $actions): JsonResponse
+    {
+        abort_unless($request->user()?->isSuperAdmin(), 403);
+
+        $data = $request->validate([
+            'intake_goal_key' => ['required', Rule::in(PostCallActions::ACTION_KEYS)],
+            'step_params' => ['nullable', 'array'],
+            'fields' => ['nullable', 'array'],
+            'fields.*' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        return response()->json($actions->test(
+            $data['intake_goal_key'],
+            $data['step_params'] ?? [],
+            $orchestration->team_id,
+            array_map('strval', array_filter($data['fields'] ?? [], fn ($v) => $v !== null)),
+        ));
+    }
+
+    /**
      * @param  array<int, array<string, mixed>>  $slots
      */
     protected function applySlots(Team $client, array $slots): void
@@ -560,9 +588,15 @@ class OrchestrationController extends Controller
             if (! $fromId) {
                 continue;
             }
-            $toId = $row['to_flow_client_id']
-                ? ($clientIdToFlowId[$row['to_flow_client_id']] ?? null)
-                : null;
+            $toId = null;
+            if ($row['to_flow_client_id']) {
+                // A target we can't resolve must not quietly become
+                // "end the call"; refuse the save instead.
+                $toId = $clientIdToFlowId[$row['to_flow_client_id']]
+                    ?? throw ValidationException::withMessages([
+                        'transitions' => 'A connection points at a flow that is not in this orchestration. Reload the editor and reconnect it.',
+                    ]);
+            }
 
             $transition = ! empty($row['id'])
                 ? IntakeFlowTransition::find($row['id'])

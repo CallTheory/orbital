@@ -7,6 +7,10 @@
     import type { EditorGraph } from '../lib/graph';
     import Modal from './Modal.svelte';
     import ParamField from './ParamField.svelte';
+    import StepTestPanel from './StepTestPanel.svelte';
+
+    // Steps Orbital runs after the call, which can be tried from here.
+    const TESTABLE = ['send_email', 'web_call'];
 
     let {
         flow,
@@ -92,6 +96,16 @@
                         />
                     {/each}
                 </div>
+            {/if}
+
+            {#if TESTABLE.includes(primitive.key)}
+                {#key `${flow.client_id}:${stepIndex}`}
+                    <StepTestPanel
+                        orchestrationId={graph.orchestration.id}
+                        primitiveKey={primitive.key}
+                        params={step.step_params ?? {}}
+                    />
+                {/key}
             {/if}
 
             <div class="orbital-step-edit__footer">

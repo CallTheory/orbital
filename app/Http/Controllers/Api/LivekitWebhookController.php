@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\IngestLivekitEgressJob;
+use App\Jobs\RunPostCallActionsJob;
 use App\Models\CallSessionState;
 use App\Services\Messages\PartialMessagePolicy;
 use App\Services\Messages\SessionMessageWriter;
@@ -95,6 +96,7 @@ class LivekitWebhookController extends Controller
         $state->markEnded(PartialMessagePolicy::REASON_SESSION_ABANDONED);
 
         app(SessionMessageWriter::class)->write($state->fresh());
+        RunPostCallActionsJob::dispatch($state->id);
     }
 
     /**

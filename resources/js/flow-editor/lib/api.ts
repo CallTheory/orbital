@@ -165,3 +165,28 @@ export function saveFlowGraph(
         body: JSON.stringify(payload),
     });
 }
+
+export type StepTestResult = {
+    ok: boolean;
+    detail: string;
+    preview: {
+        to?: string[];
+        subject?: string;
+        body?: string | null;
+        mailer?: string;
+        method?: string;
+        url?: string;
+        response?: { status: number; body: string };
+    };
+};
+
+/** Run one email / web-call step now, with sample field values. */
+export function testStep(
+    orchestrationId: number,
+    payload: { intake_goal_key: string; step_params: Record<string, unknown>; fields: Record<string, string> },
+): Promise<StepTestResult> {
+    return request(`/api/admin/orchestrations/${orchestrationId}/test-step`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+    });
+}

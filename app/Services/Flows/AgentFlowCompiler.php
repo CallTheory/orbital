@@ -252,6 +252,9 @@ class AgentFlowCompiler
 
         /** @var Collection<int, array<string, mixed>> $goals */
         $goals = $flow->steps
+            // Orbital runs these after the call (PostCallActions); the
+            // AI neither does nor mentions them.
+            ->reject(fn ($step) => in_array($step->intakeGoal?->key, PostCallActions::ACTION_KEYS, true))
             ->map(function ($step) use ($bindingsByKey) {
                 if (! $step->intakeGoal) {
                     return null;

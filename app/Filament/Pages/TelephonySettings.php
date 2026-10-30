@@ -8,14 +8,12 @@ use App\Filament\Pages\Concerns\RendersRegistrySettings;
 use App\Models\HoldMusicClass;
 use App\Models\Team;
 use App\Services\Settings\PlatformSettingsRepository;
-use App\Services\Settings\ServiceRestartCatalog;
 use App\Services\Settings\TelephonySettingsKeys as Keys;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Forms;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
-use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
@@ -227,22 +225,7 @@ class TelephonySettings extends Page implements HasForms
         // the full form state here is safe.
         $slugs = $this->saveRegistrySections($data, $this->registrySectionKeys);
 
-        if ($slugs === []) {
-            Notification::make()
-                ->success()
-                ->title('Telephony settings saved')
-                ->send();
-
-            return;
-        }
-
-        $labels = ServiceRestartCatalog::labelsFor($slugs);
-        Notification::make()
-            ->title('Telephony settings saved — restart required')
-            ->body('The following services need a restart: '.implode(', ', $labels).'.')
-            ->warning()
-            ->persistent()
-            ->send();
+        $this->afterRegistrySave('Telephony settings saved', $slugs);
     }
 
     /**

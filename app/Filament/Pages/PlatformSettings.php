@@ -6,16 +6,16 @@ namespace App\Filament\Pages;
 
 use App\Filament\Pages\Concerns\RendersRegistrySettings;
 use App\Services\Settings\PlatformSettingsRepository;
-use App\Services\Settings\ServiceRestartCatalog;
 use BackedEnum;
 use Filament\Actions\Action;
-use Filament\Forms;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Notifications\Notification;
 use Filament\Pages\Concerns\InteractsWithFormActions;
 use Filament\Pages\Page;
+use Filament\Schemas\Components\Actions;
 use Filament\Schemas\Schema;
+use Filament\Support\Enums\Alignment;
 use Illuminate\Support\Facades\Artisan;
 use UnitEnum;
 
@@ -93,9 +93,17 @@ class PlatformSettings extends Page implements HasForms
 
     public function form(Schema $schema): Schema
     {
+        // ~15 collapsible cards: keep Save pinned to the bottom of the
+        // screen instead of below the last one.
         return $schema
             ->statePath('data')
-            ->schema($this->registrySectionComponents($this->sectionKeys));
+            ->schema([
+                ...$this->registrySectionComponents($this->sectionKeys),
+                Actions::make($this->getFormActions())
+                    ->alignment(Alignment::End)
+                    ->sticky()
+                    ->key('form-actions'),
+            ]);
     }
 
     protected function getFormActions(): array
@@ -109,43 +117,16 @@ class PlatformSettings extends Page implements HasForms
 
     /**
      * Header actions:
-     *   - Restart affected services — operator picks any subset of
-     *     known service slugs and applies them in sequence. Available
-     *     at any time, not just right after save, so an operator who
-     *     edited .env directly can still trigger a reload from here.
+     *   - Restart services — the same prompt a save opens when a
+     *     change needs one, available any time (e.g. after editing
+     *     .env directly).
      *   - Prune Telescope — destructive housekeeping for the built-in
      *     debug dashboard.
      */
     protected function getHeaderActions(): array
     {
         return [
-            Action::make('restart_services')
-                ->label('Restart affected services')
-                ->icon('heroicon-o-arrow-path')
-                ->color('warning')
-                ->schema([
-                    Forms\Components\CheckboxList::make('slugs')
-                        ->label('Services to restart')
-                        ->options(collect(ServiceRestartCatalog::handlers())
-                            ->map(fn ($def, $slug) => $def['label'].' — '.$def['description'])
-                            ->all())
-                        ->required()
-                        ->columns(1),
-                ])
-                ->modalHeading('Restart affected services')
-                ->modalDescription('Pick the services whose config changed. Asterisk regenerates dialplan + `core reload` via AMI; Horizon calls `horizon:terminate` so the supervisor respawns workers.')
-                ->modalSubmitActionLabel('Run')
-                ->action(function (array $data): void {
-                    $results = ServiceRestartCatalog::run((array) ($data['slugs'] ?? []));
-
-                    foreach ($results as $r) {
-                        Notification::make()
-                            ->title($r['label'])
-                            ->body($r['message'])
-                            ->{$r['ok'] ? 'success' : 'danger'}()
-                            ->send();
-                    }
-                }),
+            $this->restartServicesAction(),
 
             Action::make('prune_telescope')
                 ->label('Prune Telescope entries')
@@ -176,21 +157,6 @@ class PlatformSettings extends Page implements HasForms
     {
         $slugs = $this->saveRegistrySections($this->form->getState(), $this->sectionKeys);
 
-        if ($slugs === []) {
-            Notification::make()
-                ->title('Settings saved')
-                ->success()
-                ->send();
-
-            return;
-        }
-
-        $labels = ServiceRestartCatalog::labelsFor($slugs);
-        Notification::make()
-            ->title('Settings saved — restart required')
-            ->body('The following services need a restart to pick up the change: '.implode(', ', $labels).'. Use the "Restart affected services" button at the top of the page.')
-            ->warning()
-            ->persistent()
-            ->send();
+        $this->afterRegistrySave('Settings saved', $slugs);
     }
 }

@@ -14,10 +14,12 @@ use Illuminate\Support\Facades\Log;
  * handler that actually applies the change.
  *
  * Some slugs trigger an in-process reload (Asterisk dialplan via AMI,
- * Horizon via `horizon:terminate` — Horizon's supervisor respawns it).
- * Others need an out-of-band container bounce (Reverb, scheduler) and
- * return false so the UI can tell the operator to `docker compose
- * restart <service>` themselves.
+ * queue workers via `queue:restart`). Others need an out-of-band
+ * container bounce (Reverb, scheduler) and return false so the UI can
+ * tell the operator to restart that service themselves.
+ *
+ * `impact` says what the restart does to live traffic; it's shown in
+ * the prompt after a save so the operator knows whether it's safe now.
  *
  * Registering a new slug:
  *   1. Add a case to {@see handlers()} keyed by slug.
@@ -27,7 +29,7 @@ use Illuminate\Support\Facades\Log;
 final class ServiceRestartCatalog
 {
     /**
-     * @return array<string, array{label: string, description: string, handler: callable(): array{ok: bool, message: string}}>
+     * @return array<string, array{label: string, description: string, impact: string, handler: callable(): array{ok: bool, message: string}}>
      */
     public static function handlers(): array
     {
@@ -35,6 +37,7 @@ final class ServiceRestartCatalog
             'asterisk' => [
                 'label' => 'Asterisk',
                 'description' => 'Regenerates dialplan files and issues `core reload` on every active Asterisk backend via AMI.',
+                'impact' => 'Calls in progress carry on; new calls use the new dialplan.',
                 'handler' => function (): array {
                     $svc = app(AsteriskConfigService::class);
                     $svc->writeAllDialplans();
@@ -50,18 +53,26 @@ final class ServiceRestartCatalog
                 },
             ],
 
+            // Workers boot platform settings once, so they need this
+            // after any settings change. `horizon:terminate` can't be
+            // used here: Horizon only registers its commands in the
+            // console, and it signals a PID on this host, while Horizon
+            // runs in its own pod. `queue:restart` goes through the
+            // shared cache instead: each worker finishes its current
+            // job, exits, and its Horizon supervisor starts a fresh one.
             'horizon' => [
                 'label' => 'Horizon workers',
-                'description' => 'Signals Horizon to restart all queue workers so they pick up any cache/queue config changes.',
+                'description' => 'Restarts the queue workers so post-call actions, mail and other background jobs use the new settings.',
+                'impact' => 'Safe at any time: each worker finishes the job it is running first.',
                 'handler' => function (): array {
                     try {
-                        Artisan::call('horizon:terminate');
+                        Artisan::call('queue:restart');
 
-                        return ['ok' => true, 'message' => 'Horizon workers signalled to restart.'];
+                        return ['ok' => true, 'message' => 'Queue workers are restarting with the new settings.'];
                     } catch (\Throwable $e) {
-                        Log::warning('service-restart: horizon:terminate failed', ['err' => $e->getMessage()]);
+                        Log::warning('service-restart: queue:restart failed', ['err' => $e->getMessage()]);
 
-                        return ['ok' => false, 'message' => 'horizon:terminate failed: '.$e->getMessage()];
+                        return ['ok' => false, 'message' => 'Could not restart the queue workers: '.$e->getMessage()];
                     }
                 },
             ],

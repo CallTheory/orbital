@@ -7,8 +7,11 @@ namespace App\Filament\Pages\Concerns;
 use App\Services\Settings\PlatformSettingsRepository;
 use App\Services\Settings\ServiceRestartCatalog;
 use App\Services\Settings\SettingsRegistry;
+use Filament\Actions\Action;
 use Filament\Forms;
+use Filament\Notifications\Notification;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
 
 /**
  * Shared render / persist logic for pages that expose a subset of
@@ -105,7 +108,8 @@ trait RendersRegistrySettings
      *
      * Returns the set of `restart_required` service slugs for
      * settings whose value actually changed, so the caller can
-     * surface a "restart X services" warning.
+     * surface a "restart X services" warning. Any change at all adds
+     * `horizon`: queue workers read every setting once, at boot.
      *
      * @param  array<string, mixed>  $state
      * @param  array<int, string>  $sectionKeys
@@ -129,7 +133,11 @@ trait RendersRegistrySettings
                 continue;
             }
             $def = $allowed[$key];
-            $previous = $repo->get($key);
+            $targets = $def['config_keys']
+                ?? (isset($def['config_key']) ? [$def['config_key']] : []);
+            // Compare with what's in effect (saved value, else .env), so
+            // a first save that just stores the .env value isn't a change.
+            $previous = $repo->get($key) ?? ($targets !== [] ? config($targets[0]) : null);
             $incoming = ($value === null || $value === '') ? null : $value;
 
             if ($incoming === null) {
@@ -138,16 +146,15 @@ trait RendersRegistrySettings
                 $repo->set($key, $incoming);
             }
 
-            if (! empty($def['restart_required']) && $previous != $incoming) {
-                foreach ($def['restart_required'] as $slug) {
+            if ($previous != $incoming) {
+                $restart['horizon'] = true;
+                foreach ($def['restart_required'] ?? [] as $slug) {
                     $restart[$slug] = true;
                 }
             }
 
             // Apply to runtime config immediately so the response
             // rendered after save sees the new values.
-            $targets = $def['config_keys']
-                ?? (isset($def['config_key']) ? [$def['config_key']] : []);
             if ($incoming !== null) {
                 foreach ($targets as $target) {
                     config()->set($target, $incoming);
@@ -156,6 +163,92 @@ trait RendersRegistrySettings
         }
 
         return array_keys($restart);
+    }
+
+    /**
+     * Tell the operator the save worked and apply what it needs.
+     * Queue workers are restarted straight away (it's always safe);
+     * anything else, like an Asterisk reload, opens the restart
+     * prompt with those services ticked so it's one click, not a
+     * scroll back to the top of the page.
+     *
+     * @param  array<int, string>  $slugs  from saveRegistrySections()
+     */
+    public function afterRegistrySave(string $title, array $slugs): void
+    {
+        $ok = true;
+        $body = null;
+        if (in_array('horizon', $slugs, true)) {
+            [$result] = ServiceRestartCatalog::run(['horizon']);
+            $ok = $result['ok'];
+            $body = $result['message'];
+        }
+        Notification::make()
+            ->title($title)
+            ->body($body)
+            ->{$ok ? 'success' : 'warning'}()
+            ->persistent(! $ok)
+            ->send();
+
+        $remaining = array_values(array_diff($slugs, ['horizon']));
+        if (ServiceRestartCatalog::labelsFor($remaining) !== []) {
+            $this->mountAction('restartServices', ['slugs' => $remaining]);
+        }
+    }
+
+    public function restartServicesAction(): Action
+    {
+        $handlers = ServiceRestartCatalog::handlers();
+
+        return Action::make('restartServices')
+            ->label('Restart services')
+            ->icon('heroicon-o-arrow-path')
+            ->color('warning')
+            ->fillForm(fn (array $arguments): array => ['slugs' => $arguments['slugs'] ?? []])
+            ->schema([
+                Forms\Components\CheckboxList::make('slugs')
+                    ->label('Services to restart')
+                    ->options(array_map(fn (array $def) => $def['label'], $handlers))
+                    ->descriptions(array_map(fn (array $def) => $def['description'].' '.$def['impact'], $handlers))
+                    ->required()
+                    ->columns(1),
+            ])
+            ->modalHeading(fn (array $arguments): string => ($arguments['slugs'] ?? []) === []
+                ? 'Restart services'
+                : 'Restart services for this change?')
+            ->modalDescription(fn (array $arguments): ?string => ($arguments['slugs'] ?? []) === []
+                ? null
+                : 'The settings are saved, but the services ticked below only pick them up after a restart.')
+            ->modalSubmitActionLabel('Restart now')
+            ->modalCancelActionLabel('Later')
+            ->action(function (array $data): void {
+                foreach (ServiceRestartCatalog::run((array) ($data['slugs'] ?? [])) as $r) {
+                    Notification::make()
+                        ->title($r['label'])
+                        ->body($r['message'])
+                        ->{$r['ok'] ? 'success' : 'danger'}()
+                        ->send();
+                }
+            });
+    }
+
+    /**
+     * Settings that other settings' `visible_when` depends on. They
+     * re-render the form as they change so dependent fields appear
+     * and disappear without a save.
+     *
+     * @return array<string, true>
+     */
+    protected function registryControllingKeys(): array
+    {
+        $keys = [];
+        foreach (SettingsRegistry::all() as $def) {
+            foreach (array_keys($def['visible_when'] ?? []) as $key) {
+                $keys[$key] = true;
+            }
+        }
+
+        return $keys;
     }
 
     /**
@@ -206,6 +299,25 @@ trait RendersRegistrySettings
         };
 
         $field->label($def['label'] ?? $key);
+
+        if (isset($this->registryControllingKeys()[$key])) {
+            $field->live();
+        }
+
+        // Shown only while another setting has one of the listed
+        // values (e.g. SMTP fields only for the SMTP mailer). Hidden
+        // fields aren't saved, so switching away and back keeps them.
+        if (! empty($def['visible_when'])) {
+            $field->visible(function (Get $get) use ($def): bool {
+                foreach ($def['visible_when'] as $otherKey => $values) {
+                    if (! in_array($get($this->registryFieldName($otherKey)), $values, true)) {
+                        return false;
+                    }
+                }
+
+                return true;
+            });
+        }
 
         if (! empty($def['placeholder'])) {
             $field->placeholder($def['placeholder']);

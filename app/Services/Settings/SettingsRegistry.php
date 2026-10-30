@@ -145,6 +145,7 @@ final class SettingsRegistry
      *     helper?: string,
      *     placeholder?: string,
      *     restart_required?: array<int, string>,
+     *     visible_when?: array<string, array<int, string>>,
      *     disk?: string,
      *     directory?: string,
      *     accept?: array<int, string>,
@@ -309,15 +310,13 @@ final class SettingsRegistry
                     'log' => 'Log (write to laravel.log)',
                     'array' => 'Array (in-memory, testing only)',
                     'sendmail' => 'Sendmail',
-                    'mailgun' => 'Mailgun',
-                    'postmark' => 'Postmark',
-                    'resend' => 'Resend',
                     'sendgrid' => 'SendGrid',
                     'ses' => 'AWS SES',
                 ],
             ],
             'services.sendgrid.key' => [
                 'section' => 'mail',
+                'visible_when' => ['mail.default' => ['sendgrid']],
                 'label' => 'SendGrid API Key',
                 'type' => 'password',
                 'config_key' => 'services.sendgrid.key',
@@ -326,6 +325,7 @@ final class SettingsRegistry
             ],
             'mail.smtp.host' => [
                 'section' => 'mail',
+                'visible_when' => ['mail.default' => ['smtp']],
                 'label' => 'SMTP Host',
                 'type' => 'text',
                 'config_key' => 'mail.mailers.smtp.host',
@@ -333,6 +333,7 @@ final class SettingsRegistry
             ],
             'mail.smtp.port' => [
                 'section' => 'mail',
+                'visible_when' => ['mail.default' => ['smtp']],
                 'label' => 'SMTP Port',
                 'type' => 'number',
                 'config_key' => 'mail.mailers.smtp.port',
@@ -340,12 +341,14 @@ final class SettingsRegistry
             ],
             'mail.smtp.username' => [
                 'section' => 'mail',
+                'visible_when' => ['mail.default' => ['smtp']],
                 'label' => 'SMTP Username',
                 'type' => 'text',
                 'config_key' => 'mail.mailers.smtp.username',
             ],
             'mail.smtp.password' => [
                 'section' => 'mail',
+                'visible_when' => ['mail.default' => ['smtp']],
                 'label' => 'SMTP Password',
                 'type' => 'password',
                 'config_key' => 'mail.mailers.smtp.password',
@@ -353,6 +356,7 @@ final class SettingsRegistry
             ],
             'mail.smtp.encryption' => [
                 'section' => 'mail',
+                'visible_when' => ['mail.default' => ['smtp']],
                 'label' => 'SMTP Encryption',
                 'type' => 'select',
                 'config_key' => 'mail.mailers.smtp.encryption',

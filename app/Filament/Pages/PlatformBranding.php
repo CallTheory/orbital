@@ -5,12 +5,10 @@ declare(strict_types=1);
 namespace App\Filament\Pages;
 
 use App\Filament\Pages\Concerns\RendersRegistrySettings;
-use App\Services\Settings\ServiceRestartCatalog;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
-use Filament\Notifications\Notification;
 use Filament\Pages\Concerns\InteractsWithFormActions;
 use Filament\Pages\Page;
 use Filament\Schemas\Schema;
@@ -83,21 +81,6 @@ class PlatformBranding extends Page implements HasForms
     {
         $slugs = $this->saveRegistrySections($this->form->getState(), $this->sectionKeys);
 
-        if ($slugs === []) {
-            Notification::make()
-                ->title('Platform branding saved')
-                ->success()
-                ->send();
-
-            return;
-        }
-
-        $labels = ServiceRestartCatalog::labelsFor($slugs);
-        Notification::make()
-            ->title('Saved — restart required')
-            ->body('The following services need a restart: '.implode(', ', $labels).'.')
-            ->warning()
-            ->persistent()
-            ->send();
+        $this->afterRegistrySave('Platform branding saved', $slugs);
     }
 }

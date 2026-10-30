@@ -30,12 +30,15 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Jetstream\Events\TeamSwitched;
 use Laravel\Passport\Passport;
 use Spatie\Permission\PermissionRegistrar;
+use Symfony\Component\Mailer\Bridge\Sendgrid\Transport\SendgridTransportFactory;
+use Symfony\Component\Mailer\Transport\Dsn;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -47,6 +50,13 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->registerBootstrappers();
+
+        // SendGrid over its web API (Laravel has no built-in transport
+        // for it). The key is read when the mailer is first used, so a
+        // key saved in Platform Settings → Mail applies without a deploy.
+        Mail::extend('sendgrid', fn () => (new SendgridTransportFactory)->create(
+            new Dsn('sendgrid+api', 'default', (string) config('services.sendgrid.key')),
+        ));
 
         // Inbound messaging webhook limiter. The endpoint is public by
         // necessity (the carrier has to reach it) and its real defence

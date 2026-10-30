@@ -65,6 +65,12 @@ return [
             'transport' => 'resend',
         ],
 
+        // Registered in AppServiceProvider: SendGrid's web API via
+        // symfony/sendgrid-mailer, authenticated with services.sendgrid.key.
+        'sendgrid' => [
+            'transport' => 'sendgrid',
+        ],
+
         'sendmail' => [
             'transport' => 'sendmail',
             'path' => env('MAIL_SENDMAIL_PATH', '/usr/sbin/sendmail -bs -i'),

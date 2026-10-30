@@ -312,8 +312,17 @@ final class SettingsRegistry
                     'mailgun' => 'Mailgun',
                     'postmark' => 'Postmark',
                     'resend' => 'Resend',
+                    'sendgrid' => 'SendGrid',
                     'ses' => 'AWS SES',
                 ],
+            ],
+            'services.sendgrid.key' => [
+                'section' => 'mail',
+                'label' => 'SendGrid API Key',
+                'type' => 'password',
+                'config_key' => 'services.sendgrid.key',
+                'secret' => true,
+                'helper' => 'Used when the Default Mailer is SendGrid. Create it in SendGrid under Settings → API Keys with Mail Send access. The From Address must be a verified sender or on an authenticated domain.',
             ],
             'mail.smtp.host' => [
                 'section' => 'mail',

@@ -53,8 +53,9 @@ class HandoffDestinations
     }
 
     /**
-     * The number a session hands off to: one configured in the persona's
-     * flow, else in that flow's orchestration, else the client's first.
+     * The number a session hands off to: one configured in the flow the
+     * call started in, else in that flow's orchestration, else the
+     * client's first.
      */
     public function forSession(CallSessionState $session): ?string
     {
@@ -64,9 +65,12 @@ class HandoffDestinations
 
         $candidates = $this->all($session->team_id);
 
-        $flowId = $session->agent_persona_id
-            ? AgentPersona::withoutGlobalScopes()->whereKey($session->agent_persona_id)->value('default_flow_id')
-            : null;
+        // The flow the call started in, else (sessions from before that
+        // was recorded) the persona's default.
+        $flowId = $session->entry_flow_id
+            ?? ($session->agent_persona_id
+                ? AgentPersona::withoutGlobalScopes()->whereKey($session->agent_persona_id)->value('default_flow_id')
+                : null);
         $orchestrationId = $flowId
             ? IntakeFlow::withoutGlobalScopes()->whereKey($flowId)->value('orchestration_id')
             : null;

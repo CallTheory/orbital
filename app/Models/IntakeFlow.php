@@ -68,6 +68,7 @@ class IntakeFlow extends Model
         'display_order',
         'canvas_x',
         'canvas_y',
+        'agent_persona_id',
     ];
 
     protected function casts(): array
@@ -88,6 +89,33 @@ class IntakeFlow extends Model
     public function orchestration(): BelongsTo
     {
         return $this->belongsTo(Orchestration::class);
+    }
+
+    /**
+     * The persona that answers this channel. Set on an Inbound Phone
+     * trigger so a DID can route to the channel without an extension.
+     */
+    public function agentPersona(): BelongsTo
+    {
+        return $this->belongsTo(AgentPersona::class);
+    }
+
+    /**
+     * Where a call arriving on this channel trigger starts: the flow on
+     * its `matched` port, else its highest-priority outbound transition.
+     * Trigger flows carry no steps of their own, so compiling from the
+     * trigger itself would hand the AI an empty first flow. Templates
+     * record the port in `description`, the editor in `source_handle`.
+     */
+    public function channelEntryFlow(): ?self
+    {
+        $transitions = $this->transitionsOut()->whereNotNull('to_flow_id')->get();
+        $transition = $transitions->first(fn (IntakeFlowTransition $t) => $t->source_handle === 'matched' || $t->description === 'matched')
+            ?? $transitions->first();
+
+        return $transition
+            ? self::withoutGlobalScope('team')->find($transition->to_flow_id)
+            : null;
     }
 
     /**

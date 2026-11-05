@@ -22,6 +22,7 @@ class CallSessionState extends Model
         'session_key',
         'team_id',
         'agent_persona_id',
+        'entry_flow_id',
         'caller_number',
         'called_number',
         'fields',

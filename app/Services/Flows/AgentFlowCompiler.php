@@ -136,12 +136,25 @@ class AgentFlowCompiler
     }
 
     /**
+     * The flow a call starts in, as compile() picks it. Call sessions
+     * record it so post-call actions and handoffs follow the same path.
+     */
+    public function entryFlow(AgentPersona $persona, ?Extension $extension = null, ?RoutingRule $rule = null): ?IntakeFlow
+    {
+        return $this->resolveEntryFlow($persona, $extension, $rule)[0];
+    }
+
+    /**
      * @return array{0: ?IntakeFlow, 1: string}
      */
     private function resolveEntryFlow(AgentPersona $persona, ?Extension $extension, ?RoutingRule $rule): array
     {
         if ($rule?->intake_flow_id) {
-            return [IntakeFlow::withoutGlobalScope('team')->find($rule->intake_flow_id), 'routing_rule'];
+            $flow = IntakeFlow::withoutGlobalScope('team')->find($rule->intake_flow_id);
+
+            // A DID routed to an orchestration points at its Inbound
+            // Phone channel; the call starts where that channel leads.
+            return [$flow?->isChannelTrigger() ? $flow->channelEntryFlow() : $flow, 'routing_rule'];
         }
         if ($extension?->intake_flow_id) {
             return [IntakeFlow::withoutGlobalScope('team')->find($extension->intake_flow_id), 'extension'];

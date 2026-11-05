@@ -6,11 +6,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\RunPostCallActionsJob;
-use App\Models\AgentPersona;
 use App\Models\CallSessionState;
-use App\Models\Extension;
+use App\Services\Flows\AgentFlowCompiler;
 use App\Services\Messages\PartialMessagePolicy;
 use App\Services\Messages\SessionMessageWriter;
+use App\Services\Telephony\AiCallTarget;
 use App\Services\Telephony\HandoffDestinations;
 use App\Support\PhoneNumber;
 use Illuminate\Http\JsonResponse;
@@ -207,29 +207,25 @@ class CallSessionController extends Controller
     }
 
     /**
+     * Team, persona and entry flow for a new session, from what Asterisk
+     * dialled (an AI extension, or r{rule id} — see AiCallTarget).
+     *
      * @return array<string, mixed>
      */
     protected function resolveContext(?string $extensionNumber): array
     {
-        if (! $extensionNumber) {
+        $target = AiCallTarget::resolve($extensionNumber);
+
+        if (! $target) {
             return [];
         }
 
-        $ext = Extension::withoutGlobalScopes()
-            ->where('number', $extensionNumber)
-            ->where('type', 'ai_agent')
-            ->first();
-
-        if (! $ext) {
-            return [];
-        }
-
-        $context = ['team_id' => $ext->team_id];
-        if ($ext->assignable instanceof AgentPersona) {
-            $context['agent_persona_id'] = $ext->assignable->id;
-        }
-
-        return $context;
+        return [
+            'team_id' => $target->teamId,
+            'agent_persona_id' => $target->persona->id,
+            'entry_flow_id' => app(AgentFlowCompiler::class)
+                ->entryFlow($target->persona, $target->extension, $target->rule)?->id,
+        ];
     }
 
     /**

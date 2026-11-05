@@ -39,6 +39,16 @@ exten => {{ $pattern }},1,NoOp(Inbound {{ $pattern }} for client {{ $rule->team_
 @case('queue')
  same => n,Goto({{ $tenantContext }},queue-{{ $rule->destination_id }},1)
 @break
+@case('orchestration')
+@php
+    // Straight to the AI on the orchestration's Inbound Phone channel —
+    // no extension. LiveKit names the room after the dialled target
+    // (agent-_r{rule}_…); the worker hands it back to Orbital, which
+    // finds the channel and its persona through this rule.
+    $aiTarget = \App\Services\Telephony\AiCallTarget::forRule($rule);
+@endphp
+ same => n,Dial(PJSIP/{{ $aiTarget }}@livekit,120,tTkKb(orbital-ai-headers^s^1))
+@break
 @case('voicemail')
 @php
     // Per-client custom TTS greeting: when the client picked

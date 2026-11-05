@@ -156,12 +156,16 @@ class PostCallActions
     }
 
     /**
-     * The flow a call to this persona starts in: the persona's AI
-     * extension's flow, else the persona's default — as the compiler
-     * picks it, minus routing rules, which the session doesn't record.
+     * The flow the call started in, as recorded on the session. Sessions
+     * from before that was recorded fall back to the persona's AI
+     * extension's flow, else the persona's default.
      */
     private function entryFlow(CallSessionState $state): ?IntakeFlow
     {
+        if ($state->entry_flow_id) {
+            return IntakeFlow::withoutGlobalScope('team')->find($state->entry_flow_id);
+        }
+
         if (! $state->agent_persona_id) {
             return null;
         }

@@ -94,7 +94,7 @@ jobs:
         # here as well, just before the test run.
         uses: https://git.calltheory.com/actions/setup-node@v7
         with:
-          node-version: '24'
+          node-version: '26'
 
       - name: Enable corepack + activate pnpm
         run: |
@@ -134,7 +134,7 @@ jobs:
       - name: Setup Node 22
         uses: https://git.calltheory.com/actions/setup-node@v7
         with:
-          node-version: '24'
+          node-version: '26'
 
       - name: Enable corepack + activate pnpm
         # corepack ships with Node; no third-party action needed.
@@ -223,7 +223,7 @@ jobs:
       - name: Setup Node 22
         uses: https://git.calltheory.com/actions/setup-node@v7
         with:
-          node-version: '24'
+          node-version: '26'
 
       - name: Enable corepack + activate pnpm
         run: |

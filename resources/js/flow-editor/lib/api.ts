@@ -57,6 +57,9 @@ export type FlowDTO = {
     trigger_type: string | null;
     kind: string;
     is_channel_trigger: boolean;
+    // Persona answering calls DIDs send straight to this channel
+    // (Inbound Phone only).
+    agent_persona_id?: number | null;
     display_order: number;
     canvas_x: number | null;
     canvas_y: number | null;

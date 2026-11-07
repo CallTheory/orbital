@@ -7,8 +7,11 @@ namespace App\Filament\Resources\ClientResource\Pages;
 use App\Filament\Resources\ClientResource;
 use App\Models\CallQueue;
 use App\Models\Extension;
+use App\Models\Orchestration;
 use App\Models\SipTrunk;
+use App\Services\Telephony\ClientDidRouting;
 use BackedEnum;
+use Closure;
 use Filament\Actions;
 use Filament\Forms;
 use Filament\Resources\Pages\ManageRelatedRecords;
@@ -63,14 +66,25 @@ class ManageClientDids extends ManageRelatedRecords
                         'extension' => 'Extension (person or AI agent)',
                         'queue' => 'Call queue',
                         'voicemail' => 'Voicemail box',
+                        ClientDidRouting::DESTINATION_ORCHESTRATION => 'Orchestration (Inbound Phone)',
                     ])
                     ->placeholder('Nowhere yet (calls are hung up)')
                     ->live()
                     ->afterStateUpdated(fn (callable $set) => $set('destination_id', null)),
                 Forms\Components\Select::make('destination_id')
-                    ->label(fn (Get $get): string => $get('destination_type') === 'queue' ? 'Queue' : 'Extension')
+                    ->label(fn (Get $get): string => match ($get('destination_type')) {
+                        'queue' => 'Queue',
+                        ClientDidRouting::DESTINATION_ORCHESTRATION => 'Orchestration',
+                        default => 'Extension',
+                    })
                     ->options(fn (Get $get): array => $this->destinationOptions($get('destination_type')))
                     ->searchable()
+                    ->helperText(fn (Get $get): ?string => $get('destination_type') === ClientDidRouting::DESTINATION_ORCHESTRATION
+                        ? 'Calls start at the orchestration\'s Inbound Phone channel and are answered by the persona chosen in that channel\'s settings.'
+                        : null)
+                    ->rules(fn (Get $get): array => $get('destination_type') === ClientDidRouting::DESTINATION_ORCHESTRATION
+                        ? [fn (string $attribute, mixed $value, Closure $fail) => $this->checkInboundPhoneChannel((int) $value, $fail)]
+                        : [])
                     ->visible(fn (Get $get): bool => filled($get('destination_type')))
                     ->required(fn (Get $get): bool => filled($get('destination_type'))),
                 Forms\Components\Toggle::make('is_active')
@@ -153,7 +167,29 @@ class ManageClientDids extends ManageRelatedRecords
                 ->orderBy('name')
                 ->pluck('name', 'id')
                 ->all(),
+            ClientDidRouting::DESTINATION_ORCHESTRATION => Orchestration::withoutGlobalScopes()
+                ->where('team_id', $teamId)
+                ->orderBy('name')
+                ->pluck('name', 'id')
+                ->all(),
             default => [],
         };
+    }
+
+    /**
+     * A DID sent to an orchestration needs its Inbound Phone channel to
+     * say which persona answers; without one the call would hang up.
+     */
+    protected function checkInboundPhoneChannel(int $orchestrationId, Closure $fail): void
+    {
+        $channel = ClientDidRouting::inboundPhoneChannel((int) $this->getOwnerRecord()->getKey(), $orchestrationId);
+
+        if (! $channel) {
+            $fail('This orchestration has no Inbound Phone channel. Open it in the editor once to add one.');
+        } elseif (! $channel->agent_persona_id) {
+            $fail('Choose the persona that answers in the Inbound Phone channel\'s settings first.');
+        } elseif (! $channel->channelEntryFlow()) {
+            $fail('Connect the Inbound Phone channel to a flow first.');
+        }
     }
 }

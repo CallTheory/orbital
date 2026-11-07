@@ -26,8 +26,11 @@ from tools.transfer import transfer_call
 
 logger = logging.getLogger("orbital-agent")
 
-# Room names from dispatchRuleCallee look like: agent-1020_HGzYmojjfar2
-ROOM_NAME_RE = re.compile(r"^agent-_?(\d+)_")
+# Room names from dispatchRuleCallee look like: agent-_1020_HGzYmojjfar2.
+# The middle part is what Asterisk dialled: an AI extension (1020), or
+# r{rule id} for a DID sent straight to an orchestration's Inbound Phone
+# channel (r42). Orbital resolves either one.
+ROOM_NAME_RE = re.compile(r"^agent-_?(r?\d+)_")
 
 END_CALL_EXTRA = (
     "ONLY use this if the caller explicitly says goodbye, "

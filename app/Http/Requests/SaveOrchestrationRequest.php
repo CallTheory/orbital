@@ -53,6 +53,7 @@ class SaveOrchestrationRequest extends FormRequest
             'flows.*.display_order' => ['nullable', 'integer'],
             'flows.*.canvas_x' => ['nullable', 'integer'],
             'flows.*.canvas_y' => ['nullable', 'integer'],
+            'flows.*.agent_persona_id' => ['nullable', 'integer'],
             'flows.*.steps' => ['array'],
             'flows.*.steps.*.id' => ['nullable', 'integer'],
             'flows.*.steps.*.intake_goal_key' => ['required', 'string', Rule::in($primitiveKeys)],

@@ -184,6 +184,9 @@ class OrchestrationController extends Controller
                 'trigger_type' => $f->trigger_type,
                 'kind' => $f->kind,
                 'is_channel_trigger' => $f->isChannelTrigger(),
+                // The persona answering calls that DIDs send straight
+                // to this channel (Inbound Phone only).
+                'agent_persona_id' => $f->agent_persona_id,
                 'display_order' => $f->display_order,
                 'canvas_x' => $f->canvas_x,
                 'canvas_y' => $f->canvas_y,
@@ -449,6 +452,7 @@ class OrchestrationController extends Controller
                 'display_order' => (int) ($row['display_order'] ?? $flow->display_order ?? 0),
                 'canvas_x' => $row['canvas_x'] ?? null,
                 'canvas_y' => $row['canvas_y'] ?? null,
+                'agent_persona_id' => $this->channelPersonaId($orchestration, $row, $flow),
             ])->save();
 
             $keepIds[] = $flow->id;
@@ -467,6 +471,28 @@ class OrchestrationController extends Controller
             ->each(fn (IntakeFlow $f) => $f->delete());
 
         return $clientIdMap;
+    }
+
+    /**
+     * The persona saved on a flow: only an Inbound Phone channel of a
+     * client's orchestration has one, and only one of that client's.
+     * Shared orchestrations have no client, so none.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function channelPersonaId(Orchestration $orchestration, array $row, IntakeFlow $flow): ?int
+    {
+        $triggerType = $row['trigger_type'] ?? $flow->trigger_type;
+        $personaId = $row['agent_persona_id'] ?? null;
+
+        if ($triggerType !== IntakeFlow::TRIGGER_INBOUND_PHONE || ! $personaId || ! $orchestration->team_id) {
+            return null;
+        }
+
+        return AgentPersona::withoutGlobalScope('team')
+            ->where('team_id', $orchestration->team_id)
+            ->whereKey($personaId)
+            ->exists() ? (int) $personaId : null;
     }
 
     /**

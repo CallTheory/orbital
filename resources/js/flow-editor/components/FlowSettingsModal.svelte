@@ -109,6 +109,25 @@
                 </select>
             </label>
 
+            {#if flow.trigger_type === 'inbound_phone' && !graph.isShared}
+                <label style="display: flex; flex-direction: column; gap: 0.25rem;">
+                    <span style="font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--oflow-soft);">Answered by</span>
+                    <select
+                        bind:value={flow.agent_persona_id}
+                        onchange={() => markDirty(graph)}
+                        style="background: var(--oflow-bg); color: var(--oflow-text); border: 1px solid var(--oflow-border); border-radius: 0.375rem; padding: 0.4375rem 0.625rem; font-size: 0.8125rem;"
+                    >
+                        <option value={null}>No persona (DIDs can't route here yet)</option>
+                        {#each graph.agentPersonas as persona (persona.id)}
+                            <option value={persona.id}>{persona.name}{persona.role ? ` — ${persona.role}` : ''}</option>
+                        {/each}
+                    </select>
+                    <span style="font-size: 0.75rem; color: var(--oflow-muted);">
+                        The AI persona that answers when a phone number is set to send calls to this orchestration.
+                    </span>
+                </label>
+            {/if}
+
             <label style="display: flex; align-items: center; gap: 0.375rem; color: var(--oflow-text);">
                 <input
                     type="checkbox"

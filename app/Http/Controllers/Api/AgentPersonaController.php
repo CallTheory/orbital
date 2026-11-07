@@ -6,8 +6,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\AgentPersona;
-use App\Models\Extension;
 use App\Services\Flows\AgentFlowCompiler;
+use App\Services\Telephony\AiCallTarget;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -26,26 +26,28 @@ class AgentPersonaController extends Controller
         ]);
     }
 
+    /**
+     * The persona and compiled flow for an AI call. `$extension` is what
+     * Asterisk dialled on the livekit endpoint: an AI extension number,
+     * or r{rule id} for a DID routed to an orchestration's Inbound Phone
+     * channel (see AiCallTarget).
+     */
     public function byExtension(Request $request, string $extension, AgentFlowCompiler $compiler): JsonResponse
     {
-        $ext = Extension::withoutGlobalScopes()
-            ->where('number', $extension)
-            ->where('type', 'ai_agent')
-            ->where('is_active', true)
-            ->first();
+        $target = AiCallTarget::resolve($extension);
 
-        if (! $ext || ! $ext->assignable || ! ($ext->assignable instanceof AgentPersona)) {
+        if (! $target) {
             return response()->json(['error' => 'No agent persona found for this extension'], 404);
         }
 
-        $persona = $ext->assignable;
+        $persona = $target->persona;
 
         // Compile the bound flow (if any) at request time. The resolver
         // walks routing_rule → extension → persona.default and always
         // returns a CompiledFlow — even when no flow is bound, the
         // `llm_instructions` field still carries the persona baseline
         // so the worker has something to work from.
-        $compiled = $compiler->compile(persona: $persona, extension: $ext);
+        $compiled = $compiler->compile(persona: $persona, extension: $target->extension, rule: $target->rule);
 
         return response()->json([
             'data' => $persona->only([

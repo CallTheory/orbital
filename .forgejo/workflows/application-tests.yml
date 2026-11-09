@@ -332,6 +332,9 @@ jobs:
           - name: haraka
             dockerfile: Dockerfile
             context: docker/haraka
+          - name: whisper-local
+            dockerfile: Dockerfile
+            context: docker/whisper-local
     uses: actions/.forgejo-workflows/.forgejo/workflows/orbital-cosign.yml@main
     with:
       image-name: ${{ matrix.name }}
@@ -357,7 +360,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [laravel, asterisk, agent-worker, asterisk-config-sync, haraka]
+        image: [laravel, asterisk, agent-worker, asterisk-config-sync, haraka, whisper-local]
     env:
       TRIVY_VERSION: "0.75.0"
 
@@ -444,6 +447,15 @@ jobs:
 
       - name: Lint chart
         run: helm lint helm/orbital
+
+      - name: Chart's monitoring files match the compose stack's
+        # orbital-setup installs the alert rules and dashboards from the
+        # chart; compose mounts them from docker/. One source of truth
+        # would be nicer, but neither side should read from the other's
+        # tree, so this keeps the two copies identical instead.
+        run: |
+          diff -u docker/prometheus/rules/orbital.yml helm/orbital/files/monitoring/orbital-rules.yml
+          diff -ru docker/grafana/provisioning/dashboards/orbital helm/orbital/files/monitoring/dashboards
 
       - name: Render chart against every per-provider values file
         run: |

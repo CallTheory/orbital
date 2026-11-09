@@ -1,0 +1,68 @@
+{{- if .Values.localTranscription.enabled -}}
+{{/*
+whisper.cpp voicemail transcription (see values localTranscription).
+The app reaches it at WHISPER_LOCAL_URL, which configmap-app-env sets
+to this Service while it's enabled. Models are baked into the image;
+the server writes only temporary files.
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "orbital.componentName" (list . "whisper-local") }}
+  labels:
+    {{- include "orbital.componentLabels" (list . "whisper-local") | nindent 4 }}
+spec:
+  replicas: 1
+  {{- include "orbital.rollingUpdate" . | nindent 2 }}
+  selector:
+    matchLabels:
+      {{- include "orbital.selectorLabels" (list . "whisper-local") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "orbital.componentLabels" (list . "whisper-local") | nindent 8 }}
+    spec:
+      {{- include "orbital.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: whisper-local
+          image: {{ include "orbital.image" (dict "ctx" . "name" .Values.localTranscription.image.name "tag" .Values.localTranscription.image.tag) }}
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 9700
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.localTranscription.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "orbital.componentName" (list . "whisper-local") }}
+  labels:
+    {{- include "orbital.componentLabels" (list . "whisper-local") | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9700
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "orbital.selectorLabels" (list . "whisper-local") | nindent 4 }}
+{{- end }}

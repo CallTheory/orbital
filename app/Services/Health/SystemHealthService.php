@@ -161,7 +161,7 @@ class SystemHealthService
             // whisper-local just means voicemail emails go out
             // without transcripts (the job catches + degrades) —
             // not an outage.
-            'whisper_local' => ['host' => 'whisper-local', 'port' => 9700],
+            'whisper_local' => $this->parseHostPort((string) config('services.whisper_local.url'), 9700),
             // Dev control panels — pgAdmin (Postgres) and Redis
             // Commander (Valkey). Both reach the database instances
             // they wrap over the sail network, so probing them tells
@@ -198,7 +198,7 @@ class SystemHealthService
             $this->checkTlsCertificate(),
             $this->probeResultToCheck($probes['pgadmin'], 'pgadmin', 'pgAdmin', 'Control Panels', 'Postgres admin web UI', 'heroicon-o-circle-stack', optional: true),
             $this->probeResultToCheck($probes['redis_commander'], 'redis_commander', 'Redis Commander', 'Control Panels', 'Valkey / Redis web browser', 'heroicon-o-bolt', optional: true),
-            $this->probeResultToCheck($probes['promtail'], 'promtail', 'Promtail', 'Observability', 'Log shipper feeding Loki', 'heroicon-o-paper-airplane', optional: true),
+            $this->probeResultToCheck($probes['promtail'], 'promtail', 'Log shipper', 'Observability', 'Ships logs to Loki (Promtail in compose, Grafana Alloy on Kubernetes)', 'heroicon-o-paper-airplane', optional: true),
             $this->probeResultToCheck($probes['tempo'], 'tempo', 'Tempo', 'Observability', 'Distributed tracing backend', 'heroicon-o-map', optional: true),
             $this->probeResultToCheck($probes['alertmanager'], 'alertmanager', 'Alertmanager', 'Observability', 'Routes firing alerts to email and webhooks', 'heroicon-o-bell-alert'),
             $this->checkHorizon(),

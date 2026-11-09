@@ -243,10 +243,11 @@ comma-separated, for HEALTH_DISABLED_COMPONENTS.
 
 health.disabledComponents, when set, replaces the derivation. Otherwise:
 - the docker-compose stack's own HAProxy and dev panels: always;
-- observability backends, hold-music streaming and local transcription,
-  which this chart doesn't deploy: unless health.probes says where one is
+- observability backends and hold-music streaming, which this chart
+  doesn't deploy: unless health.probes says where one is
   (tempo also counts as present when tracing is on);
-- Haraka and Ollama: unless their feature is on here (or probed);
+- Haraka, Ollama and local transcription: unless their feature is on
+  here (or probed);
 - plus anything in health.extraDisabled.
 */}}
 {{- define "orbital.healthDisabled" -}}
@@ -255,12 +256,13 @@ health.disabledComponents, when set, replaces the derivation. Otherwise:
 {{- else -}}
 {{- $probes := .Values.health.probes | default dict -}}
 {{- $off := list "haproxy" "pgadmin" "redis_commander" -}}
-{{- range $key := list "prometheus" "loki" "grafana" "promtail" "alertmanager" "icecast" "whisper_local" -}}
+{{- range $key := list "prometheus" "loki" "grafana" "promtail" "alertmanager" "icecast" -}}
 {{- if not (hasKey $probes $key) -}}{{- $off = append $off $key -}}{{- end -}}
 {{- end -}}
 {{- if not (or .Values.observability.tracing.enabled (hasKey $probes "tempo")) -}}{{- $off = append $off "tempo" -}}{{- end -}}
 {{- if not (or (include "orbital.harakaEnabled" .) (hasKey $probes "haraka")) -}}{{- $off = append $off "haraka" -}}{{- end -}}
 {{- if not (or .Values.ollama.enabled (hasKey $probes "ollama")) -}}{{- $off = append $off "ollama" -}}{{- end -}}
+{{- if not (or .Values.localTranscription.enabled (hasKey $probes "whisper_local")) -}}{{- $off = append $off "whisper_local" -}}{{- end -}}
 {{- concat $off (.Values.health.extraDisabled | default list) | uniq | join "," -}}
 {{- end -}}
 {{- end -}}

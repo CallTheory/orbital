@@ -88,6 +88,15 @@ data:
   {{- if .Values.ollama.enabled }}
   OLLAMA_URL: {{ printf "http://%s:11434" (include "orbital.componentName" (list . "ollama")) | quote }}
   {{- end }}
+  {{- with .Values.observability.grafanaUrl }}
+  GRAFANA_INTERNAL_URL: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.observability.prometheusUrl }}
+  PROMETHEUS_INTERNAL_URL: {{ . | quote }}
+  {{- end }}
+  {{- if .Values.localTranscription.enabled }}
+  WHISPER_LOCAL_URL: {{ printf "http://%s:9700" (include "orbital.componentName" (list . "whisper-local")) | quote }}
+  {{- end }}
 
   # Asterisk config/prompt handoff. In-cluster there is no shared RWX
   # volume: Laravel/Horizon write generated dialplan + TTS prompts to

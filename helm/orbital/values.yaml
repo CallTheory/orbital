@@ -335,6 +335,20 @@ inboundMail:
       requests: {cpu: "25m", memory: "96Mi"}
       limits: {cpu: "500m", memory: "256Mi"}
 
+# Local voicemail transcription: whisper.cpp in the cluster, for clients
+# whose voicemail transcription provider is "Whisper (local)". Nothing
+# leaves the cluster. Off by default: transcription is CPU-heavy, and the
+# image carries its models (tiny.en, base.en, small, large-v3-turbo;
+# about 1.5 GB).
+localTranscription:
+  enabled: false
+  image:
+    name: whisper-local
+    tag: ""             # blank = the chart's appVersion
+  resources:
+    requests: {cpu: "500m", memory: "1Gi"}
+    limits: {cpu: "4000m", memory: "4Gi"}
+
 # Ollama: local embeddings and inference, for clients whose knowledge
 # stores use an `ollama:` embedding model instead of a hosted one. Off by
 # default: it needs real CPU (or a GPU) and disk for its models.
@@ -486,6 +500,13 @@ observability:
     # none | basic | bearer. Credentials come from app-secrets:
     # TRACING_AUTH_USERNAME and TRACING_AUTH_SECRET.
     authMode: "none"
+
+  # Where the admin panel's Grafana and Prometheus links proxy to (with
+  # the signed-in operator as the identity Grafana trusts). orbital-setup
+  # sets these when it installs the in-cluster monitoring stack; blank
+  # leaves those links pointing at the compose hostnames, i.e. unusable.
+  grafanaUrl: ""      # e.g. http://grafana.monitoring.svc.cluster.local
+  prometheusUrl: ""   # e.g. http://prometheus-server.monitoring.svc.cluster.local
 
   # Unhandled exceptions to GlitchTip, Sentry, or anything speaking the same
   # ingest API. The DSN lives in app-secrets as ERROR_REPORTING_DSN; without

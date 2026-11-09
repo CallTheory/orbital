@@ -51,7 +51,7 @@ class VoicemailTranscriber
     protected function driverFor(string $provider, array $config): TranscriptionDriver
     {
         return match ($provider) {
-            'whisper_local' => new WhisperLocalDriver(config: $config),
+            'whisper_local' => new WhisperLocalDriver(config: $config, endpoint: (string) config('services.whisper_local.url')),
             'openai_whisper' => new OpenAiWhisperDriver(config: $config),
             'deepgram' => new DeepgramDriver(config: $config),
             'elevenlabs' => new ElevenLabsDriver(config: $config),

@@ -222,6 +222,9 @@ livekitSip:
   # hangs up. Carriers stop sending audio while the caller is silent, so
   # LiveKit's 15s default dropped callers who were listening to the AI.
   # Hangups still arrive as SIP BYEs; this only catches lost ones.
+  # With more than one replica, how long the Service keeps sending an
+  # Asterisk pod's SIP to the same bridge (longer than any AI call).
+  sessionAffinitySeconds: 14400
   mediaTimeout: 120s
 
 agentWorker:

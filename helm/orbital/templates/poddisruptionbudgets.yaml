@@ -26,6 +26,7 @@ stated goal; mid-call portability is explicitly out of scope.
       (dict "name" "agent-worker" "replicas" .Values.agentWorker.replicas "enabled" .Values.agentWorker.enabled)
       (dict "name" "reverb"       "replicas" .Values.reverb.replicas      "enabled" .Values.reverb.enabled)
       (dict "name" "livekit"      "replicas" .Values.livekit.replicas     "enabled" .Values.livekit.enabled)
+      (dict "name" "livekit-sip"  "replicas" .Values.livekitSip.replicas  "enabled" .Values.livekitSip.enabled)
 -}}
 {{- range $c := $components }}
 {{- if and $c.enabled (gt (int $c.replicas) 1) }}

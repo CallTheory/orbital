@@ -115,13 +115,20 @@ asterisk:
 # Operators' browsers join LiveKit rooms: signaling at
 # wss://livekit.<domain> (needs a DNS record at the ingress LB), media
 # on the nodes' public IPs (orbital-setup opens the node firewall).
+# Two of each, on different nodes, so losing a node (or upgrading) doesn't
+# stop AI calls: LiveKit shares rooms through Valkey, and the SIP bridges
+# are interchangeable. orbital-setup puts small clusters back on one.
 livekit:
+  replicas: 2
   public:
     enabled: true
     # TURN/TLS at turn.<domain>:443 (needs a DNS record at the ingress
     # LB) for networks that block the media ports.
     turn:
       enabled: true
+
+livekitSip:
+  replicas: 2
 
 horizon:
   replicas: 1

@@ -32,6 +32,19 @@ COPY config/ /haraka/config/
 COPY plugins/ /haraka/plugins/
 COPY entrypoint.sh /usr/local/bin/haraka-entrypoint
 
+# Haraka's own default config for everything we don't ship. Run with
+# `-c /haraka` it reads only this folder, and since 3.3 a missing
+# connection.ini (the SMTP greeting, among others) crashes it on the first
+# connection. -n keeps our files (plugins, smtp.ini, ...) as they are.
+RUN cp -rn /usr/local/lib/node_modules/Haraka/config/. /haraka/config/
+
+# Diffie-Hellman parameters for STARTTLS. Without the file, Haraka runs
+# `openssl dhparam` at startup, and this image has no openssl binary, so
+# it would crash. Generated once here; the tool is removed again.
+RUN apk add --no-cache --virtual .dhparam openssl \
+    && openssl dhparam -out /haraka/config/dhparams.pem 2048 \
+    && apk del .dhparam
+
 # The entrypoint rewrites config at start (listen port, STARTTLS), so the
 # config folder belongs to `node` (uid 1000): the Helm chart runs pods as
 # that uid, while compose still runs the container as root.

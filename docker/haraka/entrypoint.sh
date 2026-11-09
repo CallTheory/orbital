@@ -17,7 +17,7 @@ port="${HARAKA_PORT:-25}"
 sed -i "s|^listen = .*|listen = [::0]:${port}|" "${config}/smtp.ini"
 
 if [ -s /haraka/tls/tls.crt ] && [ -s /haraka/tls/tls.key ]; then
-    printf '[main]\nkey=/haraka/tls/tls.key\ncert=/haraka/tls/tls.crt\n' > "${config}/tls.ini"
+    printf '[main]\nkey=/haraka/tls/tls.key\ncert=/haraka/tls/tls.crt\ndhparam=dhparams.pem\n' > "${config}/tls.ini"
     # tls must run before the plugins that act on the transaction.
     grep -qx 'tls' "${config}/plugins" || sed -i '1i tls' "${config}/plugins"
     echo "haraka: STARTTLS enabled with /haraka/tls/tls.crt"

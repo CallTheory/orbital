@@ -1,0 +1,58 @@
+# On-prem sites installed by orbital-setup (install-onprem.sh): two hosts,
+# each running an edge VM and a K3s VM that runs Orbital, plus a small
+# witness box for the control plane's third vote.
+#
+# Layered like values-vultr-vke.yaml, for the same goal: losing either
+# host (or upgrading) doesn't stop calls.
+#   - Storage: Longhorn (installed by orbital-setup) is the default class
+#     and keeps a copy of every volume on each host, so Postgres and the
+#     rest come back on the other one.
+#   - Ingress: Traefik behind K3s's ServiceLB, on the floating app IP.
+#   - Two of every call-path component, on different hosts.
+# For a single-node test cluster use values-onprem-k3s.yaml instead.
+
+global:
+  storageClass: ""        # the cluster default: Longhorn
+
+ingress:
+  className: "traefik"
+  tls:
+    enabled: true
+  tlsAnnotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    traefik.ingress.kubernetes.io/router.entrypoints: "websecure"
+    traefik.ingress.kubernetes.io/router.tls: "true"
+
+telephony:
+  kamailio:
+    enabled: true
+
+# Two workload hosts: spread replicas when possible. Not required, so a
+# host down for maintenance doesn't leave the second replica Pending.
+spreadPods:
+  required: false
+
+# The edges reach Asterisk on the node network, as on VKE.
+asterisk:
+  replicas: 2
+  hostNetwork:
+    enabled: true
+
+# Operators' browsers join LiveKit rooms at wss://livekit.<domain>, media
+# straight to the K3s VMs; TURN/TLS at turn.<domain>:443 for networks
+# that block the media ports.
+livekit:
+  replicas: 2
+  public:
+    enabled: true
+    turn:
+      enabled: true
+
+livekitSip:
+  replicas: 2
+
+laravel:
+  replicas: 2
+
+agentWorker:
+  replicas: 2

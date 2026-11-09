@@ -25,6 +25,8 @@ spec:
       labels:
         {{- include "orbital.componentLabels" (list . "livekit-sip") | nindent 8 }}
     spec:
+      {{/* Keep replicas on separate nodes — see the helper. */}}
+      {{- include "orbital.topologySpread" (list . "livekit-sip") | nindent 6 }}
       containers:
         - name: livekit-sip
           image: {{ include "orbital.thirdPartyImage" .Values.livekitSip.image }}

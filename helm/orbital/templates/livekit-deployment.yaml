@@ -20,9 +20,18 @@ spec:
   {{- if .Values.livekit.public.enabled }}
   # On the node network the replacement pod can't start beside the old
   # one (same ports), and on a busy cluster no other node may have room,
-  # so a rolling update would stall. Stop the old pod first.
+  # so a rolling update would stall. Stop the old pod first: all of them
+  # at once with one replica, one at a time with more, so the others
+  # keep taking AI calls while each is replaced.
   strategy:
+    {{- if gt (int .Values.livekit.replicas) 1 }}
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+    {{- else }}
     type: Recreate
+    {{- end }}
   {{- else }}
   {{- include "orbital.rollingUpdate" . | nindent 2 }}
   {{- end }}

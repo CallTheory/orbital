@@ -1057,6 +1057,15 @@ final class SettingsRegistry
     /**
      * Whether a setting key is defined as secret (and therefore encrypted at rest).
      */
+    /**
+     * Is this setting set by the deployment (ORBITAL_MANAGED_SETTINGS)
+     * rather than in Platform Settings? See config/orbital.php.
+     */
+    public static function isManagedByDeployment(string $key): bool
+    {
+        return in_array($key, (array) config('orbital.managed_settings', []), true);
+    }
+
     public static function isSecret(string $key): bool
     {
         return (bool) (self::find($key)['secret'] ?? false);

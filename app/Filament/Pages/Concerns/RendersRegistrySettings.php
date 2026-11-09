@@ -45,7 +45,7 @@ trait RendersRegistrySettings
                 $targets = $def['config_keys']
                     ?? (isset($def['config_key']) ? [$def['config_key']] : []);
                 $current = $targets !== [] ? config($targets[0]) : null;
-                $persisted = $repo->get($key);
+                $persisted = SettingsRegistry::isManagedByDeployment($key) ? null : $repo->get($key);
 
                 $state[$this->registryFieldName($key)] = $persisted ?? $current;
             }
@@ -129,7 +129,7 @@ trait RendersRegistrySettings
 
         foreach ($state as $fieldName => $value) {
             $key = $this->registryOriginalKey($fieldName);
-            if (! isset($allowed[$key])) {
+            if (! isset($allowed[$key]) || SettingsRegistry::isManagedByDeployment($key)) {
                 continue;
             }
             $def = $allowed[$key];
@@ -333,6 +333,12 @@ trait RendersRegistrySettings
                 $badge = 'Requires restart: '.implode(', ', $labels).'.';
                 $helper = $helper ? $helper.' '.$badge : $badge;
             }
+        }
+        if (SettingsRegistry::isManagedByDeployment($key)) {
+            // Shown, not editable: the installer sets it for the whole
+            // deployment (see config/orbital.php managed_settings).
+            $field->disabled()->dehydrated(false);
+            $helper = 'Set by this site\'s installer (./install.sh in orbital-setup). Change it there so the rest of the deployment follows.';
         }
         if ($helper) {
             $field->helperText($helper);

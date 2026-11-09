@@ -95,6 +95,12 @@ return [
         'url' => env('OLLAMA_URL', 'http://ollama:11434'),
     ],
 
+    // Local whisper.cpp transcription (docker/whisper-local). The Helm
+    // chart points this at its Service when localTranscription is on.
+    'whisper_local' => [
+        'url' => env('WHISPER_LOCAL_URL', 'http://whisper-local:9700'),
+    ],
+
     'embeddings' => [
         // Default provider for new knowledge stores. Individual stores
         // can override this by setting their own embedding_model string.

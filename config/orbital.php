@@ -35,6 +35,17 @@ return [
 
     'source_url' => env('ORBITAL_SOURCE_URL', 'https://git.calltheory.com/calltheory/orbital'),
 
+    // Platform Settings keys this deployment sets itself (comma-separated
+    // ORBITAL_MANAGED_SETTINGS, filled in by the Helm chart). Their value
+    // comes from the environment: a saved Platform Settings value is
+    // ignored and the field is read-only, because changing it in the UI
+    // alone would leave the rest of the deployment (Haraka's token, the
+    // MX record the installer printed) out of step with the app.
+    'managed_settings' => array_values(array_filter(array_map(
+        'trim',
+        explode(',', (string) env('ORBITAL_MANAGED_SETTINGS', '')),
+    ))),
+
     /*
     |--------------------------------------------------------------------------
     | Support Subscription

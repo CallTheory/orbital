@@ -109,6 +109,16 @@ metadata:
     {{- include "orbital.componentLabels" (list . "livekit-sip") | nindent 4 }}
 spec:
   type: ClusterIP
+  {{- if gt (int .Values.livekitSip.replicas) 1 }}
+  # Asterisk sends a call's SIP to this Service over UDP. With several
+  # bridges, a later request on a long call (BYE, re-INVITE) could reach
+  # a different one once the kernel forgets the UDP flow; affinity keeps
+  # each Asterisk pod on one bridge for longer than any call.
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: {{ .Values.livekitSip.sessionAffinitySeconds }}
+  {{- end }}
   ports:
     - port: {{ .Values.livekitSip.service.sipPort }}
       targetPort: sip

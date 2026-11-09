@@ -221,3 +221,77 @@ topologySpreadConstraints:
         {{- include "orbital.selectorLabels" (list $ctx $component) | nindent 8 }}
 {{- end }}
 {{- end -}}
+
+{{/*
+Domain of Orbital's own inbound addresses ({account}@<domain>):
+inboundMail.domain, else inbound.<global.domain>.
+*/}}
+{{- define "orbital.inboundMailDomain" -}}
+{{- .Values.inboundMail.domain | default (printf "inbound.%s" .Values.global.domain) -}}
+{{- end -}}
+
+{{/*
+True ("true") when Haraka runs in this release.
+*/}}
+{{- define "orbital.harakaEnabled" -}}
+{{- if and .Values.inboundMail.enabled (eq .Values.inboundMail.receiver "haraka") -}}true{{- end -}}
+{{- end -}}
+
+{{/*
+Status-page cards to gray out ("not part of this deployment"),
+comma-separated, for HEALTH_DISABLED_COMPONENTS.
+
+health.disabledComponents, when set, replaces the derivation. Otherwise:
+- the docker-compose stack's own HAProxy and dev panels: always;
+- observability backends and hold-music streaming, which this chart
+  doesn't deploy: unless health.probes says where one is
+  (tempo also counts as present when tracing is on);
+- Haraka, Ollama and local transcription: unless their feature is on
+  here (or probed);
+- plus anything in health.extraDisabled.
+*/}}
+{{- define "orbital.healthDisabled" -}}
+{{- if .Values.health.disabledComponents -}}
+{{- .Values.health.disabledComponents -}}
+{{- else -}}
+{{- $probes := .Values.health.probes | default dict -}}
+{{- $off := list "haproxy" "pgadmin" "redis_commander" -}}
+{{- range $key := list "prometheus" "loki" "grafana" "promtail" "alertmanager" "icecast" -}}
+{{- if not (hasKey $probes $key) -}}{{- $off = append $off $key -}}{{- end -}}
+{{- end -}}
+{{- if not (or .Values.observability.tracing.enabled (hasKey $probes "tempo")) -}}{{- $off = append $off "tempo" -}}{{- end -}}
+{{- if not (or (include "orbital.harakaEnabled" .) (hasKey $probes "haraka")) -}}{{- $off = append $off "haraka" -}}{{- end -}}
+{{- if not (or .Values.ollama.enabled (hasKey $probes "ollama")) -}}{{- $off = append $off "ollama" -}}{{- end -}}
+{{- if not (or .Values.localTranscription.enabled (hasKey $probes "whisper_local")) -}}{{- $off = append $off "whisper_local" -}}{{- end -}}
+{{- concat $off (.Values.health.extraDisabled | default list) | uniq | join "," -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Probe addresses for status-page cards whose component isn't at its
+docker-compose hostname, as key=host:port pairs for HEALTH_PROBES:
+health.probes, plus Haraka's Service when it runs here.
+*/}}
+{{- define "orbital.healthProbes" -}}
+{{- $probes := dict -}}
+{{- if include "orbital.harakaEnabled" . -}}
+{{- $_ := set $probes "haraka" (printf "%s:%v" (include "orbital.componentName" (list . "haraka")) .Values.inboundMail.haraka.port) -}}
+{{- end -}}
+{{- $probes = merge (deepCopy (.Values.health.probes | default dict)) $probes -}}
+{{- $pairs := list -}}
+{{- range $key := keys $probes | sortAlpha -}}
+{{- $pairs = append $pairs (printf "%s=%s" $key (get $probes $key)) -}}
+{{- end -}}
+{{- join "," $pairs -}}
+{{- end -}}
+
+{{/*
+Platform Settings keys this release sets from its own values, for
+ORBITAL_MANAGED_SETTINGS (read-only in the UI): the inbound mail domain
+always, and the webhook token while Haraka reads it from app-secrets.
+*/}}
+{{- define "orbital.managedSettings" -}}
+{{- $keys := list "services.inbound_mail.domain" -}}
+{{- if include "orbital.harakaEnabled" . -}}{{- $keys = append $keys "services.inbound_mail.token" -}}{{- end -}}
+{{- join "," $keys -}}
+{{- end -}}

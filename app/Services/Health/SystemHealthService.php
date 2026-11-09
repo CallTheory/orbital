@@ -53,7 +53,7 @@ class SystemHealthService
         // pjsip.conf). Probing AMI + SIP/TCP lets the dashboard call out
         // partial failure.
         $asteriskHost = config('telephony.asterisk.ami.host') ?: 'asterisk';
-        $probes = $this->runParallelProbes([
+        $probes = $this->runParallelProbes($this->withConfiguredProbes([
             'asterisk_ami' => ['host' => $asteriskHost, 'port' => (int) (config('telephony.asterisk.ami.port') ?: 5038)],
             'asterisk_sip_tcp' => ['host' => $asteriskHost, 'port' => 5060],
             // SIP TLS (5061) intentionally NOT probed: even a clean
@@ -161,7 +161,7 @@ class SystemHealthService
             // whisper-local just means voicemail emails go out
             // without transcripts (the job catches + degrades) —
             // not an outage.
-            'whisper_local' => ['host' => 'whisper-local', 'port' => 9700],
+            'whisper_local' => $this->parseHostPort((string) config('services.whisper_local.url'), 9700),
             // Dev control panels — pgAdmin (Postgres) and Redis
             // Commander (Valkey). Both reach the database instances
             // they wrap over the sail network, so probing them tells
@@ -170,7 +170,7 @@ class SystemHealthService
             // either is down the app itself keeps working.
             'pgadmin' => ['host' => 'pgadmin', 'port' => 443],
             'redis_commander' => ['host' => 'redis-commander', 'port' => 8081],
-        ]);
+        ]));
 
         $checks = [
             $this->checkPostgres(),
@@ -187,7 +187,7 @@ class SystemHealthService
             $this->probeResultToCheck($probes['grafana'], 'grafana', 'Grafana', 'Observability', 'Grafana dashboard', 'heroicon-o-presentation-chart-line'),
             $this->probeResultToCheck($probes['seaweedfs'], 'seaweedfs', 'SeaweedFS', 'Storage', 'S3-compatible object storage', 'heroicon-o-archive-box'),
             $this->probeResultToCheck($probes['ollama'], 'ollama', 'Ollama', 'AI', 'Local embeddings and inference server', 'heroicon-o-cpu-chip', optional: true),
-            $this->probeResultToCheck($probes['mail'], 'mail', 'Mail', 'System', 'Outbound SMTP relay', 'heroicon-o-envelope'),
+            $this->checkMail($probes['mail']),
             $this->probeResultToCheck($probes['haraka'], 'haraka', 'Inbound Mail', 'Mail', 'Haraka Inbound SMTP gateway', 'heroicon-o-envelope-open'),
             $this->probeResultToCheck($probes['reverb'], 'reverb', 'Reverb', 'System', 'Websocket broadcast server for real-time UI', 'heroicon-o-bolt'),
             $this->probeResultToCheck($probes['kamailio'], 'kamailio', 'Kamailio', 'Telephony', 'SIP proxy for call routing and draining', 'heroicon-o-arrows-right-left', optional: ! config('telephony.kamailio.enabled')),
@@ -198,7 +198,7 @@ class SystemHealthService
             $this->checkTlsCertificate(),
             $this->probeResultToCheck($probes['pgadmin'], 'pgadmin', 'pgAdmin', 'Control Panels', 'Postgres admin web UI', 'heroicon-o-circle-stack', optional: true),
             $this->probeResultToCheck($probes['redis_commander'], 'redis_commander', 'Redis Commander', 'Control Panels', 'Valkey / Redis web browser', 'heroicon-o-bolt', optional: true),
-            $this->probeResultToCheck($probes['promtail'], 'promtail', 'Promtail', 'Observability', 'Log shipper feeding Loki', 'heroicon-o-paper-airplane', optional: true),
+            $this->probeResultToCheck($probes['promtail'], 'promtail', 'Log shipper', 'Observability', 'Ships logs to Loki (Promtail in compose, Grafana Alloy on Kubernetes)', 'heroicon-o-paper-airplane', optional: true),
             $this->probeResultToCheck($probes['tempo'], 'tempo', 'Tempo', 'Observability', 'Distributed tracing backend', 'heroicon-o-map', optional: true),
             $this->probeResultToCheck($probes['alertmanager'], 'alertmanager', 'Alertmanager', 'Observability', 'Routes firing alerts to email and webhooks', 'heroicon-o-bell-alert'),
             $this->checkHorizon(),
@@ -229,6 +229,27 @@ class SystemHealthService
         SystemHealthUpdated::dispatch($checks);
 
         return $checks;
+    }
+
+    /**
+     * Point probes at where this deployment runs each component.
+     * config('health.probes') (HEALTH_PROBES) maps a card key to
+     * host:port; the Helm chart fills it for the components it deploys
+     * under their own Service names, and an operator can add ones that
+     * live outside it (a Prometheus in another namespace, say).
+     *
+     * @param  array<string, array<string, mixed>>  $targets
+     * @return array<string, array<string, mixed>>
+     */
+    private function withConfiguredProbes(array $targets): array
+    {
+        foreach (config('health.probes', []) as $key => $address) {
+            if (isset($targets[$key])) {
+                $targets[$key] = array_merge($targets[$key], $address);
+            }
+        }
+
+        return $targets;
     }
 
     /**
@@ -1017,6 +1038,49 @@ class SystemHealthService
     }
 
     /**
+     * Outgoing email, judged by the mailer actually in use (Platform
+     * Settings → Mail): an SMTP relay is probed, an API mailer needs its
+     * key, and the log mailer means nothing is really sent.
+     *
+     * @param  array{host: string, port: int, ok: bool, error: ?string}  $smtpProbe
+     */
+    private function checkMail(array $smtpProbe): HealthCheck
+    {
+        $mailer = (string) config('mail.default');
+        $transport = (string) config("mail.mailers.{$mailer}.transport", $mailer);
+        $card = fn (string $status, string $message, array $metrics = []) => new HealthCheck(
+            key: 'mail',
+            name: 'Mail',
+            category: 'System',
+            status: $status,
+            message: $message,
+            metrics: ['Mailer' => $mailer] + $metrics,
+            icon: 'heroicon-o-envelope',
+        );
+
+        $apiKeys = [
+            'sendgrid' => 'services.sendgrid.key',
+            'postmark' => 'services.postmark.key',
+            'resend' => 'services.resend.key',
+            'ses' => 'services.ses.key',
+        ];
+
+        return match (true) {
+            in_array($transport, ['log', 'array'], true) => $card(
+                HealthCheck::WARN,
+                'Email is only written to the log, not sent — choose a mailer in Platform Settings → Mail',
+            ),
+            $transport === 'smtp' => $smtpProbe['ok']
+                ? $card(HealthCheck::OK, 'Sending through SMTP', ['Endpoint' => "{$smtpProbe['host']}:{$smtpProbe['port']}"])
+                : $card(HealthCheck::DOWN, "Cannot reach SMTP relay {$smtpProbe['host']}:{$smtpProbe['port']} ({$smtpProbe['error']})"),
+            isset($apiKeys[$transport]) => filled(config($apiKeys[$transport]))
+                ? $card(HealthCheck::OK, 'Sending through the '.ucfirst($transport).' API')
+                : $card(HealthCheck::DOWN, ucfirst($transport).' is the mailer but has no API key — set it in Platform Settings → Mail'),
+            default => $card(HealthCheck::OK, "Sending through {$mailer}"),
+        };
+    }
+
+    /**
      * The `$label` passed in is a short description of what the
      * service does (e.g. "WebRTC media server", "SIP bridge").
      * In the OK state we emit it verbatim — the status color is
@@ -1112,6 +1176,10 @@ class SystemHealthService
      */
     private function checkTlsCertificate(): HealthCheck
     {
+        if (! config('tls.enabled') && str_starts_with((string) config('app.url'), 'https://')) {
+            return $this->checkServedCertificate();
+        }
+
         if (! config('tls.enabled')) {
             return new HealthCheck(
                 key: 'tls',
@@ -1181,6 +1249,70 @@ class SystemHealthService
             ],
             icon: 'heroicon-o-lock-closed',
         );
+    }
+
+    /**
+     * The certificate this host actually serves, read from a TLS
+     * handshake. Used when something other than Orbital manages it —
+     * on Kubernetes, cert-manager issues it and the ingress serves it,
+     * so there is no certificate file for the app to read.
+     */
+    private function checkServedCertificate(): HealthCheck
+    {
+        $host = (string) parse_url((string) config('app.url'), PHP_URL_HOST);
+        $target = config('health.served_tls') ?: "{$host}:443";
+        $card = fn (string $status, string $message, array $metrics = []) => new HealthCheck(
+            key: 'tls',
+            name: 'TLS Certificate',
+            category: 'System',
+            status: $status,
+            message: $message,
+            metrics: ['Endpoint' => $target] + $metrics,
+            icon: 'heroicon-o-lock-closed',
+        );
+
+        $context = stream_context_create(['ssl' => [
+            'capture_peer_cert' => true,
+            'peer_name' => $host,
+            // Read whatever is served, even an expired or wrong one:
+            // reporting on it is the point.
+            'verify_peer' => false,
+            'verify_peer_name' => false,
+        ]]);
+        $socket = @stream_socket_client("ssl://{$target}", $errno, $error, 5, STREAM_CLIENT_CONNECT, $context);
+        $cert = $socket ? (stream_context_get_params($socket)['options']['ssl']['peer_certificate'] ?? null) : null;
+        $info = $cert ? openssl_x509_parse($cert) : false;
+        if ($socket) {
+            fclose($socket);
+        }
+
+        if (! is_array($info) || ! isset($info['validTo_time_t'])) {
+            return $card(HealthCheck::WARN, "Could not read the certificate served at {$target}".($error ? " ({$error})" : ''));
+        }
+
+        $expires = Carbon::createFromTimestamp($info['validTo_time_t']);
+        $days = (int) floor(now()->diffInDays($expires, false));
+        $issuer = (string) ($info['issuer']['O'] ?? $info['issuer']['CN'] ?? 'unknown');
+        $names = (string) ($info['extensions']['subjectAltName'] ?? '');
+        $covers = $names === '' || collect(explode(',', $names))
+            ->map(fn (string $n) => trim(str_replace('DNS:', '', $n)))
+            ->contains(fn (string $n) => $n === $host || (str_starts_with($n, '*.') && str_ends_with($host, substr($n, 1))));
+        $metrics = [
+            'Domain' => $host,
+            'Issuer' => $issuer,
+            'Expires' => $expires->format('M j, Y'),
+            'Days remaining' => (string) $days,
+        ];
+
+        return match (true) {
+            $days < 0 => $card(HealthCheck::DOWN, "Certificate expired on {$expires->format('M j, Y')}", $metrics),
+            ! $covers => $card(HealthCheck::DOWN, "The served certificate doesn't cover {$host}", $metrics),
+            // cert-manager renews with a third of the lifetime left (15
+            // days on a 45-day certificate), so a week left means renewal
+            // has stalled.
+            $days <= 7 => $card(HealthCheck::WARN, "{$days} days remaining ({$host}) — renewal looks stuck", $metrics),
+            default => $card(HealthCheck::OK, "{$days} days remaining ({$host})", $metrics),
+        };
     }
 
     /**

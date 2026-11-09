@@ -329,6 +329,9 @@ jobs:
           - name: asterisk-config-sync
             dockerfile: Dockerfile
             context: docker/asterisk-config-sync
+          - name: haraka
+            dockerfile: Dockerfile
+            context: docker/haraka
     uses: actions/.forgejo-workflows/.forgejo/workflows/orbital-cosign.yml@main
     with:
       image-name: ${{ matrix.name }}
@@ -354,7 +357,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [laravel, asterisk, agent-worker, asterisk-config-sync]
+        image: [laravel, asterisk, agent-worker, asterisk-config-sync, haraka]
     env:
       TRIVY_VERSION: "0.75.0"
 

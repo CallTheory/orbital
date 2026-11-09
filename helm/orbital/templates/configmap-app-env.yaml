@@ -71,9 +71,23 @@ data:
   {{- end }}
   AWS_USE_PATH_STYLE_ENDPOINT: "true"
 
-  # System-status dashboard: components not deployed in this topology
-  # render as "not deployed" instead of red (see values health block).
-  HEALTH_DISABLED_COMPONENTS: {{ .Values.health.disabledComponents | quote }}
+  # System-status dashboard: cards for components this site doesn't run
+  # render gray instead of red, derived from the features enabled (see
+  # the values health block); HEALTH_PROBES says where the rest live.
+  HEALTH_DISABLED_COMPONENTS: {{ include "orbital.healthDisabled" . | quote }}
+  HEALTH_PROBES: {{ include "orbital.healthProbes" . | quote }}
+
+  # Inbound email (see values inboundMail). The domain is also what
+  # Orbital puts in reply-to addresses, so it is set even when inbound
+  # mail is off: an unset one falls back to a dev-only domain.
+  INBOUND_MAIL_DOMAIN: {{ include "orbital.inboundMailDomain" . | quote }}
+  # Platform Settings fields this chart sets, shown read-only there so an
+  # edit in the UI can't drift from the deployment (the MX record, and
+  # Haraka's copy of the token from app-secrets).
+  ORBITAL_MANAGED_SETTINGS: {{ include "orbital.managedSettings" . | quote }}
+  {{- if .Values.ollama.enabled }}
+  OLLAMA_URL: {{ printf "http://%s:11434" (include "orbital.componentName" (list . "ollama")) | quote }}
+  {{- end }}
 
   # Asterisk config/prompt handoff. In-cluster there is no shared RWX
   # volume: Laravel/Horizon write generated dialplan + TTS prompts to

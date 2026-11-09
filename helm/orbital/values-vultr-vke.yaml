@@ -59,14 +59,6 @@ telephony:
     enabled: true
     # jsonrpcUrls: ["http://<edge-1-ip>:8090/jsonrpc", "http://<edge-2-ip>:8090/jsonrpc"]   # set per deploy
 
-# Once the observability stack (Grafana/Prometheus/Loki/Promtail) is
-# confirmed reachable and TLS is issued, drop those keys + `tls` from this
-# list so their cards go green instead of showing "not deployed". Kept
-# disabled on first install so the dashboard isn't red before DNS/certs
-# and the monitoring release land.
-health:
-  disabledComponents: "prometheus,loki,grafana,promtail,tempo,alertmanager,icecast,ollama,whisper_local,haproxy,mail,haraka,pgadmin,redis_commander,tls"
-
 # Real multi-node cluster, so co-location is refused rather than merely
 # discouraged: with maxSkew 1 across 3 nodes, two replicas of a tier can
 # never land on the same host. Losing a node still leaves room to

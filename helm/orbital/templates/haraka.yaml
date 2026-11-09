@@ -1,0 +1,126 @@
+{{- if include "orbital.harakaEnabled" . -}}
+{{/*
+Haraka — inbound SMTP for Orbital (see values inboundMail).
+
+A stateless SMTP → HTTP shim: it asks Laravel whether each recipient
+exists (unknown ones are refused at RCPT time, so this is no open relay)
+and POSTs accepted mail to /api/mail/inbound. Nothing is stored here.
+
+Public port 25 reaches it through Traefik's `smtp` entrypoint (the
+IngressRouteTCP below), which orbital-setup adds to Traefik. The pod
+runs as non-root like the rest of the chart, so Haraka listens on
+inboundMail.haraka.port (2525) instead of 25.
+
+One replica: senders retry on 4xx, so a restart costs a short delay,
+not lost mail.
+*/}}
+{{- $tlsSecret := .Values.ingress.tls.secretName | default (printf "%s-tls" (include "orbital.fullname" .)) }}
+{{- $tls := and .Values.inboundMail.haraka.tls .Values.ingress.tls.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "orbital.componentName" (list . "haraka") }}
+  labels:
+    {{- include "orbital.componentLabels" (list . "haraka") | nindent 4 }}
+spec:
+  replicas: 1
+  {{- include "orbital.rollingUpdate" . | nindent 2 }}
+  selector:
+    matchLabels:
+      {{- include "orbital.selectorLabels" (list . "haraka") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "orbital.componentLabels" (list . "haraka") | nindent 8 }}
+    spec:
+      {{- include "orbital.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: haraka
+          image: {{ include "orbital.image" (dict "ctx" . "name" .Values.inboundMail.haraka.image.name "tag" .Values.inboundMail.haraka.image.tag) }}
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          env:
+            - name: HARAKA_PORT
+              value: {{ .Values.inboundMail.haraka.port | quote }}
+            - name: ORBITAL_WEBHOOK_URL
+              value: {{ printf "http://%s:%v/api/mail/inbound" (include "orbital.componentName" (list . "laravel")) .Values.laravel.service.port | quote }}
+            - name: ORBITAL_WEBHOOK_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "orbital.componentName" (list . "app-secrets") }}
+                  key: INBOUND_MAIL_TOKEN
+          ports:
+            - name: smtp
+              containerPort: {{ .Values.inboundMail.haraka.port }}
+              protocol: TCP
+          {{- if $tls }}
+          volumeMounts:
+            - name: tls
+              mountPath: /haraka/tls
+              readOnly: true
+          {{- end }}
+          resources:
+            {{- toYaml .Values.inboundMail.haraka.resources | nindent 12 }}
+          readinessProbe:
+            tcpSocket:
+              port: smtp
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: smtp
+            initialDelaySeconds: 20
+            periodSeconds: 20
+      {{- if $tls }}
+      volumes:
+        - name: tls
+          secret:
+            secretName: {{ $tlsSecret }}
+            # Haraka starts without STARTTLS rather than not at all while
+            # cert-manager is still issuing the certificate.
+            optional: true
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "orbital.componentName" (list . "haraka") }}
+  labels:
+    {{- include "orbital.componentLabels" (list . "haraka") | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.inboundMail.haraka.port }}
+      targetPort: smtp
+      protocol: TCP
+      name: smtp
+  selector:
+    {{- include "orbital.selectorLabels" (list . "haraka") | nindent 4 }}
+{{- $traefik := or (eq .Values.ingress.className "traefik") (.Capabilities.APIVersions.Has "traefik.io/v1alpha1/IngressRouteTCP") }}
+{{- if and .Values.inboundMail.haraka.ingressRoute.enabled $traefik }}
+---
+{{/*
+Port 25 → Haraka. Plain TCP passthrough (HostSNI(`*`), no TLS here):
+SMTP starts in plain text and upgrades with STARTTLS inside the
+conversation, which only Haraka can do. Only on Traefik: with another
+ingress controller, route port 25 to the haraka Service yourself.
+*/}}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRouteTCP
+metadata:
+  name: {{ include "orbital.componentName" (list . "haraka") }}
+  labels:
+    {{- include "orbital.componentLabels" (list . "haraka") | nindent 4 }}
+spec:
+  entryPoints:
+    - {{ .Values.inboundMail.haraka.ingressRoute.entryPoint }}
+  routes:
+    - match: HostSNI(`*`)
+      services:
+        - name: {{ include "orbital.componentName" (list . "haraka") }}
+          port: {{ .Values.inboundMail.haraka.port }}
+{{- end }}
+{{- end }}

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Filament;
 
 use App\Filament\Pages\PlatformSettings;
+use App\Providers\RuntimeConfigOverrideProvider;
 use App\Services\Settings\PlatformSettingsRepository;
 use Database\Seeders\PermissionCatalogSeeder;
 use Database\Seeders\SuperAdminRoleSeeder;
@@ -83,5 +84,41 @@ class PlatformSettingsPageTest extends TestCase
             ->fillForm(['telephony__asterisk__internal_did_simulation' => ! $current])
             ->call('save')
             ->assertActionMounted('restartServices');
+    }
+
+    public function test_a_setting_the_deployment_manages_is_read_only_and_never_saved(): void
+    {
+        config([
+            'orbital.managed_settings' => ['services.inbound_mail.domain'],
+            'services.inbound_mail.domain' => 'inbound.dallas.example.com',
+        ]);
+        $repo = app(PlatformSettingsRepository::class);
+        $repo->set('services.inbound_mail.domain', 'stale.example.com');
+
+        Livewire::test(PlatformSettings::class)
+            ->assertFormFieldDisabled('services__inbound_mail__domain')
+            ->assertFormSet(['services__inbound_mail__domain' => 'inbound.dallas.example.com'])
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        // The save left the old row alone rather than writing a new value.
+        $this->assertSame('stale.example.com', $repo->get('services.inbound_mail.domain'));
+        $this->assertSame('inbound.dallas.example.com', config('services.inbound_mail.domain'));
+    }
+
+    public function test_boot_ignores_a_saved_value_for_a_managed_setting(): void
+    {
+        app(PlatformSettingsRepository::class)->set('services.inbound_mail.domain', 'stale.example.com');
+        app(PlatformSettingsRepository::class)->set('mail.from.address', 'ops@example.com');
+        config([
+            'orbital.managed_settings' => ['services.inbound_mail.domain'],
+            'services.inbound_mail.domain' => 'inbound.dallas.example.com',
+        ]);
+
+        $provider = new RuntimeConfigOverrideProvider(app());
+        (new \ReflectionMethod($provider, 'applyOverrides'))->invoke($provider);
+
+        $this->assertSame('inbound.dallas.example.com', config('services.inbound_mail.domain'));
+        $this->assertSame('ops@example.com', config('mail.from.address'), 'unmanaged settings still apply');
     }
 }

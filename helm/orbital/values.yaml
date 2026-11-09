@@ -268,15 +268,88 @@ telephony:
     # (sip:kamailio:5060;lr).
     outboundProxy: ""   # e.g. sip:10.42.0.3:5060;lr
 
-# System-status dashboard. The health probes were written for the
-# all-in-one docker-compose stack; components NOT present in this
-# in-cluster topology (observability, the compose-only LB, optional
-# AI/media, dev tools) render as "not deployed" instead of red. In-
-# cluster + edge services are probed at their real addresses. Override
-# per deploy — e.g. drop grafana/prometheus from the list once the
-# observability stack is installed alongside.
+# System-status dashboard. A card for a component this site doesn't run
+# renders gray ("not part of this deployment") instead of red. Which
+# ones those are follows from the features below: inbound mail off
+# grays Haraka, Ollama off grays Ollama, and so on. Components only the
+# docker-compose dev stack has (its HAProxy, pgAdmin, Redis Commander)
+# are always gray here, as are observability backends this chart
+# doesn't deploy yet.
 health:
-  disabledComponents: "prometheus,loki,grafana,promtail,tempo,alertmanager,icecast,ollama,whisper_local,haproxy,mail,haraka,pgadmin,redis_commander,tls"
+  # Set to replace the derived list entirely (comma-separated card
+  # keys). Blank = derive it from the features enabled below.
+  disabledComponents: ""
+  # Card keys to gray out on top of the derived list.
+  extraDisabled: []
+  # Where to probe components that live outside this chart, by card
+  # key, e.g. a Prometheus your monitoring team runs:
+  #   probes:
+  #     prometheus: prometheus.monitoring.svc.cluster.local:9090
+  # Listing one here also stops it being grayed out.
+  probes: {}
+
+# ============================================================================
+# Optional features — chosen per site
+# ============================================================================
+#
+# ./install.sh in orbital-setup asks about each of these on install and
+# on upgrade, and writes the answers to .orbital/features.values.yaml.
+# Set them here directly when you install the chart some other way.
+
+# Inbound email: replies to Orbital's outbound mail, and the Inbound
+# Email channel on the orchestration canvas. On by default.
+inboundMail:
+  enabled: true
+  # The domain Orbital's own inbound addresses use:
+  # {account number}@<domain>. Its MX record must point at the receiver.
+  # Blank = inbound.<global.domain>.
+  domain: ""
+  # haraka:   Haraka runs in the cluster and takes SMTP on port 25
+  #           through Traefik's `smtp` entrypoint. MX for `domain` →
+  #           global.domain.
+  # provider: no Haraka; something else receives the mail and POSTs it
+  #           to https://<global.domain>/api/mail/inbound in Haraka's
+  #           format (a `raw` RFC822 upload plus envelope fields, with
+  #           the INBOUND_MAIL_TOKEN bearer). Hosted parsers such as
+  #           SendGrid Inbound Parse post a different shape and need an
+  #           adapter that doesn't exist yet.
+  receiver: haraka
+  haraka:
+    image:
+      name: haraka
+      tag: ""             # blank = the chart's appVersion
+    # Inside the pod Haraka can't bind 25 (it isn't root), so it listens
+    # here; Traefik publishes 25.
+    port: 2525
+    # STARTTLS with the app's ingress certificate (the MX target is
+    # global.domain, which that certificate covers). Haraka reads it at
+    # start, so a renewed certificate is picked up on the next restart.
+    tls: true
+    # Traefik IngressRouteTCP on this entrypoint, which orbital-setup
+    # adds to Traefik (port 25) when inbound mail uses Haraka. Turn off
+    # if something else routes port 25 to the haraka Service.
+    ingressRoute:
+      enabled: true
+      entryPoint: smtp
+    resources:
+      requests: {cpu: "25m", memory: "96Mi"}
+      limits: {cpu: "500m", memory: "256Mi"}
+
+# Ollama: local embeddings and inference, for clients whose knowledge
+# stores use an `ollama:` embedding model instead of a hosted one. Off by
+# default: it needs real CPU (or a GPU) and disk for its models.
+ollama:
+  enabled: false
+  image:
+    registry: docker.io
+    repository: ollama
+    name: ollama
+    tag: "0.40.10"   # released 2026-10-23
+  persistence:
+    size: 20Gi
+  resources:
+    requests: {cpu: "1000m", memory: "4Gi"}
+    limits: {cpu: "4000m", memory: "12Gi"}
 
 # ============================================================================
 # Licensing — AGPL section 13 source offer

@@ -2,11 +2,14 @@
 # one's hooks during the SMTP conversation.
 #
 # Minimal stack for an SMTP → HTTP shim:
-#   - dnsbl is deliberately OFF. We're not a public MX yet, so
-#     DNS blocklists are noise.
-#   - spf / dkim_verify are OFF for the same reason. Phase 2+ may
-#     enable them when we open to the real internet.
-#   - orbital-webhook is our custom plugin that POSTs the message
-#     to Laravel at end-of-DATA. It's the only thing that matters.
+#   - tls is added at the top by the entrypoint when a certificate is
+#     mounted (the Helm chart's public MX), for STARTTLS.
+#   - orbital-webhook is our custom plugin. It rejects any recipient
+#     Orbital doesn't know at RCPT time (so this is no open relay) and
+#     POSTs accepted mail to Laravel at end-of-DATA.
+#   - dnsbl / spf / dkim_verify are OFF. In the Helm chart Haraka sits
+#     behind Traefik and sees Traefik's address, not the sender's, so
+#     IP-based checks would judge the wrong host. They can be turned on
+#     once the sender's address is passed through (PROXY protocol).
 
 orbital-webhook

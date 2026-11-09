@@ -25,14 +25,21 @@ RUN npm install -g Haraka@3.0.5
 # orbital-webhook.js is the one we wrote ourselves.
 COPY config/ /haraka/config/
 COPY plugins/ /haraka/plugins/
+COPY entrypoint.sh /usr/local/bin/haraka-entrypoint
 
-# Haraka listens on 25 inside the container regardless of the host
-# port binding. docker-compose maps this to 2525 on the host in dev
-# (port 25 is usually blocked on Linux dev hosts by systemd-resolved
-# or a stock Postfix).
-EXPOSE 25
+# The entrypoint rewrites config at start (listen port, STARTTLS), so the
+# config folder belongs to `node` (uid 1000): the Helm chart runs pods as
+# that uid, while compose still runs the container as root.
+RUN chown -R node:node /haraka
 
-# Run Haraka with its home pointing at /haraka so it finds our
-# config/ and plugins/ folders. Foreground logging to stdout so
-# Promtail picks it up via the standard container log path.
-CMD ["haraka", "-c", "/haraka"]
+# Haraka listens on 25 by default. docker-compose maps this to 2525 on
+# the host in dev (port 25 is usually blocked on Linux dev hosts by
+# systemd-resolved or a stock Postfix). The Helm chart sets HARAKA_PORT
+# to 2525, since its non-root pods can't bind 25; Traefik publishes 25.
+EXPOSE 25 2525
+
+# The entrypoint applies HARAKA_PORT and a mounted certificate, then
+# runs Haraka with its home at /haraka so it finds our config/ and
+# plugins/ folders. Foreground logging to stdout so Promtail picks it
+# up via the standard container log path.
+CMD ["haraka-entrypoint"]

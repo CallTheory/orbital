@@ -100,7 +100,9 @@ class RuntimeConfigOverrideProvider extends ServiceProvider
             }
 
             $def = $registry[$key] ?? null;
-            if (! $def) {
+            // A setting the deployment manages keeps its environment
+            // value even if one was saved here before it was managed.
+            if (! $def || SettingsRegistry::isManagedByDeployment($key)) {
                 continue;
             }
 

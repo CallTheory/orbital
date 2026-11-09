@@ -18,7 +18,12 @@ FROM node:22-alpine
 
 # Install Haraka globally. Pin a version so image builds are
 # reproducible — bump intentionally when we want a newer release.
-RUN npm install -g Haraka@3.0.5
+# --omit=optional skips Haraka's optional plugins (graph, syslog, ...):
+# Orbital uses only the built-in tls plugin and its own webhook, and the
+# optional ones drag in native modules and old dependencies that fail
+# Harbor's vulnerability policy (3.0.5's tree had a Critical finding).
+RUN npm install -g --omit=optional Haraka@3.3.5 \
+    && npm cache clean --force
 
 # Copy baked config + plugins into the Haraka home directory.
 # The config/plugins file enumerates which plugins are active;

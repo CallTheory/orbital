@@ -35,8 +35,13 @@ COPY entrypoint.sh /usr/local/bin/haraka-entrypoint
 # Haraka's own default config for everything we don't ship. Run with
 # `-c /haraka` it reads only this folder, and since 3.3 a missing
 # connection.ini (the SMTP greeting, among others) crashes it on the first
-# connection. -n keeps our files (plugins, smtp.ini, ...) as they are.
-RUN cp -rn /usr/local/lib/node_modules/Haraka/config/. /haraka/config/
+# connection. One file at a time, skipping ours (plugins, smtp.ini, ...):
+# BusyBox `cp -rn src/. dest/` copies nothing when dest exists. The test
+# fails the build rather than shipping a Haraka that drops every client.
+RUN for f in /usr/local/lib/node_modules/Haraka/config/*; do \
+        [ -e "/haraka/config/${f##*/}" ] || cp -r "$f" /haraka/config/; \
+    done \
+    && test -s /haraka/config/connection.ini
 
 # Diffie-Hellman parameters for STARTTLS. Without the file, Haraka runs
 # `openssl dhparam` at startup, and this image has no openssl binary, so

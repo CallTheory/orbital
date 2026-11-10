@@ -38,11 +38,27 @@ class AiFallbackPrompt
     public const DEFAULT_MESSAGE = "We're sorry, we're having trouble connecting your call right now. Please try calling back in a few minutes. Goodbye.";
 
     /**
-     * Render the prompt if it's missing or out of date.
+     * Render the prompt if it's missing or out of date. Never throws: it runs
+     * when Platform Settings are saved, and an unreachable prompts disk or TTS
+     * service must not break that. Asterisk falls back to its stock prompts.
      *
      * @return 'current'|'rendered'|'failed'|'empty'
      */
     public function ensureRendered(bool $force = false): string
+    {
+        try {
+            return $this->render($force);
+        } catch (\Throwable $e) {
+            Log::warning('ai-fallback prompt: render failed', ['error' => $e->getMessage()]);
+
+            return 'failed';
+        }
+    }
+
+    /**
+     * @return 'current'|'rendered'|'failed'|'empty'
+     */
+    protected function render(bool $force): string
     {
         $text = $this->message();
         if ($text === '') {
@@ -68,7 +84,11 @@ class AiFallbackPrompt
 
     public function exists(): bool
     {
-        return Storage::disk('asterisk-prompts')->exists(self::AUDIO_KEY);
+        try {
+            return Storage::disk('asterisk-prompts')->exists(self::AUDIO_KEY);
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     public function message(): string

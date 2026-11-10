@@ -91,6 +91,18 @@ class AiFallbackTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_an_unusable_prompts_disk_is_reported_not_thrown(): void
+    {
+        // A local disk whose root can't be created, as in CI or a misconfigured
+        // install: saving Platform Settings must still work.
+        config(['filesystems.disks.asterisk-prompts' => ['driver' => 'local', 'root' => '/proc/orbital-no-such-dir/prompts']]);
+        Storage::forgetDisk('asterisk-prompts');
+        Http::fake(['api.openai.com/*' => Http::response(self::pcm24k())]);
+
+        $this->assertSame('failed', app(AiFallbackPrompt::class)->ensureRendered());
+        $this->assertFalse(app(AiFallbackPrompt::class)->exists());
+    }
+
     public function test_downsampling_averages_signed_samples(): void
     {
         $pcm = pack('v*', 30, 60, 90, 0xFFFF - 29, 0xFFFF - 59, 0xFFFF - 89);  // 30,60,90,-30,-60,-90

@@ -12,6 +12,7 @@ use Database\Seeders\SuperAdminRoleSeeder;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Tests\Concerns\CreatesOrbitalUsers;
 use Tests\TestCase;
@@ -29,6 +30,9 @@ class PlatformSettingsPageTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // Saving queues the AI-unavailable prompt render; keep it off the
+        // real prompts path (unwritable in CI).
+        Storage::fake('asterisk-prompts');
         $this->seed(PermissionCatalogSeeder::class);
         $this->seed(SuperAdminRoleSeeder::class);
         Filament::setCurrentPanel('admin');

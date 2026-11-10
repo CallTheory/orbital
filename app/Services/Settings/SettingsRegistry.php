@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Settings;
 
+use App\Services\Telephony\AiFallbackPrompt;
 use Filament\Support\Colors\Color;
 
 /**
@@ -98,6 +99,11 @@ final class SettingsRegistry
                 'label' => 'Agent Worker',
                 'icon' => 'heroicon-o-cpu-chip',
                 'description' => 'Python LiveKit worker that runs AI agents.',
+            ],
+            'ai_fallback' => [
+                'label' => 'When the AI Can\'t Take a Call',
+                'icon' => 'heroicon-o-exclamation-triangle',
+                'description' => 'What callers hear instead of silence when the AI agent can\'t answer or carry on (a provider is down, its settings won\'t load). Played by Asterisk, then the call ends.',
             ],
             'tracing' => [
                 'label' => 'Tracing',
@@ -744,6 +750,31 @@ final class SettingsRegistry
                 'config_key' => 'services.agent_worker.token',
                 'secret' => true,
                 'helper' => 'Shared secret the Python worker uses to POST heartbeats and call the Orbital API.',
+            ],
+
+            // ─── When the AI can't take a call ─────────────────────────
+            'telephony.ai_fallback.message' => [
+                'section' => 'ai_fallback',
+                'label' => 'Message',
+                'type' => 'textarea',
+                'config_key' => 'telephony.ai_fallback.message',
+                'placeholder' => AiFallbackPrompt::DEFAULT_MESSAGE,
+                'helper' => 'Blank uses the default above. Rendered with the voice below whenever it changes; until a render succeeds, callers hear Asterisk\'s stock "Sorry. Please try your call again later. Goodbye."',
+            ],
+            'telephony.ai_fallback.voice_provider' => [
+                'section' => 'ai_fallback',
+                'label' => 'Voice provider',
+                'type' => 'select',
+                'config_key' => 'telephony.ai_fallback.voice_provider',
+                'options' => ['openai' => 'OpenAI', 'elevenlabs' => 'ElevenLabs'],
+                'helper' => 'Uses the platform\'s API key for that provider.',
+            ],
+            'telephony.ai_fallback.voice_id' => [
+                'section' => 'ai_fallback',
+                'label' => 'Voice',
+                'type' => 'text',
+                'config_key' => 'telephony.ai_fallback.voice_id',
+                'placeholder' => 'alloy (OpenAI) or an ElevenLabs voice ID',
             ],
 
             // ─── Telescope ─────────────────────────────────────────────

@@ -10,16 +10,20 @@ import requests
 from livekit.agents import (
     Agent,
     AgentSession,
+    APIConnectOptions,
     JobContext,
     JobProcess,
+    SessionConnectOptions,
     WorkerOptions,
     cli,
 )
+from livekit.agents.voice.events import CloseEvent, CloseReason
 from livekit.agents.beta.tools import EndCallTool
 from livekit.plugins import silero
 
 import observability
 from config import Config
+from fallback import CallFallback
 from personality_loader import PersonalityLoader
 from tools.compiled_flow import build_dynamic_tools
 from tools.transfer import transfer_call
@@ -31,6 +35,17 @@ logger = logging.getLogger("orbital-agent")
 # r{rule id} for a DID sent straight to an orchestration's Inbound Phone
 # channel (r42). Orbital resolves either one.
 ROOM_NAME_RE = re.compile(r"^agent-_?(r?\d+)_")
+
+# A phone caller waits in silence while a provider retries, so fail fast:
+# one retry with a short timeout for the LLM and TTS (a failed turn costs
+# at most ~17s), and the first unrecoverable error ends the AI's part of
+# the call, sending the caller to the fallback message (fallback.py).
+# Speech-to-text keeps its defaults: it's one long stream, not per turn.
+PHONE_CONN_OPTIONS = SessionConnectOptions(
+    llm_conn_options=APIConnectOptions(max_retry=1, retry_interval=1.0, timeout=8.0),
+    tts_conn_options=APIConnectOptions(max_retry=1, retry_interval=1.0, timeout=8.0),
+    max_unrecoverable_errors=1,
+)
 
 END_CALL_EXTRA = (
     "ONLY use this if the caller explicitly says goodbye, "
@@ -69,8 +84,19 @@ def _is_outbound_call(ctx: JobContext) -> bool:
 
 
 async def entrypoint(ctx: JobContext) -> None:
-    room_name = ctx.room.name
     config = Config()
+    # Whatever goes wrong, the caller hears a message and the call ends;
+    # never dead air (see fallback.py).
+    fallback = CallFallback(ctx, config.asterisk_sip_domain)
+    try:
+        await _run_call(ctx, config, fallback)
+    except Exception as e:  # noqa: BLE001 - any failure here is the caller's problem
+        logger.exception(f"AI call failed to start in {ctx.room.name}")
+        await fallback.trigger(f"{type(e).__name__}: {e}")
+
+
+async def _run_call(ctx: JobContext, config: Config, fallback: CallFallback) -> None:
+    room_name = ctx.room.name
     loader = PersonalityLoader(config)
 
     # Parse extension from room name
@@ -78,7 +104,7 @@ async def entrypoint(ctx: JobContext) -> None:
     extension = match.group(1) if match else None
 
     if not extension:
-        logger.warning(f"Could not parse extension from room name: {room_name}")
+        await fallback.trigger(f"could not parse the dialled target from room name {room_name}")
         return
 
     # Fetch persona + compiled flow from Orbital API. The envelope looks
@@ -87,7 +113,7 @@ async def entrypoint(ctx: JobContext) -> None:
     # persona default) and was compiled server-side.
     envelope = await loader.fetch_persona_by_extension(extension)
     if not envelope:
-        logger.warning(f"No persona found for extension {extension}")
+        await fallback.trigger(f"no persona for {extension} (Orbital unreachable, or none configured)")
         return
 
     persona = envelope.get("persona") or {}
@@ -134,7 +160,15 @@ async def entrypoint(ctx: JobContext) -> None:
         tts=tts,
         llm=llm,
         vad=ctx.proc.userdata["vad"],
+        conn_options=PHONE_CONN_OPTIONS,
     )
+
+    # A provider failing past its retries closes the session with an
+    # error; without this the caller would be left in silence.
+    @session.on("close")
+    def _on_close(ev: CloseEvent) -> None:
+        if ev.reason == CloseReason.ERROR:
+            asyncio.create_task(fallback.trigger(f"session closed on error: {ev.error}"))
 
     # Build dynamic tools from the compiled flow's function_schemas
     # (set_field, advance_step, transfer_call, search_knowledge, etc).

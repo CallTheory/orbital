@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Filament\Pages;
 
 use App\Filament\Pages\Concerns\RendersRegistrySettings;
+use App\Jobs\RenderAiFallbackPromptJob;
 use App\Services\Settings\PlatformSettingsRepository;
 use BackedEnum;
 use Filament\Actions\Action;
@@ -52,6 +53,7 @@ class PlatformSettings extends Page implements HasForms
         'asterisk',
         'livekit',
         'agent_worker',
+        'ai_fallback',
         'logging',
         'icecast',
         'sessions',
@@ -156,6 +158,10 @@ class PlatformSettings extends Page implements HasForms
     public function save(): void
     {
         $slugs = $this->saveRegistrySections($this->form->getState(), $this->sectionKeys);
+
+        // Re-render the AI-unavailable message if its wording or voice
+        // changed (a no-op otherwise), on the queue: it calls a TTS API.
+        RenderAiFallbackPromptJob::dispatch();
 
         $this->afterRegistrySave('Settings saved', $slugs);
     }

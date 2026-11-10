@@ -95,6 +95,24 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | When the AI can't take the call
+    |--------------------------------------------------------------------------
+    |
+    | What a caller hears, instead of silence, when the AI agent can't
+    | answer or carry on (its persona won't load, a provider fails past its
+    | retries, or LiveKit is unreachable). Rendered ahead of time with the
+    | platform's TTS (App\Services\Telephony\AiFallbackPrompt); Asterisk
+    | plays stock prompts until a render succeeds.
+    |
+    */
+    'ai_fallback' => [
+        'message' => env('AI_FALLBACK_MESSAGE', ''),
+        'voice_provider' => env('AI_FALLBACK_VOICE_PROVIDER', 'openai'),   // openai | elevenlabs
+        'voice_id' => env('AI_FALLBACK_VOICE_ID', ''),                     // blank: alloy / Rachel
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Default Codecs
     |--------------------------------------------------------------------------
     */

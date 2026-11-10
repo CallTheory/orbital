@@ -52,6 +52,7 @@ exten => _1XXXXXXXXXX,1,NoOp(Internal DID simulation: ${EXTEN})
 @foreach($extensions->where('type', 'ai_agent') as $ext)
 exten => {{ $ext->number }},1,NoOp(AI Agent: {{ $ext->label ?? $ext->number }})
  same => n,Dial(PJSIP/{{ $ext->number }}@livekit,120,tTkK)
+ same => n,GotoIf($["${DIALSTATUS}" != "ANSWER"]?orbital-ai-unavailable,s,1)
  same => n,Hangup()
 @endforeach
 
@@ -75,6 +76,7 @@ exten => queue-{{ $queue->id }},1,NoOp(Queue: {{ $queue->name }} -> {{ $queue->a
 @if($queue->overflowAgent)
  same => n,NoOp(Overflow to AI agent: {{ $queue->overflowAgent->name }})
  same => n,Dial(PJSIP/{{ $queue->overflowAgent->extensions->first()?->number ?? '0' }}@livekit,120,tTkK)
+ same => n,GotoIf($["${DIALSTATUS}" != "ANSWER"]?orbital-ai-unavailable,s,1)
 @endif
  same => n,Hangup()
 @endforeach

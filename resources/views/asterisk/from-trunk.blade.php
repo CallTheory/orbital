@@ -48,6 +48,7 @@ exten => {{ $pattern }},1,NoOp(Inbound {{ $pattern }} for client {{ $rule->team_
     $aiTarget = \App\Services\Telephony\AiCallTarget::forRule($rule);
 @endphp
  same => n,Dial(PJSIP/{{ $aiTarget }}@livekit,120,tTkKb(orbital-ai-headers^s^1))
+ same => n,GotoIf($["${DIALSTATUS}" != "ANSWER"]?orbital-ai-unavailable,s,1)
 @break
 @case('voicemail')
 @php
@@ -108,8 +109,29 @@ exten => {{ $handoff['extension'] }},1,NoOp(AI handoff for client {{ $handoff['t
  same => n,Hangup()
 
 @endforeach
+; The AI can't take or carry on the call (its persona won't load, or a
+; provider failed past its retries): the worker REFERs the caller here.
+exten => ai-unavailable,1,Goto(orbital-ai-unavailable,s,1)
+
 exten => _X.,1,NoOp(From LiveKit: ${EXTEN})
  same => n,Goto(default,${EXTEN},1)
+
+
+[orbital-ai-unavailable]
+
+; What the caller hears instead of silence when the AI can't help:
+; Platform Settings' message, rendered ahead of time by
+; orbital:render-ai-fallback, else Asterisk's stock prompts. Then the
+; call ends. Reached by the worker's REFER, and by every Dial to the AI
+; that doesn't connect.
+exten => s,1,NoOp(AI unavailable for ${CALLERID(num)} on ${CHANNEL})
+ same => n,Answer()
+ same => n,Wait(0.5)
+ same => n,GotoIf($["${STAT(e,{{ \App\Services\Telephony\AiFallbackPrompt::ASTERISK_PATH }}.sln)}" = "1"]?rendered)
+ same => n,Playback(sorry&please-try-call-later&goodbye)
+ same => n,Hangup()
+ same => n(rendered),Playback({{ \App\Services\Telephony\AiFallbackPrompt::ASTERISK_PATH }})
+ same => n,Hangup()
 
 
 [orbital-ai-headers]

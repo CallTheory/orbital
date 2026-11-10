@@ -98,6 +98,14 @@ Schedule::command('orbital:upload-recordings')
     ->withoutOverlapping()
     ->onOneServer();
 
+// The message callers hear when the AI can't take their call: renders it
+// once its wording or voice changes, and retries a render that failed.
+Schedule::command('orbital:render-ai-fallback')
+    ->everyFifteenMinutes()
+    ->name('render-ai-fallback')
+    ->withoutOverlapping()
+    ->onOneServer();
+
 // Kubernetes only: keep the Asterisk backend registry in step with the
 // Asterisk pods so the SIP Proxy page drains and counts the real nodes.
 Schedule::command('orbital:sync-asterisk-backends')

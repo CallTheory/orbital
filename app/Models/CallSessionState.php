@@ -33,6 +33,8 @@ class CallSessionState extends Model
         'last_field_at',
         'ended_at',
         'end_reason',
+        'linked_id',
+        'transcript',
     ];
 
     protected function casts(): array

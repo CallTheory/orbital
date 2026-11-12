@@ -56,6 +56,44 @@ class CallLog extends Model
         ];
     }
 
+    /** Status values Call History shows, with their labels. */
+    public const STATUSES = [
+        'completed' => 'Completed',
+        'missed' => 'Missed',
+        'busy' => 'Busy',
+        'failed' => 'Failed',
+        'ai_unavailable' => 'AI unavailable',
+    ];
+
+    public static function statusLabel(?string $status): string
+    {
+        return self::STATUSES[$status] ?? ucfirst(str_replace('_', ' ', (string) $status));
+    }
+
+    public static function statusColor(?string $status): string
+    {
+        return match ($status) {
+            'completed' => 'success',
+            'missed', 'busy' => 'warning',
+            'failed', 'ai_unavailable' => 'danger',
+            'in_progress' => 'info',
+            default => 'gray',
+        };
+    }
+
+    /** m:ss under an hour, h:mm:ss from an hour; a dash for zero. */
+    public static function formatDuration(?int $seconds): string
+    {
+        $seconds = (int) $seconds;
+        if ($seconds <= 0) {
+            return '—';
+        }
+
+        return $seconds >= 3600
+            ? sprintf('%d:%02d:%02d', intdiv($seconds, 3600), intdiv($seconds % 3600, 60), $seconds % 60)
+            : sprintf('%d:%02d', intdiv($seconds, 60), $seconds % 60);
+    }
+
     public function sipTrunk(): BelongsTo
     {
         return $this->belongsTo(SipTrunk::class);
@@ -85,5 +123,14 @@ class CallLog extends Model
     public function recordings(): HasMany
     {
         return $this->hasMany(CallRecording::class);
+    }
+
+    /**
+     * The AI session(s) that took part in this call, linked through
+     * Asterisk's linkedid (the X-Orbital-Call header on the AI leg).
+     */
+    public function callSessions(): HasMany
+    {
+        return $this->hasMany(CallSessionState::class, 'linked_id', 'linked_id');
     }
 }

@@ -134,6 +134,8 @@ Route::post('/call-sessions/{sessionKey}/field', [CallSessionController::class, 
 Route::post('/call-sessions/{sessionKey}/advance', [CallSessionController::class, 'advance']);
 // Caller and dialled number, reported by the worker at call start.
 Route::post('/call-sessions/{sessionKey}/context', [CallSessionController::class, 'context']);
+// The conversation, sent by the worker when the AI session closes.
+Route::post('/call-sessions/{sessionKey}/transcript', [CallSessionController::class, 'transcript']);
 // AI handing the caller to the client's outside operator; returns the REFER target.
 Route::post('/call-sessions/{sessionKey}/handoff', [CallSessionController::class, 'handoff']);
 // Call over. Finalises the session and, for clients whose policy keeps

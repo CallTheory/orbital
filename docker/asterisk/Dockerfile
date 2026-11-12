@@ -104,6 +104,7 @@ RUN make menuselect.makeopts \
         --enable func_channel \
         --enable func_pjsip_endpoint \
         --enable cdr_csv \
+        --enable cdr_adaptive_odbc \
         --enable bridge_simple \
         --enable bridge_native_rtp \
         --enable chan_bridge_media \
@@ -203,6 +204,11 @@ COPY pjsip_livekit.conf /etc/asterisk/pjsip_livekit.conf
 COPY res_odbc.conf   /etc/asterisk/res_odbc.conf
 COPY extconfig.conf  /etc/asterisk/extconfig.conf
 COPY sorcery.conf    /etc/asterisk/sorcery.conf
+
+# Call detail records: every call is written to Postgres (asterisk_cdr),
+# which Laravel ingests into Call History.
+COPY cdr.conf               /etc/asterisk/cdr.conf
+COPY cdr_adaptive_odbc.conf /etc/asterisk/cdr_adaptive_odbc.conf
 
 # Host-level ODBC driver registry + DSN definitions. odbc.ini
 # contains placeholders that the entrypoint envsubst's at boot

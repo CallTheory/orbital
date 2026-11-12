@@ -71,21 +71,28 @@ class CallHistory extends Page implements HasTable
                     ->searchable(),
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
-                    ->color(fn (string $state): string => match ($state) {
-                        'completed' => 'success',
-                        'missed', 'failed' => 'danger',
-                        'in_progress' => 'warning',
-                        default => 'gray',
-                    }),
+                    ->formatStateUsing(fn (?string $state): string => CallLog::statusLabel($state))
+                    ->color(fn (?string $state): string => CallLog::statusColor($state)),
                 Tables\Columns\TextColumn::make('duration_seconds')
                     ->label('Duration')
-                    ->formatStateUsing(fn (?int $state): string => $state
-                        ? gmdate('i:s', (int) $state)
-                        : '—'),
+                    ->formatStateUsing(fn (?int $state): string => CallLog::formatDuration($state)),
             ])
             ->defaultSort('started_at', 'desc')
             ->defaultPaginationPageOption(25)
             ->actions([
+                Action::make('transcript')
+                    ->label('Transcript')
+                    ->icon('heroicon-o-chat-bubble-left-right')
+                    ->color('gray')
+                    ->visible(fn (CallLog $record): bool => filled($record->transcript))
+                    ->modalHeading(fn (CallLog $record) => 'Transcript — '.($record->from_number ?? '?').' → '.($record->to_number ?? '?'))
+                    ->modalSubmitAction(false)
+                    ->modalCancelActionLabel('Close')
+                    ->modalWidth('2xl')
+                    ->modalContent(fn (CallLog $record) => view(
+                        'filament.components.call-transcript',
+                        ['record' => $record],
+                    )),
                 Action::make('play')
                     ->label('Play')
                     ->icon('heroicon-o-play-circle')

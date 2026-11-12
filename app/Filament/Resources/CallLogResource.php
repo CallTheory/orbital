@@ -79,10 +79,16 @@ class CallLogResource extends Resource
                     ->label('Agent')
                     ->placeholder('-'),
                 Tables\Columns\TextColumn::make('status')
-                    ->badge(),
+                    ->badge()
+                    ->formatStateUsing(fn (?string $state): string => CallLog::statusLabel($state))
+                    ->color(fn (?string $state): string => CallLog::statusColor($state)),
                 Tables\Columns\TextColumn::make('duration_seconds')
                     ->label('Duration')
-                    ->formatStateUsing(fn (int $state): string => gmdate('H:i:s', $state)),
+                    ->formatStateUsing(fn (?int $state): string => CallLog::formatDuration($state)),
+                Tables\Columns\TextColumn::make('billable_seconds')
+                    ->label('Billable')
+                    ->formatStateUsing(fn (?int $state): string => CallLog::formatDuration($state))
+                    ->toggleable(),
             ])
             ->defaultSort('started_at', 'desc')
             ->filters([
@@ -92,11 +98,26 @@ class CallLogResource extends Resource
                         'outbound' => 'Outbound',
                         'internal' => 'Internal',
                     ]),
+                Tables\Filters\SelectFilter::make('status')
+                    ->options(CallLog::STATUSES),
                 Tables\Filters\SelectFilter::make('team_id')
                     ->label('Client')
                     ->relationship('team', 'name', fn ($query) => $query->where('personal_team', false)),
             ])
             ->actions([
+                Action::make('transcript')
+                    ->label('Transcript')
+                    ->icon('heroicon-o-chat-bubble-left-right')
+                    ->color('gray')
+                    ->visible(fn (CallLog $record): bool => filled($record->transcript))
+                    ->modalHeading(fn (CallLog $record) => 'Transcript — '.($record->from_number ?? '?').' → '.($record->to_number ?? '?'))
+                    ->modalSubmitAction(false)
+                    ->modalCancelActionLabel('Close')
+                    ->modalWidth('2xl')
+                    ->modalContent(fn (CallLog $record) => view(
+                        'filament.components.call-transcript',
+                        ['record' => $record],
+                    )),
                 Action::make('play')
                     ->label('Play')
                     ->icon('heroicon-o-play-circle')

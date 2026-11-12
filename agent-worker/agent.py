@@ -27,6 +27,7 @@ from fallback import CallFallback
 from personality_loader import PersonalityLoader
 from tools.compiled_flow import build_dynamic_tools
 from tools.transfer import transfer_call
+from transcript import format_transcript
 
 logger = logging.getLogger("orbital-agent")
 
@@ -170,6 +171,14 @@ async def _run_call(ctx: JobContext, config: Config, fallback: CallFallback) -> 
         if ev.reason == CloseReason.ERROR:
             asyncio.create_task(fallback.trigger(f"session closed on error: {ev.error}"))
 
+    # The conversation goes to Call History when the job ends, however it
+    # ends. A shutdown callback is awaited; a task started from the close
+    # event could be cancelled as the job exits.
+    async def _send_transcript() -> None:
+        await _report_transcript(config, room_name, extension, session)
+
+    ctx.add_shutdown_callback(_send_transcript)
+
     # Build dynamic tools from the compiled flow's function_schemas
     # (set_field, advance_step, transfer_call, search_knowledge, etc).
     # These supplement the always-available EndCallTool.
@@ -237,11 +246,14 @@ async def _report_call_context(ctx: JobContext, config: Config, room_name: str, 
         return
 
     attrs = dict(participant.attributes or {})
-    did = next((v for k, v in attrs.items() if k.lower().endswith("x-orbital-did")), None)
+    did = _header_attr(attrs, "x-orbital-did")
     payload = {
         "caller_number": attrs.get("sip.phoneNumber"),
         "called_number": did or attrs.get("sip.trunkPhoneNumber"),
         "extension": extension,
+        # Asterisk's id for the whole call (X-Orbital-Call): links this
+        # session to its Call History row.
+        "call_id": _header_attr(attrs, "x-orbital-call"),
     }
     try:
         await asyncio.to_thread(
@@ -253,6 +265,32 @@ async def _report_call_context(ctx: JobContext, config: Config, room_name: str, 
         )
     except requests.RequestException as e:
         logger.warning(f"call context report failed: {e}")
+
+
+def _header_attr(attrs: dict, header: str) -> str | None:
+    """A SIP X- header LiveKit passed through as a `sip.h.*` attribute."""
+    return next((v for k, v in attrs.items() if k.lower().endswith(header)), None)
+
+
+async def _report_transcript(config: Config, room_name: str, extension: str, session: AgentSession) -> None:
+    """POST what was said on the call, for Call History."""
+    try:
+        text = format_transcript(session.history.items)
+    except Exception as e:  # noqa: BLE001 - never block shutdown
+        logger.warning(f"couldn't build the transcript for {room_name}: {e}")
+        return
+    if not text:
+        return
+    try:
+        await asyncio.to_thread(
+            requests.post,
+            f"{config.orbital_api_url}/call-sessions/{room_name}/transcript",
+            headers=config.api_headers,
+            json={"transcript": text, "extension": extension},
+            timeout=10,
+        )
+    except requests.RequestException as e:
+        logger.warning(f"transcript report failed for {room_name}: {e}")
 
 
 async def _start_track_egress(ctx: JobContext, room_name: str) -> None:

@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\RunPostCallActionsJob;
+use App\Models\CallLog;
 use App\Models\CallSessionState;
 use App\Services\Flows\AgentFlowCompiler;
 use App\Services\Messages\PartialMessagePolicy;
@@ -93,15 +94,51 @@ class CallSessionController extends Controller
             'caller_number' => 'nullable|string|max:64',
             'called_number' => 'nullable|string|max:64',
             'extension' => 'nullable|string|max:32',
+            // Asterisk's linkedid (X-Orbital-Call): ties the session to its
+            // Call History row.
+            'call_id' => 'nullable|string|max:64',
         ]);
 
         $state = $this->upsert($sessionKey, $data['extension'] ?? null);
         $state->fill([
             'caller_number' => PhoneNumber::toE164($data['caller_number'] ?? null) ?? $state->caller_number,
             'called_number' => PhoneNumber::toE164($data['called_number'] ?? null) ?? $state->called_number,
+            'linked_id' => ($data['call_id'] ?? null) ?: $state->linked_id,
         ])->save();
 
         return response()->json(['data' => $this->serialize($state->fresh())]);
+    }
+
+    /**
+     * The conversation, sent by the worker when the AI session closes.
+     * Call History usually doesn't have the call yet (Asterisk's record
+     * is ingested after hangup, and picks the transcript up from here);
+     * if it does, it's updated too.
+     */
+    public function transcript(Request $request, string $sessionKey): JsonResponse
+    {
+        if (! $this->isWorker($request)) {
+            abort(401);
+        }
+
+        $data = $request->validate([
+            'transcript' => 'required|string|max:500000',
+            'extension' => 'nullable|string|max:32',
+        ]);
+
+        $state = $this->upsert($sessionKey, $data['extension'] ?? null);
+        $state->forceFill(['transcript' => $data['transcript']])->save();
+
+        if ($state->linked_id) {
+            CallLog::withoutGlobalScopes()
+                ->where('linked_id', $state->linked_id)
+                ->update(array_filter([
+                    'transcript' => $state->transcript,
+                    'agent_persona_id' => $state->agent_persona_id,
+                ], fn ($v) => $v !== null));
+        }
+
+        return response()->json(['data' => ['session_key' => $state->session_key, 'linked_id' => $state->linked_id]]);
     }
 
     /**

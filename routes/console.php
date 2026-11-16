@@ -86,6 +86,15 @@ Schedule::command('orbital:collect-metrics')
     ->withoutOverlapping()
     ->onOneServer();
 
+// Call History: turn the call records Asterisk writes to asterisk_cdr
+// into call_logs rows. Each run rebuilds the calls with new records, so
+// a call shows up within a minute of hanging up.
+Schedule::command('orbital:ingest-cdrs')
+    ->everyMinute()
+    ->name('ingest-cdrs')
+    ->withoutOverlapping()
+    ->onOneServer();
+
 // Drain rtpengine recording-daemon spool dirs into CallRecording rows.
 // Polled rather than inotify-driven so we don't need a sidecar
 // watcher container per node. Once-a-minute is fine — the upload

@@ -101,10 +101,14 @@ ami_reload() {
   printf 'Action: Login\r\nUsername: %s\r\nSecret: %s\r\n\r\n' "$AMI_USER" "$AMI_SECRET" >&3
   printf 'Action: Command\r\nCommand: dialplan reload\r\n\r\n' >&3
   printf 'Action: Command\r\nCommand: voicemail reload\r\n\r\n' >&3
+  # Re-reads the asterisk_cdr table's columns, in case Asterisk started
+  # before the migration that created it (call records would otherwise
+  # be dropped until the next restart).
+  printf 'Action: Command\r\nCommand: module reload cdr_adaptive_odbc.so\r\n\r\n' >&3
   printf 'Action: Logoff\r\n\r\n' >&3
   timeout 5 cat <&3 >/dev/null 2>&1 || true
   exec 3<&- 3>&- || true
-  log "AMI dialplan+voicemail reload sent"
+  log "AMI dialplan+voicemail+cdr reload sent"
 }
 
 configure_rclone

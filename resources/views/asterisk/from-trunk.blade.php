@@ -32,6 +32,7 @@
 ; Rule {{ $rule->id }}: {{ $rule->name ?? '(unnamed)' }} → {{ $tenantContext }}
 exten => {{ $pattern }},1,NoOp(Inbound {{ $pattern }} for client {{ $rule->team_id ?? 'platform' }} via rule {{ $rule->id }})
  same => n,Set(__ORBITAL_DID=${EXTEN})
+ same => n,Gosub(orbital-cdr-inbound,s,1({{ $rule->team_id }},{{ $rule->id }}))
 @switch($rule->destination_type)
 @case('extension')
  same => n,Goto({{ $tenantContext }},{{ $rule->destination_id }},1)
@@ -134,11 +135,26 @@ exten => s,1,NoOp(AI unavailable for ${CALLERID(num)} on ${CHANNEL})
  same => n,Hangup()
 
 
+[orbital-cdr-inbound]
+
+; Tags an inbound call's CDR for Call History (orbital:ingest-cdrs):
+; the client and routing rule (ARG1, ARG2), the DID dialled, and the
+; carrier leg's SIP Call-ID, which edge recordings are keyed by.
+exten => s,1,Set(CDR(orbital_team_id)=${ARG1})
+ same => n,Set(CDR(orbital_rule_id)=${ARG2})
+ same => n,Set(CDR(orbital_did)=${ORBITAL_DID})
+ same => n,Set(CDR(orbital_sip_call_id)=${CHANNEL(pjsip,call-id)})
+ same => n,Return()
+
+
 [orbital-ai-headers]
 
-; Pre-dial handler on the AI leg (Dial(...@livekit,...,b(...))): tells
-; LiveKit which DID the caller dialled; the worker records it.
-exten => s,1,GotoIf($["${ORBITAL_DID}" = ""]?done)
+; Pre-dial handler on the AI leg (Dial(...@livekit,...,b(...))). Tells
+; LiveKit which call this is (Asterisk's linkedid, which Call History
+; is keyed by) and which DID the caller dialled; the worker reports
+; both back so the AI session is tied to the call record.
+exten => s,1,Set(PJSIP_HEADER(add,X-Orbital-Call)=${CHANNEL(linkedid)})
+ same => n,GotoIf($["${ORBITAL_DID}" = ""]?done)
  same => n,Set(PJSIP_HEADER(add,X-Orbital-DID)=${ORBITAL_DID})
  same => n(done),Return()
 

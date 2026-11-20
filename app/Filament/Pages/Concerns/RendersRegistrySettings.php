@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Pages\Concerns;
 
+use App\Services\Settings\DeploymentDefaults;
 use App\Services\Settings\PlatformSettingsRepository;
 use App\Services\Settings\ServiceRestartCatalog;
 use App\Services\Settings\SettingsRegistry;
@@ -125,6 +126,7 @@ trait RendersRegistrySettings
             }
         }
 
+        $defaults = app(DeploymentDefaults::class);
         $restart = [];
 
         foreach ($state as $fieldName => $value) {
@@ -133,20 +135,32 @@ trait RendersRegistrySettings
                 continue;
             }
             $def = $allowed[$key];
-            $targets = $def['config_keys']
-                ?? (isset($def['config_key']) ? [$def['config_key']] : []);
-            // Compare with what's in effect (saved value, else .env), so
-            // a first save that just stores the .env value isn't a change.
-            $previous = $repo->get($key) ?? ($targets !== [] ? config($targets[0]) : null);
+            $targets = SettingsRegistry::configTargets($key);
+            $default = $defaults->for($key);
+            $defaults->remember($key, $default);
+            $saved = $repo->get($key);
+            $previous = $saved ?? $default;
             $incoming = ($value === null || $value === '') ? null : $value;
 
-            if ($incoming === null) {
-                $repo->forget($key);
+            // Only a value that differs from the deployment's is stored.
+            // The form shows every field filled in, so storing them all
+            // would freeze the deployment's current values: a later
+            // .env / chart change (an in-cluster service address, say)
+            // would then never take effect. Empty, or set back to the
+            // deployment's value, means "follow the deployment".
+            if ($incoming === null || $incoming == $default) {
+                if ($saved !== null) {
+                    $repo->forget($key);
+                }
+                $effective = $default;
             } else {
-                $repo->set($key, $incoming);
+                if ($incoming != $saved) {
+                    $repo->set($key, $incoming);
+                }
+                $effective = $incoming;
             }
 
-            if ($previous != $incoming) {
+            if ($previous != $effective) {
                 $restart['horizon'] = true;
                 foreach ($def['restart_required'] ?? [] as $slug) {
                     $restart[$slug] = true;
@@ -155,14 +169,66 @@ trait RendersRegistrySettings
 
             // Apply to runtime config immediately so the response
             // rendered after save sees the new values.
-            if ($incoming !== null) {
-                foreach ($targets as $target) {
-                    config()->set($target, $incoming);
-                }
+            foreach ($targets as $target) {
+                config()->set($target, $effective);
             }
         }
 
         return array_keys($restart);
+    }
+
+    /**
+     * Drop the value saved for $key so it follows the deployment
+     * again, and apply that straight away like a save does.
+     */
+    public function resetRegistrySetting(string $key): void
+    {
+        $def = SettingsRegistry::find($key);
+        if ($def === null || SettingsRegistry::isManagedByDeployment($key)) {
+            return;
+        }
+
+        $repo = app(PlatformSettingsRepository::class);
+        $defaults = app(DeploymentDefaults::class);
+        $default = $defaults->for($key);
+        $defaults->remember($key, $default);
+        $saved = $repo->get($key);
+
+        $repo->forget($key);
+        foreach (SettingsRegistry::configTargets($key) as $target) {
+            config()->set($target, $default);
+        }
+        $this->data[$this->registryFieldName($key)] = $default;
+
+        $slugs = [];
+        if ($saved != $default) {
+            $slugs = array_values(array_unique(['horizon', ...($def['restart_required'] ?? [])]));
+        }
+
+        $this->afterRegistrySave('Reset to default', $slugs);
+    }
+
+    /**
+     * How the deployment's value reads in the reset confirmation.
+     */
+    protected function describeDeploymentDefault(string $key): string
+    {
+        if (SettingsRegistry::isSecret($key)) {
+            return 'The deployment\'s own value will apply (hidden, it\'s a secret).';
+        }
+
+        $default = app(DeploymentDefaults::class)->for($key);
+
+        $shown = match (true) {
+            $default === null, $default === '' => null,
+            is_bool($default) => $default ? 'On' : 'Off',
+            is_scalar($default) => (string) $default,
+            default => null,
+        };
+
+        return $shown === null
+            ? 'The deployment sets no value for it, so it will be empty.'
+            : 'It will use the deployment\'s value: '.$shown;
     }
 
     /**
@@ -339,6 +405,21 @@ trait RendersRegistrySettings
             // deployment (see config/orbital.php managed_settings).
             $field->disabled()->dehydrated(false);
             $helper = 'Set by this site\'s installer (./install.sh in orbital-setup). Change it there so the rest of the deployment follows.';
+        } else {
+            // Only offered while a value is saved here; otherwise the
+            // field already follows the deployment.
+            $field->hintAction(
+                Action::make('resetToDefault')
+                    ->label('Reset to default')
+                    ->icon('heroicon-m-arrow-uturn-left')
+                    ->visible(fn (): bool => app(PlatformSettingsRepository::class)->get($key) !== null)
+                    ->requiresConfirmation()
+                    ->modalHeading('Reset "'.($def['label'] ?? $key).'" to default?')
+                    ->modalDescription(fn (): string => 'This removes the value saved here, so the setting follows this site\'s deployment again. '
+                        .$this->describeDeploymentDefault($key))
+                    ->modalSubmitActionLabel('Reset')
+                    ->action(fn () => $this->resetRegistrySetting($key)),
+            );
         }
         if ($helper) {
             $field->helperText($helper);

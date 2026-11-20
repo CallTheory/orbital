@@ -1103,6 +1103,23 @@ final class SettingsRegistry
     }
 
     /**
+     * The Laravel config key(s) a setting writes to: one `config_key`,
+     * or several `config_keys` for a setting that fans out.
+     *
+     * @return array<int, string>
+     */
+    public static function configTargets(string $key): array
+    {
+        $def = self::find($key);
+        if ($def === null) {
+            return [];
+        }
+
+        return $def['config_keys']
+            ?? (isset($def['config_key']) ? [$def['config_key']] : []);
+    }
+
+    /**
      * Shared option map for the three "primary color" selects (admin,
      * operator, portal). Every value matches a public constant on
      * {@see Color} so the Branding helper

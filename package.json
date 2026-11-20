@@ -22,7 +22,7 @@
         "vite": "^8.0.0"
     },
     "dependencies": {
-        "@xyflow/svelte": "^1.7.0",
+        "@xyflow/svelte": "^2.0.0",
         "laravel-echo": "^2.5.0",
         "pusher-js": "^8.6.0",
         "sip.js": "^0.21.2",

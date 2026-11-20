@@ -352,11 +352,16 @@ localTranscription:
     requests: {cpu: "500m", memory: "1Gi"}
     limits: {cpu: "4000m", memory: "4Gi"}
 
-# Ollama: local embeddings and inference, for clients whose knowledge
-# stores use an `ollama:` embedding model instead of a hosted one. Off by
-# default: it needs real CPU (or a GPU) and disk for its models.
+# Ollama: self-hosted embeddings (and inference) so knowledge stores work
+# without sending client documents to a hosted provider. On by default:
+# self-hosting is the default, a hosted provider (OpenAI) the option.
+#
+# Sized for embeddings: nomic-embed-text is ~300 MB and embeds in well
+# under the request below. Running chat models on it needs far more
+# memory (a 7-8B model wants ~6-8 GiB): raise both numbers, and give the
+# workers room for it (orbital-setup's capacity check counts these).
 ollama:
-  enabled: false
+  enabled: true
   image:
     registry: docker.io
     repository: ollama
@@ -364,9 +369,15 @@ ollama:
     tag: "0.40.10"   # released 2026-10-23
   persistence:
     size: 20Gi
+  # Pulled into the model volume when Ollama starts (and re-checked on
+  # every restart, a no-op once present), so a knowledge store works
+  # without anyone running `ollama pull`. The first one is the default
+  # embedding model for new knowledge stores while Ollama is enabled.
+  models:
+    - nomic-embed-text
   resources:
-    requests: {cpu: "1000m", memory: "4Gi"}
-    limits: {cpu: "4000m", memory: "12Gi"}
+    requests: {cpu: "250m", memory: "1536Mi"}
+    limits: {cpu: "2000m", memory: "4Gi"}
 
 # ============================================================================
 # Licensing — AGPL section 13 source offer

@@ -310,7 +310,7 @@ class ObservabilityServiceProvider extends ServiceProvider
     private function traceConsole(Tracer $tracer): void
     {
         Event::listen(function (CommandStarting $event) use ($tracer): void {
-            if ($event->command === null) {
+            if ($event->command === null || ! self::tracesCommand($event->command)) {
                 return;
             }
 
@@ -325,6 +325,31 @@ class ObservabilityServiceProvider extends ServiceProvider
         Event::listen(function (CommandFinished $event) use ($tracer): void {
             $tracer->endRoot(['orbital.exit_code' => $event->exitCode], owner: 'console');
         });
+    }
+
+    /**
+     * Commands that run until the process is stopped get no span.
+     *
+     * A command's span closes when the command finishes, and these never
+     * do: the span stayed open for the life of the pod, every job and
+     * query nested under it, and nothing was ever exported. On Dallas
+     * the Horizon master passed its 64 MB memory_limit within minutes
+     * and crash-looped. Without the open span, each job a worker runs
+     * gets a trace of its own through the queue seam.
+     */
+    private const LONG_RUNNING_COMMANDS = [
+        'horizon',
+        'horizon:supervisor',
+        'horizon:work',
+        'queue:work',
+        'queue:listen',
+        'reverb:start',
+        'schedule:work',
+    ];
+
+    public static function tracesCommand(string $command): bool
+    {
+        return ! in_array($command, self::LONG_RUNNING_COMMANDS, true);
     }
 
     /**

@@ -4,12 +4,18 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Observability;
 
+use App\Providers\ObservabilityServiceProvider;
 use App\Services\Observability\Tracer;
+use Illuminate\Console\Events\CommandFinished;
+use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use OpenTelemetry\SDK\Trace\ImmutableSpan;
 use OpenTelemetry\SDK\Trace\SpanExporter\InMemoryExporter;
+use ReflectionMethod;
 use RuntimeException;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\NullOutput;
 use Tests\TestCase;
 
 /**
@@ -335,6 +341,49 @@ class TracingTest extends TestCase
         $this->assertCount(1, $this->exporter->getSpans());
     }
 
+    /**
+     * A command's span closes when the command finishes. Horizon, queue
+     * workers, Reverb and schedule:work never finish, so a span opened
+     * for them grew for the life of the pod (Dallas: the Horizon master
+     * hit its 64 MB limit and crash-looped).
+     */
+    public function test_long_running_commands_open_no_trace(): void
+    {
+        $tracer = $this->tracer();
+        $this->registerConsoleTracing($tracer);
+
+        foreach (['horizon', 'horizon:supervisor', 'horizon:work', 'queue:work', 'reverb:start', 'schedule:work'] as $command) {
+            event(new CommandStarting($command, new ArrayInput([]), new NullOutput));
+            $this->assertFalse($tracer->hasActiveTrace(), "{$command} must not open a trace");
+        }
+    }
+
+    public function test_a_job_in_a_worker_gets_its_own_trace(): void
+    {
+        $tracer = $this->tracer();
+        $this->registerConsoleTracing($tracer);
+
+        event(new CommandStarting('horizon:work', new ArrayInput([]), new NullOutput));
+
+        // What the queue seam does for each job the worker picks up.
+        $this->assertTrue($tracer->startRoot('job SendMessage', owner: 'queue'));
+        $tracer->endRoot(['orbital.job_outcome' => 'processed'], owner: 'queue');
+
+        $this->assertSame('job SendMessage', $this->onlySpan()->getName());
+    }
+
+    public function test_a_command_that_finishes_is_still_traced(): void
+    {
+        $tracer = $this->tracer();
+        $this->registerConsoleTracing($tracer);
+
+        event(new CommandStarting('orbital:collect-metrics', new ArrayInput([]), new NullOutput));
+        $this->assertTrue($tracer->hasActiveTrace());
+        event(new CommandFinished('orbital:collect-metrics', new ArrayInput([]), new NullOutput, 0));
+
+        $this->assertSame('artisan orbital:collect-metrics', $this->onlySpan()->getName());
+    }
+
     // ── Never breaks the request ────────────────────────────────────
 
     /**
@@ -426,6 +475,16 @@ class TracingTest extends TestCase
         $tracer->useExporter($this->exporter);
 
         return $tracer;
+    }
+
+    /**
+     * The console listeners are attached at boot only when tracing is
+     * on, which it isn't in tests; attach them to this tracer.
+     */
+    private function registerConsoleTracing(Tracer $tracer): void
+    {
+        $provider = new ObservabilityServiceProvider(app());
+        (new ReflectionMethod($provider, 'traceConsole'))->invoke($provider, $tracer);
     }
 
     private function onlySpan(): ImmutableSpan

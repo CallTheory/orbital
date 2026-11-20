@@ -97,7 +97,12 @@ RUN apk add --no-cache \
         curl \
         ffmpeg \
         librsvg \
-        nginx \
+        # 1.30.7 fixes four Critical CVEs (CVE-2026-113425, -121810,
+        # -123007, -123633); Harbor refuses to serve an image with a
+        # Critical finding, so a release can't sign without it. The
+        # version floor also invalidates a runner's cached copy of this
+        # layer, which is how 1.30.6 survived into a fresh build.
+        'nginx>=1.30.7' \
         # PostgreSQL client tools — pg_dump / pg_restore for
         # `orbital:backup` and `orbital:restore`. Deliberate addition to
         # an image that otherwise keeps its package list minimal: there

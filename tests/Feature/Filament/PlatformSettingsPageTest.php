@@ -141,6 +141,46 @@ class PlatformSettingsPageTest extends TestCase
         $this->assertSame('http://orbital-orbital-ollama:11434', config('services.ollama.url'));
     }
 
+    /**
+     * Dallas, 2026-11-19: Tracing switched off with the chart setting it
+     * on. PHP's loose `false != null` is false, so the save stored
+     * nothing and every restarted worker came back with tracing on.
+     */
+    public function test_switching_off_a_setting_the_deployment_turns_on_is_saved(): void
+    {
+        config(['observability.tracing.enabled' => true, 'observability.tracing.sample_ratio' => 0.05]);
+        $repo = app(PlatformSettingsRepository::class);
+
+        Livewire::test(PlatformSettings::class)
+            ->fillForm([
+                'observability__tracing__enabled' => false,
+                'observability__tracing__sample_ratio' => 0,
+            ])
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        $this->assertFalse($repo->get('observability.tracing.enabled'));
+        $this->assertEquals(0, $repo->get('observability.tracing.sample_ratio'));
+
+        // A restarted worker boots with the saved value, not the chart's.
+        config(['observability.tracing.enabled' => true]);
+        $this->bootOverrides();
+        $this->assertFalse(config('observability.tracing.enabled'));
+    }
+
+    public function test_switching_on_a_setting_the_deployment_leaves_unset_is_saved(): void
+    {
+        config(['telephony.asterisk.internal_did_simulation' => null]);
+        $repo = app(PlatformSettingsRepository::class);
+
+        Livewire::test(PlatformSettings::class)
+            ->fillForm(['telephony__asterisk__internal_did_simulation' => true])
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        $this->assertTrue($repo->get('telephony.asterisk.internal_did_simulation'));
+    }
+
     public function test_setting_a_value_back_to_the_deployments_removes_the_saved_one(): void
     {
         $repo = app(PlatformSettingsRepository::class);

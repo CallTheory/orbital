@@ -148,19 +148,22 @@ trait RendersRegistrySettings
             // .env / chart change (an in-cluster service address, say)
             // would then never take effect. Empty, or set back to the
             // deployment's value, means "follow the deployment".
-            if ($incoming === null || $incoming == $default) {
+            if ($incoming === null || $this->sameSettingValue($incoming, $default)) {
                 if ($saved !== null) {
                     $repo->forget($key);
                 }
                 $effective = $default;
             } else {
-                if ($incoming != $saved) {
+                // No saved row yet means it must be written, whatever
+                // the value (a toggle switched off is false, which a
+                // comparison with "nothing saved" would call the same).
+                if ($saved === null || ! $this->sameSettingValue($incoming, $saved)) {
                     $repo->set($key, $incoming);
                 }
                 $effective = $incoming;
             }
 
-            if ($previous != $effective) {
+            if (! $this->sameSettingValue($previous, $effective)) {
                 $restart['horizon'] = true;
                 foreach ($def['restart_required'] ?? [] as $slug) {
                     $restart[$slug] = true;
@@ -201,11 +204,29 @@ trait RendersRegistrySettings
         $this->data[$this->registryFieldName($key)] = $default;
 
         $slugs = [];
-        if ($saved != $default) {
+        if (! $this->sameSettingValue($saved, $default)) {
             $slugs = array_values(array_unique(['horizon', ...($def['restart_required'] ?? [])]));
         }
 
         $this->afterRegistrySave('Reset to default', $slugs);
+    }
+
+    /**
+     * Whether two setting values mean the same. Loose, so a form's "25"
+     * matches a config 25 and true matches "1". Unset (null) matches
+     * only unset or false: a toggle can't show "unset", so off and unset
+     * are the same setting. Plain PHP == would also match 0 and "" to
+     * null, so a number set to 0 would read as unchanged.
+     */
+    protected function sameSettingValue(mixed $a, mixed $b): bool
+    {
+        if ($a === null || $b === null) {
+            $other = $a ?? $b;
+
+            return $other === null || $other === false;
+        }
+
+        return $a == $b;
     }
 
     /**

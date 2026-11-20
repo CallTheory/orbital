@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Services\Settings\DeploymentDefaults;
 use App\Services\Settings\SettingsRegistry;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Support\Facades\Crypt;
@@ -59,6 +60,8 @@ class RuntimeConfigOverrideProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->app->singleton(DeploymentDefaults::class);
+
         // Fires at the start of the boot phase, before any
         // ServiceProvider::boot() method runs — including Filament's.
         $this->app->booting(function (): void {
@@ -118,6 +121,12 @@ class RuntimeConfigOverrideProvider extends ServiceProvider
             // entries instead of one root.
             $targets = $def['config_keys']
                 ?? (isset($def['config_key']) ? [$def['config_key']] : []);
+            // Keep the deployment's own value before replacing it, for
+            // "Reset to default" and for telling a real change from a
+            // save that just repeats it.
+            if ($targets !== []) {
+                $this->app->make(DeploymentDefaults::class)->remember($key, config($targets[0]));
+            }
             foreach ($targets as $target) {
                 config()->set($target, $value);
             }

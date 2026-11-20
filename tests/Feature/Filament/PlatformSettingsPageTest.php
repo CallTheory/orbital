@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace Tests\Feature\Filament;
 
 use App\Filament\Pages\PlatformSettings;
+use App\Models\PlatformSetting;
 use App\Providers\RuntimeConfigOverrideProvider;
+use App\Services\Settings\FrozenSettingsCleanup;
 use App\Services\Settings\PlatformSettingsRepository;
 use Database\Seeders\PermissionCatalogSeeder;
 use Database\Seeders\SuperAdminRoleSeeder;
+use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -108,6 +111,110 @@ class PlatformSettingsPageTest extends TestCase
         // The save left the old row alone rather than writing a new value.
         $this->assertSame('stale.example.com', $repo->get('services.inbound_mail.domain'));
         $this->assertSame('inbound.dallas.example.com', config('services.inbound_mail.domain'));
+    }
+
+    public function test_a_save_stores_only_the_fields_that_changed(): void
+    {
+        Livewire::test(PlatformSettings::class)
+            ->fillForm(['mail__from__address' => 'ops@example.com'])
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        $this->assertSame(['mail.from.address'], PlatformSetting::query()->pluck('key')->all());
+        $this->assertSame('ops@example.com', config('mail.from.address'));
+    }
+
+    public function test_untouched_fields_keep_following_the_deployment_after_a_save(): void
+    {
+        Livewire::test(PlatformSettings::class)
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        $this->assertSame(0, PlatformSetting::query()->count());
+
+        // The chart later points the app at the in-cluster service, and
+        // nothing saved earlier gets in the way.
+        config(['services.ollama.url' => 'http://orbital-orbital-ollama:11434']);
+        $provider = new RuntimeConfigOverrideProvider(app());
+        (new \ReflectionMethod($provider, 'applyOverrides'))->invoke($provider);
+
+        $this->assertSame('http://orbital-orbital-ollama:11434', config('services.ollama.url'));
+    }
+
+    public function test_setting_a_value_back_to_the_deployments_removes_the_saved_one(): void
+    {
+        $repo = app(PlatformSettingsRepository::class);
+        $repo->set('mail.from.address', 'ops@example.com');
+        $this->bootOverrides();
+
+        Livewire::test(PlatformSettings::class)
+            ->assertFormSet(['mail__from__address' => 'ops@example.com'])
+            ->fillForm(['mail__from__address' => 'no-reply@orbital.local'])
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        $this->assertNull($repo->get('mail.from.address'));
+        $this->assertSame('no-reply@orbital.local', config('mail.from.address'));
+    }
+
+    public function test_reset_to_default_is_offered_only_for_a_saved_value(): void
+    {
+        $reset = fn (string $field) => TestAction::make('resetToDefault')->schemaComponent($field);
+
+        app(PlatformSettingsRepository::class)->set('mail.from.address', 'ops@example.com');
+        $this->bootOverrides();
+
+        Livewire::test(PlatformSettings::class)
+            ->assertActionVisible($reset('mail__from__address'))
+            ->assertActionDoesNotExist($reset('mail__from__name'));
+    }
+
+    public function test_reset_to_default_drops_the_saved_value_and_applies_the_deployments(): void
+    {
+        $repo = app(PlatformSettingsRepository::class);
+        $repo->set('mail.from.address', 'ops@example.com');
+        $this->bootOverrides();
+        Cache::forget('illuminate:queue:restart');
+
+        Livewire::test(PlatformSettings::class)
+            ->callAction(TestAction::make('resetToDefault')->schemaComponent('mail__from__address'))
+            ->assertNotified('Reset to default')
+            ->assertFormSet(['mail__from__address' => 'no-reply@orbital.local']);
+
+        $this->assertNull($repo->get('mail.from.address'));
+        $this->assertSame('no-reply@orbital.local', config('mail.from.address'));
+        $this->assertNotNull(Cache::get('illuminate:queue:restart'), 'workers pick up the change');
+    }
+
+    public function test_cleanup_removes_frozen_values_and_keeps_chosen_ones(): void
+    {
+        // Saved while the deployment still used the compose address;
+        // the chart now sets the in-cluster one.
+        config([
+            'services.ollama.url' => 'http://orbital-orbital-ollama:11434',
+            'observability.tracing.endpoint' => 'http://tempo.monitoring.svc.cluster.local:4318/v1/traces',
+        ]);
+        $repo = app(PlatformSettingsRepository::class);
+        $repo->set('services.ollama.url', 'http://ollama:11434');
+        $repo->set('observability.tracing.endpoint', 'http://tempo:4318/v1/traces');
+        // Same as the deployment's value: frozen, harmless to drop.
+        $repo->set('mail.from.address', 'no-reply@orbital.local');
+        // Chosen on purpose: kept.
+        $repo->set('mail.from.name', 'Apollo Answers');
+        $this->bootOverrides();
+
+        $removed = app(FrozenSettingsCleanup::class)->run();
+
+        sort($removed);
+        $this->assertSame(['mail.from.address', 'observability.tracing.endpoint', 'services.ollama.url'], $removed);
+        $this->assertSame('Apollo Answers', $repo->get('mail.from.name'));
+        $this->assertSame(['mail.from.name'], PlatformSetting::query()->pluck('key')->all());
+    }
+
+    private function bootOverrides(): void
+    {
+        $provider = new RuntimeConfigOverrideProvider(app());
+        (new \ReflectionMethod($provider, 'applyOverrides'))->invoke($provider);
     }
 
     public function test_boot_ignores_a_saved_value_for_a_managed_setting(): void

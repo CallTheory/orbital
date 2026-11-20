@@ -87,6 +87,11 @@ data:
   ORBITAL_MANAGED_SETTINGS: {{ include "orbital.managedSettings" . | quote }}
   {{- if .Values.ollama.enabled }}
   OLLAMA_URL: {{ printf "http://%s:11434" (include "orbital.componentName" (list . "ollama")) | quote }}
+  {{- with .Values.ollama.models }}
+  # Self-hosted by default: new knowledge stores embed with the model the
+  # chart pulls. A store can still pick a hosted (OpenAI) model.
+  EMBEDDINGS_DEFAULT_PROVIDER: {{ printf "ollama:%s" (first .) | quote }}
+  {{- end }}
   {{- end }}
   {{- with .Values.observability.grafanaUrl }}
   GRAFANA_INTERNAL_URL: {{ . | quote }}

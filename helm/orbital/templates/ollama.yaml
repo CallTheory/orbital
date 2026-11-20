@@ -1,8 +1,9 @@
 {{- if .Values.ollama.enabled -}}
 {{/*
-Ollama — local embeddings and inference (see values ollama). Off by
-default. The app reaches it at OLLAMA_URL, which configmap-app-env
-sets to this Service while it's enabled.
+Ollama — self-hosted embeddings and inference (see values ollama). On
+by default. The app reaches it at OLLAMA_URL, which configmap-app-env
+sets to this Service while it's enabled, and new knowledge stores
+default to the first of ollama.models (EMBEDDINGS_DEFAULT_PROVIDER).
 
 A StatefulSet for its model volume: pulled models survive restarts
 instead of downloading again.
@@ -61,6 +62,43 @@ spec:
               port: http
             initialDelaySeconds: 30
             periodSeconds: 30
+        {{- with .Values.ollama.models }}
+        # Pulls ollama.models into the shared volume once the server in
+        # this pod answers, then idles. A sidecar rather than a Helm hook
+        # or init container: a slow or offline download must never hold
+        # up an install or the Ollama server itself. It keeps retrying a
+        # failed pull (no internet yet, registry hiccup) every minute.
+        - name: model-pull
+          image: {{ include "orbital.thirdPartyImage" $.Values.ollama.image }}
+          imagePullPolicy: {{ $.Values.global.image.pullPolicy }}
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+          env:
+            - name: HOME
+              value: /data
+            - name: OLLAMA_HOST
+              value: "127.0.0.1:11434"
+            - name: OLLAMA_MODELS_TO_PULL
+              value: {{ join " " . | quote }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              until ollama list >/dev/null 2>&1; do sleep 2; done
+              for model in $OLLAMA_MODELS_TO_PULL; do
+                until ollama pull "$model"; do
+                  echo "pull of $model failed; retrying in 60s" >&2
+                  sleep 60
+                done
+              done
+              echo "models ready: $OLLAMA_MODELS_TO_PULL"
+              exec sleep infinity
+          volumeMounts:
+            - name: models
+              mountPath: /data
+          resources:
+            requests: {cpu: "10m", memory: "32Mi"}
+            limits: {cpu: "500m", memory: "256Mi"}
+        {{- end }}
   volumeClaimTemplates:
     - metadata:
         name: models

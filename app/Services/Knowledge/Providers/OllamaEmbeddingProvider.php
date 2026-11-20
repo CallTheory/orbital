@@ -52,7 +52,9 @@ class OllamaEmbeddingProvider implements EmbeddingProvider
         if (! $response->successful()) {
             throw new RuntimeException(
                 'Ollama embeddings request failed: '.$response->status().' '.$response->body()
-                .' (Is the ollama service running? Start it with: docker compose --profile local-ai up -d ollama)'
+                ." (Is Ollama running at {$url}, and has it pulled {$this->model}? On Kubernetes the chart runs"
+                .' and pulls it while ollama.enabled is on; with docker compose: docker compose --profile local-ai up -d ollama'
+                ." && docker compose exec ollama ollama pull {$this->model})"
             );
         }
 

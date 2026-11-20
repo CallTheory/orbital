@@ -993,7 +993,7 @@ final class SettingsRegistry
                     'ollama:mxbai-embed-large' => 'Ollama — mxbai-embed-large (1024 dims, local)',
                     'ollama:bge-m3' => 'Ollama — bge-m3 (1024 dims, local, multilingual)',
                 ],
-                'helper' => 'New knowledge stores default to this model. Ollama options require starting the container with `docker compose --profile local-ai up -d ollama` and pulling the model.',
+                'helper' => 'New knowledge stores default to this model. On Kubernetes the chart runs Ollama and pulls nomic-embed-text by default, so the Ollama option works with nothing to install; other Ollama models need adding to ollama.models. With docker compose, start Ollama with `docker compose --profile local-ai up -d ollama` and pull the model. OpenAI models need an OpenAI API key.',
             ],
             'services.ollama.url' => [
                 'section' => 'knowledge',
@@ -1001,7 +1001,7 @@ final class SettingsRegistry
                 'type' => 'url',
                 'config_key' => 'services.ollama.url',
                 'placeholder' => 'http://ollama:11434',
-                'helper' => 'Only used when a store\'s embedding_model starts with `ollama:`. In-cluster default is http://ollama:11434.',
+                'helper' => 'Only used when a store\'s embedding_model starts with `ollama:`. Leave it to follow the deployment (on Kubernetes, the chart\'s in-cluster Ollama); set it to use an Ollama server elsewhere.',
             ],
 
             // ─── Call Recording ───────────────────────────────────────
